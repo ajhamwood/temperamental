@@ -1,0 +1,547 @@
+<!doctype html>
+<html>
+<head>
+  <title>Temperamental ⁂ Microtonal chord explorer</title>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <meta name='keywords' content=''>
+  <meta name='description' content=''>
+  <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
+  <style>
+html, body { height: fit-content }
+body {
+  margin: 0;
+  color: #ddd;
+  background-color: #000 }
+form {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: end;
+  gap: 2lvi;
+  margin: 2lvi }
+  form > * {
+    max-height: 25em;
+    overflow-y: scroll }
+  fieldset {
+    display: flex;
+    flex-flow: column;
+    align-items: start;
+    min-width: 30em }
+    fieldset > * { margin: .3em }
+    fieldset > button, #diamond { order: 999 }
+    #mapping {
+      height: calc(var(--height) * 1.9em + 5em);
+      max-height: none }
+    #diamond {
+      display: flex;
+      flex-flow: column;
+      gap: .3em }
+      .diamond-row {
+        display: flex;
+        flex-flow: row;
+        justify-content: center;
+        gap: 1em }
+    .comma {
+      margin: 0;
+      padding: .3em }
+    .comma:hover {
+      background-color: #ddd;
+      color: #222;
+      cursor: pointer }
+    .comma:active, .comma.active { background-color: #666 }
+    .chord > div { position: relative }
+    .chord button {
+      position: absolute;
+      bottom: 0;
+      right: 0 }
+    .chord button::before { content: "Play intervals" }
+    .chord button.active::before { content: "Stop" }
+    .spelling-chord, .steps-chord, .spelling-inv, .steps-inv { margin-left: 1em }
+input { width: 3.5em }
+.hide { display: none }
+  </style>
+</head>
+<body>
+  <form>
+    <div>
+      <h1>Microtonal chord explorer</h1>
+      <fieldset id="scale">
+        <legend>Select scale and harmonic limit</legend>
+        <label id="edo">EDO: <input type="number" value="12" min="1" max="270" step="1"></label>
+        <label id="limit">Harmonic limit: <input type="number" value="5" min="3" max="99" step="2"></label>
+        <label id="maxerror">Maximum error: <input type="number" value="30" min="0" max="100">¢</label>
+        <output></output>
+        <button id="computeMapping" type="button">Compute val range</button>
+      </fieldset>
+    </div>
+    <fieldset id="mapping" class="hide">
+      <legend>Select mapping of harmonics to scale steps</legend>
+      <div id="diamond">Tonality diamond:</div>
+      <button id="computeTemperaments" type="button">Compute supported temperaments</button>
+    </fieldset>
+    <fieldset id="temperaments" class="hide">
+      <legend>Browse temperaments supported by this mapping</legend>
+    </fieldset>
+    <fieldset id="chords" class="hide">
+      <legend>Octave equivalences of this temperament</legend>
+      <div id="stackHeight">Hide stacks over <input type="number" value="1" min="1" step="1"> octaves</div>
+    </fieldset>
+  </form>
+  <template id="harmonic">
+    <label>Tempering of <span id="harm"></span> harmonic: <input type="number" step="1"> steps, <span id="error"></span>¢ error
+      <button type="button">Play interval</button>
+    </label>
+  </template>
+  <template id="diamond-row">
+    <div class="diamond-row"></div>
+  </template>
+  <template id="diamond-cell">
+    <div class=".diamond-cell">
+      <span></span> (<span></span> steps) <button type="button">▶</button>
+    </div>
+  </template>
+  <template id="comma">
+    <div class="comma">
+      <div>Comma: <span class="ratio"></span> of size <span class="size"></span>¢</div>
+      <div>Factorisation: <span class="factorisation"></span></div>
+    </div>
+  </template>
+  <template id="chord">
+    <div class="chord">
+      <div>Harmonic partition: <span class="hpart"></span></div>
+      <div>Interval stack:
+        <div class="spelling-chord"></div>
+        <div class="steps-chord"></div>
+        <button type="button"></button>
+      </div>
+      <div>Inverse stack:
+        <div class="spelling-inv"></div>
+        <div class="steps-inv"></div>
+        <button type="button"></button>
+      </div>
+    </div>
+  </template>
+  <script src="js/machine.js"></script>
+  <script>
+// Utils
+const ordinal = (() => {
+        const rule = new Intl.PluralRules("en-AU", { type: "ordinal" }),
+              suf = new Map([ ["one", "st"], ["two", "nd"], ["few", "rd"], ["other", "th"] ]);
+        return n => `${n}${suf.get(rule.select(n))}`
+      })(),
+      takePrimes = (() => {
+        function* nats (n) { while (true) yield n++ }
+        function* sieve (ps, ns, n) {
+          yield ns.next().value;
+          const p = ps.next().value;
+          while ((n = ns.next().value) < p * p) yield n;
+          yield* sieve(ps, (function* () { while (n = ns.next().value) if (n % p) yield n })())
+        }
+        function* primes () { yield* sieve(primes(), nats(2)) }
+        const vs = primes(), startSym = Symbol();
+        let v = startSym;
+        return function* take (pf) {  // More general than necessary
+          if (v !== startSym) {
+            if (!v.done && pf(v.value)) yield v.value;
+            else return
+          }
+          while (!(v = vs.next()).done && pf(v.value)) yield v.value;
+        }
+      })(),
+      coprime = (f1, f2) => f1.split("").reduce((b, d, i) => b && (d === "0" || f2[i] === "0"), true),
+      gcd = (a, b) => !b ? a : gcd(b, a % b),
+      testDiv = (n, ovs, uns) => [ovs, uns].map(ar => ar.reduce(([decomp, res], [p, rad], k) => {
+        for (k = 0; k < rad; k++)
+          if (res % p === 0) { decomp.push(p); res /= p }
+          else break;
+        return [decomp, res]
+      }, [[], n])).filter(([_, res]) => res === 1)[0]?.[0] ?? [],
+      group = (ar, fn = x => x) => ar.reduce((a, v) => {
+        const i = a.findIndex(vs => fn(vs[0]) === fn(v));
+        return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
+      }, []),
+      comb = iota => iota.reduceRight((ars, x) => ars.flatMap(ar =>
+        ar.map((_, i) => ar.slice(0, i).concat([x]).concat(ar.slice(i))).concat([ar.concat([x])])), [[]]),
+      setEq = (ar1, ar2, cmp) => ar1.length === ar2.length && ar1.reduce((acc, item) => {
+        const i = acc.findIndex(x => cmp(x, item));
+        return ~i ? acc.toSpliced(i, 1) : acc
+      }, ar2).length === 0;
+
+// Page state
+var app = new $.Machine({
+      audioctx: null,
+      volume: null,
+      oscs: [],
+      primes: [],
+      edo: null,
+      oddLimit: null,
+      maxError: null,
+      curTemps: null,
+      curIvs: null
+    });
+
+// Events
+$.targets({
+  load () { app.emit("init") },
+  app: {
+
+    init () {
+      app.emit("updateScale", $("#edo > input").valueAsNumber)
+    },
+
+    panic () {
+      this.audioctx.close();
+      this.audioctx = null;
+      this.volume = null;
+      this.oscs = []
+    },
+
+    updateScale (edo) {
+      if (this.audioctx !== null) app.emit("panic");
+      const fieldsetEl = $("#scale");
+      $("output", fieldsetEl).value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
+      $("#maxerror > input", fieldsetEl).value = Math.floor(400 / edo)
+    },
+
+    updateMapping () {
+      if (this.audioctx !== null) app.emit("panic");
+      $("#temperaments").classList.add("hide");
+      $("#chords").classList.add("hide");
+      const fieldsetEl = $("#mapping");
+      $.all("label", fieldsetEl).forEach(el => el.remove());
+      fieldsetEl.classList.remove("hide");
+      const edo = this.edo = $("#edo > input").valueAsNumber,
+            oddLimit = this.oddLimit = $("#limit > input").valueAsNumber,
+            maxError = this.maxError = $("#maxerror > input").valueAsNumber;
+
+      // Audio
+      const audioctx = this.audioctx = new AudioContext(),
+            gain = this.volume = audioctx.createGain(),
+            lowerSrc = this.oscs[0] = audioctx.createOscillator(),
+            upperSrc = this.oscs[1] = audioctx.createOscillator();
+      lowerSrc.type = "triangle";
+      lowerSrc.connect(gain);
+      upperSrc.type = "triangle";
+      upperSrc.connect(gain);
+      gain.connect(audioctx.destination);
+      gain.gain.value = .0001;
+      lowerSrc.frequency.value = 220;
+      upperSrc.start();
+      lowerSrc.start();
+
+      for (let i = 3; i <= oddLimit; i += 2) {
+        const just = Math.log2(i) % 1,
+              steps = Math.round(just * edo),
+              error = (steps / edo - just) * 1200;
+        if (Math.abs(error) >= maxError) continue;
+        const labelEl = $.load("harmonic", "#mapping")[0][0],
+              inputEl = $("input", labelEl),
+              errorEl = $("#error", labelEl);
+        labelEl.dataset.harm = i;
+        $("#harm", labelEl).innerText = ordinal(i);
+        errorEl.innerText = error.toFixed(2);
+        inputEl.setAttribute("value", steps);
+        inputEl.setAttribute("min", Math.ceil((just - maxError / 1200) * edo));
+        inputEl.setAttribute("max", Math.floor((just + maxError / 1200) * edo));
+        $.queries({
+          input: { change () { errorEl.innerText = ((this.valueAsNumber / edo - just) * 1200).toFixed(2) } },
+          button: {
+            mousedown () {
+              lowerSrc.frequency.setValueAtTime(220, audioctx.currentTime);
+              upperSrc.frequency.setValueAtTime(220 * 2 ** (inputEl.valueAsNumber / edo), audioctx.currentTime);
+              gain.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .3)
+            },
+            mouseup () { gain.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .3) }
+          }
+        }, labelEl)
+      }
+
+      // Tonality diamond
+      const diamondEl = $("#diamond");
+      $.all(":scope > *", diamondEl).forEach(el => el.remove());
+      const temperings = this.curTemps = $.all("label", fieldsetEl).map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ])
+              .sort(([p], [q]) => Math.log2(p) % 1 > Math.log2(q) % 1),
+            h = temperings.length,
+            diaMerid = $.load("diamond-row", "#diamond")[0][0];
+      fieldsetEl.style.setProperty("--height", 2 * h + 1);
+      diaMerid.style.order = h + 1;
+      for (let i = 0; i <= h; i++) {
+        const cell = $.load("diamond-cell", "", diaMerid)[0][0],
+              [ interval, width, button ] = $.all(":scope > *", cell);
+        interval.innerHTML = "<sup>1</sup>/<sub>1</sub>";
+        width.innerText = 0;
+        button.dataset.steps = 0
+      }
+      const ivs = [];
+      for (let i = h; i > 0; i--) {
+        const upperRow = $.load("diamond-row", "#diamond")[0][0],
+              lowerRow = $.load("diamond-row", "#diamond")[0][0];
+        upperRow.style.order = i;
+        lowerRow.style.order = 2 * h + 2 - i;
+        for (let j = 0; j < i; j++) {
+          const upperCell = $.load("diamond-cell", "", upperRow)[0][0],
+                lowerCell = $.load("diamond-cell", "", lowerRow)[0][0],
+                [ upperInterval, upperWidth, upperButton ] = $.all(":scope > *", upperCell),
+                [ lowerInterval, lowerWidth, lowerButton ] = $.all(":scope > *", lowerCell),
+                num = h - i + j, den = j - 1,
+                octave = Math.floor(Math.log2(temperings[num][0] / (temperings[den]?.[0] ?? 1))),
+                div = gcd(temperings[num][0], (temperings[den]?.[0] ?? 1)),
+                upNum = temperings[num][0] * (octave < 0 ? 2 ** -octave : 1) / div,
+                upDen = (temperings[den]?.[0] ?? 1) * (octave < 0 ? 1 : 2 ** octave) / div,
+                loNum = (temperings[den]?.[0] ?? 1) * (octave < -1 ? 1 : 2 ** (octave + 1)) / div,
+                loDen = temperings[num][0] * (octave < -1 ? 2 ** (-octave - 1) : 1) / div,
+                upSteps = (temperings[num][1] - (temperings[den]?.[1] ?? 0) + this.edo) % this.edo,
+                loSteps = (this.edo - upSteps) % this.edo;
+          if (!~ivs.findIndex(([n, d]) => n === upNum && d === upDen)) ivs.push([[upNum, upDen], upSteps]);
+          if (!~ivs.findIndex(([n, d]) => n === loNum && d === loDen)) ivs.push([[loNum, loDen], loSteps]);
+          upperInterval.innerHTML = `<sup>${upNum}</sup>/<sub>${upDen}</sub>`;
+          lowerInterval.innerHTML = `<sup>${loNum}</sup>/<sub>${loDen}</sub>`;
+          upperWidth.innerText = upperButton.dataset.steps = upSteps;
+          lowerWidth.innerText = lowerButton.dataset.steps = loSteps
+        }
+      }
+      this.curIvs = ivs;
+      $.queries({
+        button: {
+          mousedown () {
+            lowerSrc.frequency.setValueAtTime(220, audioctx.currentTime);
+            upperSrc.frequency.setValueAtTime(220 * 2 ** (parseInt(this.dataset.steps) / edo), audioctx.currentTime);
+            gain.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .3)
+          },
+          mouseup () { gain.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .3) }
+        }
+      }, diamondEl)
+    },
+
+    updateTemperaments () {
+      app.emit("stop-intervals");
+      this.primes = this.primes.concat([...takePrimes(x => x <= this.oddLimit)]);
+      const temperings = $.all("#mapping > label").map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ]),
+            primes = [[2, 0]].concat(temperings.filter(([p, t]) => this.primes.some(x => x === p)));
+      this.curTemps = temperings.sort(([p], [q]) => Math.log2(p) % 1 > Math.log2(q) % 1);
+      let mults = [[1, ""]];
+      for (let [p] of primes) {
+        let next = [];
+        for (let i = 0; i * Math.log(p) <= 9; i++)
+          next = next.concat(mults.map(([n, m]) => [n * (p ** i), m + i.toString(36)]))
+        mults = next
+      }
+      mults = mults.sort(([a], [b]) => a > b).filter(([a]) => a < 1e4);  // TODO: User-adjustable
+      let commas = mults.reduce(([a, prev], [n, f], i) => [
+            a.concat((prev = prev.filter(([pn]) => n / pn < 2 ** (3 * this.maxError / 1200)))
+              .filter(([pn, pf]) => coprime(f, pf))
+              .map(([pn, pf]) => [pn, pf, n, f, n / pn])),
+            prev.concat([[n, f]])
+          ], [[], []])[0];
+
+      $("#chords").classList.add("hide");
+      const fieldsetEl = $("#temperaments");
+      $.all(".comma", fieldsetEl).forEach(el => el.remove());
+      fieldsetEl.classList.remove("hide");
+      commas.forEach(([n1, f1, n2, f2, r]) => {
+        const d1 = f1.split("").toSpliced(0, 1),
+              d2 = f2.split("").toSpliced(0, 1)
+        if (d2.reduce((n, d, i) => n + (parseInt(d, 36) - parseInt(d1[i], 36)) * primes[i + 1][1], 0) % this.edo === 0) {
+          const commaEl = $.load("comma", "#temperaments")[0][0];
+          commaEl.dataset.comma = [n2, n1];
+          commaEl.dataset.factors = JSON.stringify(d2.reduce((a, d, i) => a.concat([[primes[i + 1][0], parseInt(d, 36)]]), [])
+            .concat(d1.reduce((a, d, i) => a.concat([[primes[i + 1][0], -parseInt(d, 36)]]), []))
+            .filter(([,r]) => r).sort(([a], [b]) => a > b));
+          $(".ratio", commaEl).innerText = `${n2}/${n1}`;
+          $(".size", commaEl).innerText = `${(Math.log2(r) * 1200).toFixed(2)}`
+          $(".factorisation", commaEl).innerHTML = f2.split("").map((d, i) => d === "0" ? "" : primes[i][0] + (d === "1" ? "" : parseInt(d, 36).toString().sup())).filter(Boolean).join(".") + " / " +
+            f1.split("").map((d, i) => d === "0" ? "" : primes[i][0] + (d === "1" ? "" : parseInt(d, 36).toString().sup())).filter(Boolean).join(".")
+        }
+      });
+      const tempEl = $("#temperaments");
+      $.queries({".comma": { click () { app.emit("updateChords", this) } } }, tempEl)
+    },
+
+    updateChords (commaEl) {
+      $(".comma.active")?.classList.remove("active");
+      app.emit("stop-intervals");
+      commaEl.classList.add("active");
+      const comma = commaEl.dataset.comma.split(",").map(x => parseInt(x)),
+            factors = JSON.parse(commaEl.dataset.factors),
+            overs = factors.filter(([, r]) => r > 0),
+            unders = factors.filter(([, r]) => r < 0).map(([p, r]) => [p, -r]),
+            harms = this.curTemps.map(([h]) => [h, testDiv(h, overs, unders)]).sort(([, f1], [, f2]) => f1.length < f2.length),
+            fieldsetEl = $("#chords");
+      
+      // Comma factorisation
+      const indcomb = (fact, acc = [], cur = 0) => harms
+              .reduce((ar, [n, fs], i) => {
+                if (cur > i) return ar;
+                const newFs = fs.reduce((a, f) => {
+                        if (a === null) return null;  
+                        const j = a.findIndex(([p]) => p === f);
+                        return ~j ? a[j][1] > 1 ? a.with(j, [f, a[j][1] - 1]) : a.toSpliced(j, 1) : null
+                      }, fact);
+                return fs.length === 0 || newFs === null ? ar : ar.concat([[n, newFs, i]])
+              }, [])
+              .reduce((ar, [n, fs, cur]) => ar.concat(fs.length === 0 ?
+                [ acc.concat([n]) ] : indcomb(fs, acc.concat([n]), cur)), []),
+            enumchords = (ots, uts) => {
+              let flag = ots.flat().length > uts.flat().length;
+              if (flag) ([ots, uts] = [uts, ots]);  // ots lesser than uts
+              return ots.reduce((a, oharm) =>
+                oharm.reduce((b, h, i) => 
+                  b.concat(a.map(([o, ivs]) => [
+                    i === oharm.length - 1 ? o : o.concat([ oharm.toSpliced(oharm.length - 1 - i) ]),
+                    ivs.concat(oharm.toSpliced(i + 1).map(h => [h, 1]))
+                  ])), a.map(([o, ivs]) => [ o.concat([oharm]), ivs ])),
+                [[[], []]])
+                .reduce((a, [o, ivs]) =>
+                  a.concat(o.reduce((b, oharm) => 
+                    b.reduce((c, [puts, pivs]) =>
+                      c.concat(puts.reduce((d, puharm, i) =>
+                        d.reduce((e, [pputs, ppivs, poharm]) => {
+                          const min = Math.max(0, poharm.length - pputs.slice(i + 1).flat().length)
+                          return e.concat(
+                            poharm.slice(min, puharm.length)
+                              .map((oh, k) => [
+                                pputs.with(i, puharm.slice(min + k)),
+                                ppivs.concat(Array(min + k).fill([oh, puharm[0]])),
+                                poharm.slice(min + k)
+                              ])
+                              .concat([[
+                                pputs.with(i, puharm.slice(poharm.length)),
+                                ppivs.concat(poharm.toSpliced(puharm.length).fill([poharm[0], puharm[0]])),
+                                poharm.slice(puharm.length)
+                              ]])
+                          )
+                        }, []),
+                        [[puts, pivs, oharm]])),
+                      []),
+                    [[uts, ivs]])),
+                  [])
+                .map(([puts, pivs]) => flag ?
+                  pivs.map(([u, o]) => [o, u]).concat(puts.flat().map(h => [h, 1])):
+                  pivs.concat(puts.flat().map(h => [1, h])))
+                .sort((a, b) => a < b)
+            },
+            partition = (ovs, uns) => {
+              const ovpart = ovs.length ? indcomb(ovs).map(p => group(p)) : [[]],
+                    unpart = uns.length ? indcomb(uns).map(p => group(p)) : [[]];
+              let acc = [];
+              for (let otones of ovpart) for (let utones of unpart)
+                acc = acc.concat(enumchords(otones, utones));
+              return acc
+            },
+            chords = partition(overs, unders);
+      
+      // Display octave equivalent interval stacks
+      fieldsetEl.classList.remove("hide");
+      $.all(".chord", fieldsetEl).forEach(el => el.remove());
+      let singleOctaves = [];
+      chords.forEach(ch => {
+        const chordEl = $.load("chord", "#chords")[0][0],
+              [ , stackEl, invEl ] = $.all(":scope > *", chordEl);
+        $(".hpart", chordEl).innerText = `<${ch.map(([oh, uh]) => `${oh}|${uh}`).join(" ")}>`;
+        const chord = ch.map(([oh, uh]) => {
+                const octave = Math.floor(Math.log2(oh/uh));
+                return octave < 0 ? [oh / 2 ** octave, uh] : [oh, uh * 2 ** octave]
+              }),
+              invchord = ch.map(([oh, uh]) => {
+                const octave = Math.floor(Math.log2(uh/oh));
+                return octave < 0 ? [uh / 2 ** octave, oh] : [uh, oh * 2 ** octave]
+              }),
+              pitches = chord.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
+              stackOctaves = pitches.at(-1) / this.edo,
+              invpitches = invchord.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
+              invOctaves = invpitches.at(-1) / this.edo;
+        $(".spelling-chord", chordEl).innerText = `[${chord.map(([n, d]) => `${n}/${d}`).join(" ")}]`;
+        $(".steps-chord", chordEl).innerText = `[${pitches.join("-")}]`;
+        $(".spelling-inv", chordEl).innerText = `[${invchord.map(([n, d]) => `${n}/${d}`).join(" ")}]`;
+        $(".steps-inv", chordEl).innerText = `[${invpitches.join("-")}]`;
+        stackEl.dataset.height = stackOctaves;
+        invEl.dataset.height = invOctaves;
+        chordEl.dataset.height = Math.min(stackOctaves, invOctaves);
+        if (stackOctaves === 1) singleOctaves.push(chord);
+        if (invOctaves === 1) singleOctaves.push(invchord);
+        $.all("button", chordEl).forEach((el, i) => el.dataset.isinv = !!i)
+        $.queries({
+          button: { click () {
+            app.emit("stop-intervals");
+            if (this.classList.contains("active")) return this.classList.remove("active");
+            $(".chord button.active")?.classList.remove("active");
+            this.classList.add("active")
+            app.emit("play-intervals", this.dataset.isinv === "true" ? invchord : chord)
+          } }
+        }, chordEl)
+      });
+      app.emit("updateChordMaxOctaves", $("#stackHeight > input").valueAsNumber)
+
+      // Generate interval equivalences
+      const equivIvs = singleOctaves.reduce((acc, ivs) => 
+              acc.concat(ivs.map(([n, d], i) => [n % 2 ? [2 * d, n] : [d, n / 2], ivs.toSpliced(i, 1)])),
+              [])
+              .sort(([[a, b]], [[c, d]]) => a / b > c / d),
+            grouped = group(singleOctaves, x => x.length).sort(([a], [b]) => a.length > b.length),
+            dyadicChords = grouped.reduce((acc, chs) =>
+              chs[0].length < 3 ? acc : chs[0].length === 3 ? acc.concat(chs) : acc.concat(chs.filter(ch => {
+                for (let i = 0; i < ch.length / 2; i++) for (let j = 2; j <= ch.length / 2; j++) {
+                  const subchs = [ ch.slice(i, i + j), ch.slice(i + j).concat(ch.toSpliced(i)) ],
+                        vulgs = subchs.map(subch => subch.reduce(([ao, au], [o, u]) => [ao * o, au * u], [1, 1])),
+                        harms = vulgs.map(vulg => vulg.map(h => h / gcd(...vulg)).map(h => h / (h & (~(h - 1))))),
+                        notNatural = harms.reduce((b, harm) => b || (comma[0] % harm[0] && comma[1] % harm[1]) || (comma[0] % harm[1] && comma[1] % harm[0]), false),
+                        notTempered = !subchs.reduce((b, subch) => b || ~equivIvs.findIndex(([, x]) => setEq(subch, x, ([a, b], [c, d]) => a * d === b * c)), false);
+                  if (notNatural || notTempered) return false
+                }
+                return true
+              })),
+              []);  // Need to generate all distinct chord permutations, ie necklaces
+      console.log("dyadicChords", dyadicChords)
+    },
+
+    "play-intervals" (chord) {
+      const { audioctx, volume } = this,
+            pitchSteps = chord.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
+            nextPitch = (i => () => pitchSteps[i++ % pitchSteps.length])(0),
+            nextOsc = (i => () => this.oscs[i++ % 2])(0);
+      volume.gain.setValueAtTime(.0001, audioctx.currentTime);
+      nextOsc().frequency.setValueAtTime(220 * 2 ** (nextPitch() / this.edo), audioctx.currentTime);
+      nextOsc().frequency.setValueAtTime(220 * 2 ** (nextPitch() / this.edo), audioctx.currentTime);
+      volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .1);
+      volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .2);
+      volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + 1);
+      volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + 1.1);
+      let id = setTimeout(() => {
+        id = setInterval(() => {
+          const thisPitch = nextPitch();
+          volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime);
+          nextOsc().frequency.setValueAtTime(220 * 2 ** (thisPitch / this.edo), audioctx.currentTime);
+          if (thisPitch === 0) nextOsc().frequency.setValueAtTime(220 * 2 ** (nextPitch() / this.edo), audioctx.currentTime);
+          volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .1);
+          volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .9);
+          volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + 1);
+        }, 1000);
+      }, 100);
+      $.targets({ "stop-intervals" () {
+        clearInterval(id);
+        clearInterval(id);
+        app.stop("stop-intervals")
+      } }, app)
+    },
+
+    updateChordMaxOctaves (octaves) {
+      $.all(".chord, .chord > div:nth-child(n+2)").forEach(el => el.dataset.height > octaves ?
+        el.classList.add("hide") :
+        el.classList.remove("hide"))
+    }
+
+  }
+});
+
+$.queries({
+  "#scale input": { change: function scaleChange () { $.all("#mapping, #temperaments, #chords").forEach(el => el.classList.add("hide")) } },
+  "#edo > input": { change () { app.emit("updateScale", this.valueAsNumber) } },
+  "#computeMapping": { click () { app.emit("updateMapping") } },
+  "#computeTemperaments": { click () { app.emit("updateTemperaments") } },
+  "#stackHeight > input": { change () { app.emit("updateChordMaxOctaves", this.valueAsNumber) } }
+})
+
+  </script>
+  <noscript><h6>Only viewable with JavaScript enabled.</h6></noscript>
+</body>
+</html>
