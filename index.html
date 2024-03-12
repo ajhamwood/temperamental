@@ -8,6 +8,12 @@
   <meta name='description' content=''>
   <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
   <style>
+@font-face {
+  font-family: HEJI2;
+  src: url('fonts/HEJI2Text.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap }
 html, body { height: fit-content }
 body {
   margin: 0;
@@ -49,16 +55,50 @@ form {
       color: #222;
       cursor: pointer }
     .comma:active, .comma.active { background-color: #666 }
-    .chord > div { position: relative }
-    .chord button {
+    .stack > div, .chord { position: relative }
+    .stack button, .chord button {
       position: absolute;
       bottom: 0;
       right: 0 }
-    .chord button::before { content: "Play intervals" }
-    .chord button.active::before { content: "Stop" }
-    .spelling-chord, .steps-chord, .spelling-inv, .steps-inv { margin-left: 1em }
+    .chord button.inversion { bottom: 1.9em }
+    #chords:has(input:checked) button.inversion { display: none }
+    .stack button::before { content: "Play intervals" }
+    .stack button.active::before { content: "Stop" }
+    .stack > div > div, .chord > div { margin-left: 1em }
+    .chord { width: -moz-available }
+    .chord button.play::before { content: "Play chord" }
+    .chord button.play.active::before { content: "Stop" }
 input { width: 3.5em }
+.switch {
+  position: relative;
+  display: inline-block;
+  height: 1.4em;
+  width: 2.4em;
+  border-radius: .7em;
+  background-color: #666;
+  vertical-align: bottom;
+  cursor: pointer }
+.switch:has(input:checked) { background-color: #ddd }
+  .switch input { display: none }
+  .slider {
+    position: absolute;
+    top: 0;
+    left: 0 }
+  .slider:before {
+    position: absolute;
+    content: "";
+    top: .2em;
+    left: .2em;
+    height: 1em;
+    width: 1em;
+    border-radius: 50%;
+    background-color: #222 }
+    input:checked + .slider:before { transform: translateX(1em) }
 .hide { display: none }
+.accidentals {
+  font: x-large HEJI2;
+  vertical-align: middle;
+  line-height: 1.8rem }
   </style>
 </head>
 <body>
@@ -68,7 +108,7 @@ input { width: 3.5em }
       <fieldset id="scale">
         <legend>Select scale and harmonic limit</legend>
         <label id="edo">EDO: <input type="number" value="12" min="1" max="270" step="1"></label>
-        <label id="limit">Harmonic limit: <input type="number" value="5" min="3" max="99" step="2"></label>
+        <label id="limit">Harmonic limit: <input type="number" value="5" min="3" max="51" step="2"></label>
         <label id="maxerror">Maximum error: <input type="number" value="30" min="0" max="100">¢</label>
         <output></output>
         <button id="computeMapping" type="button">Compute val range</button>
@@ -82,9 +122,13 @@ input { width: 3.5em }
     <fieldset id="temperaments" class="hide">
       <legend>Browse temperaments supported by this mapping</legend>
     </fieldset>
-    <fieldset id="chords" class="hide">
+    <fieldset id="stacks" class="hide">
       <legend>Octave equivalences of this temperament</legend>
-      <div id="stackHeight">Hide stacks over <input type="number" value="1" min="1" step="1"> octaves</div>
+      <div id="stackHeight">Limit stacks to <input type="number" value="1" min="1" step="1"> octave<span></span></div>
+    </fieldset>
+    <fieldset id="chords" class="hide">
+      <legend>Chords of this temperament</legend>
+      <div>Cycle inversions <label class="switch"><input type="checkbox"><span class="slider"></span></label></div>
     </fieldset>
   </form>
   <template id="harmonic">
@@ -106,20 +150,32 @@ input { width: 3.5em }
       <div>Factorisation: <span class="factorisation"></span></div>
     </div>
   </template>
-  <template id="chord">
-    <div class="chord">
+  <template id="stack">
+    <div class="stack">
       <div>Harmonic partition: <span class="hpart"></span></div>
       <div>Interval stack:
-        <div class="spelling-chord"></div>
-        <div class="steps-chord"></div>
+        <div class="spelling-stack"></div>
+        <div class="pitches-stack"></div>
         <button type="button"></button>
       </div>
       <div>Inverse stack:
         <div class="spelling-inv"></div>
-        <div class="steps-inv"></div>
+        <div class="pitches-inv"></div>
         <button type="button"></button>
       </div>
     </div>
+  </template>
+  <template id="chord">
+    <div class="chord" data-inv="0">
+      Chord:<div class="spelling-chord"></div>
+      Pitches:<div class="pitches-chord"></div>
+      <div class="heji-chord"></div>
+      <button class="inversion" type="button">Next inversion</button>
+      <button class="play" type="button"></button>
+    </div>
+  </template>
+  <template id="accidentals">
+    <span class="accidentals"></span>
   </template>
   <script src="js/machine.js"></script>
   <script>
@@ -128,6 +184,11 @@ const ordinal = (() => {
         const rule = new Intl.PluralRules("en-AU", { type: "ordinal" }),
               suf = new Map([ ["one", "st"], ["two", "nd"], ["few", "rd"], ["other", "th"] ]);
         return n => `${n}${suf.get(rule.select(n))}`
+      })(),
+      cardinal = (() => {
+        const rule = new Intl.PluralRules("en-AU"),
+              suf = new Map([ ["one", ""], ["other", "s"] ]);
+        return n => suf.get(rule.select(n))
       })(),
       takePrimes = (() => {
         function* nats (n) { while (true) yield n++ }
@@ -138,10 +199,10 @@ const ordinal = (() => {
           yield* sieve(ps, (function* () { while (n = ns.next().value) if (n % p) yield n })())
         }
         function* primes () { yield* sieve(primes(), nats(2)) }
-        const vs = primes(), startSym = Symbol();
-        let v = startSym;
+        const vs = primes();
+        let v = false;
         return function* take (pf) {  // More general than necessary
-          if (v !== startSym) {
+          if (v) {
             if (!v.done && pf(v.value)) yield v.value;
             else return
           }
@@ -156,19 +217,26 @@ const ordinal = (() => {
           else break;
         return [decomp, res]
       }, [[], n])).filter(([_, res]) => res === 1)[0]?.[0] ?? [],
-      group = (ar, fn = x => x) => ar.reduce((a, v) => {
-        const i = a.findIndex(vs => fn(vs[0]) === fn(v));
+      non2 = h => h / (h & (~(h - 1))),
+      htoiv = ([oh, uh]) => {
+        const octave = Math.floor(Math.log2(oh/uh));
+        return octave < 0 ? [oh / 2 ** octave, uh] : [oh, uh * 2 ** octave]
+      },
+      group = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) => {
+        const i = a.findIndex(vs => cmp(vs[0], v));
         return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
       }, []),
       comb = iota => iota.reduceRight((ars, x) => ars.flatMap(ar =>
         ar.map((_, i) => ar.slice(0, i).concat([x]).concat(ar.slice(i))).concat([ar.concat([x])])), [[]]),
-      setEq = (ar1, ar2, cmp) => ar1.length === ar2.length && ar1.reduce((acc, item) => {
+      setEq = (ar1, ar2, cmp = (a, b) => a === b) => ar1.length === ar2.length && ar1.reduce((acc, item) => {
         const i = acc.findIndex(x => cmp(x, item));
         return ~i ? acc.toSpliced(i, 1) : acc
-      }, ar2).length === 0;
+      }, ar2).length === 0,
+      genSteps = ivs => ivs.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + app.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]);
 
 // Page state
 var app = new $.Machine({
+      masterVolume: .3,
       audioctx: null,
       volume: null,
       oscs: [],
@@ -177,7 +245,8 @@ var app = new $.Machine({
       oddLimit: null,
       maxError: null,
       curTemps: null,
-      curIvs: null
+      curIvs: null,
+      curKeys: null
     });
 
 // Events
@@ -190,6 +259,8 @@ $.targets({
     },
 
     panic () {
+      app.emit("stop-intervals");
+      app.emit("stop-chords");
       this.audioctx.close();
       this.audioctx = null;
       this.volume = null;
@@ -205,35 +276,35 @@ $.targets({
 
     updateMapping () {
       if (this.audioctx !== null) app.emit("panic");
-      $("#temperaments").classList.add("hide");
-      $("#chords").classList.add("hide");
+      $.all("#temperaments, #stacks, #chords").forEach(el => el.classList.add("hide"));
       const fieldsetEl = $("#mapping");
       $.all("label", fieldsetEl).forEach(el => el.remove());
       fieldsetEl.classList.remove("hide");
-      const edo = this.edo = $("#edo > input").valueAsNumber,
+      const { masterVolume } = this,
+            edo = this.edo = $("#edo > input").valueAsNumber,
             oddLimit = this.oddLimit = $("#limit > input").valueAsNumber,
             maxError = this.maxError = $("#maxerror > input").valueAsNumber;
 
       // Audio
       const audioctx = this.audioctx = new AudioContext(),
-            gain = this.volume = audioctx.createGain(),
+            volume = this.volume = audioctx.createGain(),
             lowerSrc = this.oscs[0] = audioctx.createOscillator(),
             upperSrc = this.oscs[1] = audioctx.createOscillator();
       lowerSrc.type = "triangle";
-      lowerSrc.connect(gain);
+      lowerSrc.connect(volume);
       upperSrc.type = "triangle";
-      upperSrc.connect(gain);
-      gain.connect(audioctx.destination);
-      gain.gain.value = .0001;
+      upperSrc.connect(volume);
+      volume.connect(audioctx.destination);
+      volume.gain.value = .0001;
       lowerSrc.frequency.value = 220;
-      upperSrc.start();
-      lowerSrc.start();
+      upperSrc.start(audioctx.currentTime);
+      lowerSrc.start(audioctx.currentTime);
 
       for (let i = 3; i <= oddLimit; i += 2) {
         const just = Math.log2(i) % 1,
               steps = Math.round(just * edo),
               error = (steps / edo - just) * 1200;
-        if (Math.abs(error) >= maxError) continue;
+        if (Math.abs(error) >= maxError || steps + edo * maxError / 1200 < 1 || steps - edo * maxError / 1200 > edo - 1) continue;
         const labelEl = $.load("harmonic", "#mapping")[0][0],
               inputEl = $("input", labelEl),
               errorEl = $("#error", labelEl);
@@ -241,17 +312,17 @@ $.targets({
         $("#harm", labelEl).innerText = ordinal(i);
         errorEl.innerText = error.toFixed(2);
         inputEl.setAttribute("value", steps);
-        inputEl.setAttribute("min", Math.ceil((just - maxError / 1200) * edo));
-        inputEl.setAttribute("max", Math.floor((just + maxError / 1200) * edo));
+        inputEl.setAttribute("min", Math.max(1, Math.ceil((just - maxError / 1200) * edo)));
+        inputEl.setAttribute("max", Math.min(edo - 1, Math.floor((just + maxError / 1200) * edo)));
         $.queries({
           input: { change () { errorEl.innerText = ((this.valueAsNumber / edo - just) * 1200).toFixed(2) } },
           button: {
-            mousedown () {
+            pointerdown () {
               lowerSrc.frequency.setValueAtTime(220, audioctx.currentTime);
               upperSrc.frequency.setValueAtTime(220 * 2 ** (inputEl.valueAsNumber / edo), audioctx.currentTime);
-              gain.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .3)
+              volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .3)
             },
-            mouseup () { gain.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .3) }
+            pointerup () { volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .3) }
           }
         }, labelEl)
       }
@@ -303,18 +374,19 @@ $.targets({
       this.curIvs = ivs;
       $.queries({
         button: {
-          mousedown () {
+          pointerdown () {
             lowerSrc.frequency.setValueAtTime(220, audioctx.currentTime);
             upperSrc.frequency.setValueAtTime(220 * 2 ** (parseInt(this.dataset.steps) / edo), audioctx.currentTime);
-            gain.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .3)
+            volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .3)
           },
-          mouseup () { gain.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .3) }
+          pointerup () { volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .3) }
         }
       }, diamondEl)
     },
 
     updateTemperaments () {
       app.emit("stop-intervals");
+      app.emit("stop-chords");
       this.primes = this.primes.concat([...takePrimes(x => x <= this.oddLimit)]);
       const temperings = $.all("#mapping > label").map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ]),
             primes = [[2, 0]].concat(temperings.filter(([p, t]) => this.primes.some(x => x === p)));
@@ -334,7 +406,7 @@ $.targets({
             prev.concat([[n, f]])
           ], [[], []])[0];
 
-      $("#chords").classList.add("hide");
+      $("#stacks").classList.add("hide");
       const fieldsetEl = $("#temperaments");
       $.all(".comma", fieldsetEl).forEach(el => el.remove());
       fieldsetEl.classList.remove("hide");
@@ -360,13 +432,16 @@ $.targets({
     updateChords (commaEl) {
       $(".comma.active")?.classList.remove("active");
       app.emit("stop-intervals");
+      app.emit("stop-chords");
       commaEl.classList.add("active");
       const comma = commaEl.dataset.comma.split(",").map(x => parseInt(x)),
             factors = JSON.parse(commaEl.dataset.factors),
             overs = factors.filter(([, r]) => r > 0),
             unders = factors.filter(([, r]) => r < 0).map(([p, r]) => [p, -r]),
-            harms = this.curTemps.map(([h]) => [h, testDiv(h, overs, unders)]).sort(([, f1], [, f2]) => f1.length < f2.length),
-            fieldsetEl = $("#chords");
+            harms = this.curTemps.map(([h]) => [h, testDiv(h, overs, unders)]),
+            hs = harms.reduce((acc, [h, e]) => e.length ? [h].concat(acc) : acc, [1]),
+            stackFieldsetEl = $("#stacks");
+      this.curKeys = this.curIvs.map(([iv]) => [iv]);
       
       // Comma factorisation
       const indcomb = (fact, acc = [], cur = 0) => harms
@@ -381,7 +456,7 @@ $.targets({
               }, [])
               .reduce((ar, [n, fs, cur]) => ar.concat(fs.length === 0 ?
                 [ acc.concat([n]) ] : indcomb(fs, acc.concat([n]), cur)), []),
-            enumchords = (ots, uts) => {
+            enumstacks = (ots, uts) => {
               let flag = ots.flat().length > uts.flat().length;
               if (flag) ([ots, uts] = [uts, ots]);  // ots lesser than uts
               return ots.reduce((a, oharm) =>
@@ -425,86 +500,163 @@ $.targets({
                     unpart = uns.length ? indcomb(uns).map(p => group(p)) : [[]];
               let acc = [];
               for (let otones of ovpart) for (let utones of unpart)
-                acc = acc.concat(enumchords(otones, utones));
+                acc = acc.concat(enumstacks(otones, utones));
               return acc
             },
-            chords = partition(overs, unders);
+            stacks = partition(overs, unders);
       
       // Display octave equivalent interval stacks
-      fieldsetEl.classList.remove("hide");
-      $.all(".chord", fieldsetEl).forEach(el => el.remove());
-      let singleOctaves = [];
-      chords.forEach(ch => {
-        const chordEl = $.load("chord", "#chords")[0][0],
-              [ , stackEl, invEl ] = $.all(":scope > *", chordEl);
-        $(".hpart", chordEl).innerText = `<${ch.map(([oh, uh]) => `${oh}|${uh}`).join(" ")}>`;
-        const chord = ch.map(([oh, uh]) => {
-                const octave = Math.floor(Math.log2(oh/uh));
-                return octave < 0 ? [oh / 2 ** octave, uh] : [oh, uh * 2 ** octave]
-              }),
-              invchord = ch.map(([oh, uh]) => {
-                const octave = Math.floor(Math.log2(uh/oh));
-                return octave < 0 ? [uh / 2 ** octave, oh] : [uh, oh * 2 ** octave]
-              }),
-              pitches = chord.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
+      stackFieldsetEl.classList.remove("hide");
+      $.all(".stack", stackFieldsetEl).forEach(el => el.remove());
+      const maxOctaves = $("#stackHeight > input").valueAsNumber;
+      let targetStacks = [];
+      stacks.forEach(ch => {
+        const stackEl = $.load("stack", "#stacks")[0][0],
+              [ , intEl, invEl ] = $.all(":scope > *", stackEl);
+        $(".hpart", stackEl).innerText = `<${ch.map(([oh, uh]) => `${oh}|${uh}`).join(" ")}>`;
+        const stack = ch.map(htoiv),
+              invstack = ch.map(([oh, uh]) => htoiv([uh, oh])),
+              pitches = stack.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
               stackOctaves = pitches.at(-1) / this.edo,
-              invpitches = invchord.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
+              invpitches = invstack.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
               invOctaves = invpitches.at(-1) / this.edo;
-        $(".spelling-chord", chordEl).innerText = `[${chord.map(([n, d]) => `${n}/${d}`).join(" ")}]`;
-        $(".steps-chord", chordEl).innerText = `[${pitches.join("-")}]`;
-        $(".spelling-inv", chordEl).innerText = `[${invchord.map(([n, d]) => `${n}/${d}`).join(" ")}]`;
-        $(".steps-inv", chordEl).innerText = `[${invpitches.join("-")}]`;
-        stackEl.dataset.height = stackOctaves;
+        $(".spelling-stack", stackEl).innerText = `[${stack.map(([n, d]) => `${n}/${d}`).join(" ")}]`;
+        $(".pitches-stack", stackEl).innerText = `[${pitches.join("-")}]`;
+        $(".spelling-inv", stackEl).innerText = `[${invstack.map(([n, d]) => `${n}/${d}`).join(" ")}]`;
+        $(".pitches-inv", stackEl).innerText = `[${invpitches.join("-")}]`;
+        intEl.dataset.height = stackOctaves;
         invEl.dataset.height = invOctaves;
-        chordEl.dataset.height = Math.min(stackOctaves, invOctaves);
-        if (stackOctaves === 1) singleOctaves.push(chord);
-        if (invOctaves === 1) singleOctaves.push(invchord);
-        $.all("button", chordEl).forEach((el, i) => el.dataset.isinv = !!i)
+        stackEl.dataset.height = Math.min(stackOctaves, invOctaves);
+        if (stackOctaves <= 1) targetStacks.push(stack);
+        if (invOctaves <= 1) targetStacks.push(invstack);
+        // if (stackOctaves <= maxOctaves) targetStacks.push(stack);
+        // if (invOctaves <= maxOctaves) targetStacks.push(invstack);
+        $.all("button", stackEl).forEach((el, i) => el.dataset.isinv = !!i)
         $.queries({
-          button: { click () {
-            app.emit("stop-intervals");
+          button: { async click () {
+            await app.emitAsync("stop-intervals");
             if (this.classList.contains("active")) return this.classList.remove("active");
-            $(".chord button.active")?.classList.remove("active");
-            this.classList.add("active")
-            app.emit("play-intervals", this.dataset.isinv === "true" ? invchord : chord)
+            $(".stack button.active")?.classList.remove("active");
+            this.classList.add("active");
+            app.emit("play-intervals", this.dataset.isinv === "true" ? invstack : stack)
           } }
-        }, chordEl)
+        }, stackEl)
       });
-      app.emit("updateChordMaxOctaves", $("#stackHeight > input").valueAsNumber)
+      app.emit("updateChordMaxOctaves", maxOctaves)
 
-      // Generate interval equivalences
-      const equivIvs = singleOctaves.reduce((acc, ivs) => 
+      // Generate internally tempered chords
+      const invIv = ([n, d]) => n % 2 ? [2 * d, n] : [d, n / 2],
+            enharms = targetStacks.filter(ch => ch.length === 2)
+              .map(([a, b]) => a[0] === b[0] && a[1] === b[1] ?
+                [[a, invIv(a)]] : [[a, invIv(b)], [b, invIv(a)]]).flat();
+      targetStacks = targetStacks.filter(ch => ch.length > 2).map(ch =>
+        ch.reduce((acc, iv) => {  // TODO: eg 4/3 = 6/5 * 10/9, 5/4 * 16/15
+          const ps = iv.map(non2),
+                ni = hs.findIndex(h => h === ps[0]), di = hs.findIndex(h => h === ps[1]),
+                divs = ni > di ?
+                  hs.slice(ni + 1).concat(hs.toSpliced(di)) :
+                  hs.slice(ni + 1, di),
+                ivparts = divs.reduce((acc, h) => acc.map(piv => [piv, piv.toSpliced(-1).concat([[piv.at(-1)[0], h], [h, piv.at(-1)[1]]])]).flat(), [[ps]])
+                  .map(ivs => ivs.map(([n, d]) => {
+                    const octave = Math.floor(Math.log2(n/d)), s = gcd(n, d);
+                    return octave < 0 ? [n / s / 2 ** octave, d / s] : [n / s, d / s * 2 ** octave]
+                  }));
+          return acc.map(pch => ivparts.map(ivpart => pch.concat(ivpart))).flat()
+        },
+        [[]])).flat()
+        .map(iv => iv.sort()).sort()  // TODO: you can do better
+        .filter((iv, i, ar) => i === 0 || !setEq(iv, ar[i - 1], ([a, b], [c, d]) => a === c && b === d));
+      const equivIvs = targetStacks.reduce((acc, ivs) => 
               acc.concat(ivs.map(([n, d], i) => [n % 2 ? [2 * d, n] : [d, n / 2], ivs.toSpliced(i, 1)])),
               [])
-              .sort(([[a, b]], [[c, d]]) => a / b > c / d),
-            grouped = group(singleOctaves, x => x.length).sort(([a], [b]) => a.length > b.length),
-            dyadicChords = grouped.reduce((acc, chs) =>
-              chs[0].length < 3 ? acc : chs[0].length === 3 ? acc.concat(chs) : acc.concat(chs.filter(ch => {
-                for (let i = 0; i < ch.length / 2; i++) for (let j = 2; j <= ch.length / 2; j++) {
-                  const subchs = [ ch.slice(i, i + j), ch.slice(i + j).concat(ch.toSpliced(i)) ],
-                        vulgs = subchs.map(subch => subch.reduce(([ao, au], [o, u]) => [ao * o, au * u], [1, 1])),
-                        harms = vulgs.map(vulg => vulg.map(h => h / gcd(...vulg)).map(h => h / (h & (~(h - 1))))),
-                        notNatural = harms.reduce((b, harm) => b || (comma[0] % harm[0] && comma[1] % harm[1]) || (comma[0] % harm[1] && comma[1] % harm[0]), false),
-                        notTempered = !subchs.reduce((b, subch) => b || ~equivIvs.findIndex(([, x]) => setEq(subch, x, ([a, b], [c, d]) => a * d === b * c)), false);
-                  if (notNatural || notTempered) return false
+              .filter(([[n, d], ch], i, ar) => {
+                if (i === 0) return true;
+                const [[n0, d0], ch0] = ar[i - 1];
+                return n !== n0 || d !== d0 || !setEq(ch, ch0, ([a, b], [c, d]) => a === c && b === d)
+              }),
+            enumchords = ivs => {  // Joe Sawada, A fast algorithm to generate necklaces with fixed content
+              const ivClasses = group(ivs, ([a, b], [c, d]) => a * d === b * c),
+                    ns = ivClasses.map((kl, i) => kl.length - !i),
+                    word = ivs.slice().fill(0);
+              function * necklaces (t, p) {
+                if (t > ivs.length && ivs.length % p === 0) yield word.map(i => ivClasses[i][0]);
+                else for (let i = word[t - p - 1]; i < ivClasses.length; i++) if (ns[i] > 0) {
+                  word[t - 1] = i;
+                  ns[i]--;
+                  if (i === word[t - p - 1]) yield * necklaces(t + 1, p);
+                  else yield * necklaces(t + 1, t);
+                  ns[i]++
                 }
-                return true
-              })),
-              []);  // Need to generate all distinct chord permutations, ie necklaces
-      console.log("dyadicChords", dyadicChords)
+              }
+              return necklaces(2, 1)
+            },
+            grouped = group(targetStacks, (a, b) => a.length === b.length)
+              .sort(([a], [b]) => a.length > b.length)
+              .map(chs => chs.map(ch => [...enumchords(ch)]).flat()),
+            dyadicChords = grouped.reduce((acc, chs) =>  // TODO: list internal intervals
+              acc.concat(chs.reduce((bcc, ch) => {
+                const intIvs = ch.map(iv => Array(ch.length - 1).with(0, iv));
+                ch.forEach((iv, i) => intIvs[(i + 1) % ch.length][ch.length - 2] = invIv(iv));
+                for (let j = 2; j <= ch.length / 2; j++) for (let i = 0; i < ch.length / (1 + (ch.length === j * 2)); i++) {
+                  const subchs = i + j >= ch.length ?
+                          [ ch.slice(i).concat(ch.toSpliced(i + j - ch.length)), ch.slice(i + j - ch.length, i) ] :
+                          [ ch.slice(i, i + j), ch.slice(i + j).concat(ch.toSpliced(i)) ],
+                        facts = subchs.map(subch => {
+                          const vulg = subch.reduce(([ao, au], [o, u]) => [ao * o, au * u], [1, 1]),
+                                s = gcd(...vulg);
+                          return vulg.map(h => non2(h / s))
+                        }),
+                        natural = facts.reduce((res, fact, p) => res || (fact.every(f => ~hs.findIndex(h => h === f)) &&
+                          ((comma[0] % fact[0] && comma[1] % fact[1]) || (comma[0] % fact[1] && comma[1] % fact[0])) &&
+                          (p ? fact.toReversed() : fact)), false),
+                        tempered = subchs.reduce((b, subch, p) => {
+                          if (b) return b;
+                          const i = equivIvs.findIndex(([, x]) => setEq(subch, x, ([a, b], [c, d]) => a * d === b * c));
+                          return ~i && (p ? equivIvs[i][0].toReversed() : equivIvs[i][0]);
+                        }, false);
+                  const equiv = natural || tempered;
+                  if (!equiv) return bcc;
+                  intIvs[i][j - 1] = htoiv(equiv);
+                  intIvs[(i + j) % ch.length][ch.length - 1 - j] = invIv(htoiv(equiv))
+                }
+                return bcc.concat([[ch, intIvs]])
+              }, [])),
+              []);
+
+      // Display chords
+      const chordFieldsetEl = $("#chords");
+      chordFieldsetEl.classList.remove("hide");
+      $.all(".chord", chordFieldsetEl).forEach(el => el.remove());
+      dyadicChords.forEach(([ch, equivs]) => {
+        const chordEl = $.load("chord", "#chords")[0][0];
+        app.emit("display-chord", ch, equivs, enharms, harms, chordEl);
+        $.queries({
+          "button.play": { async click () {
+            await app.emitAsync("stop-chord");
+            if (this.classList.contains("active")) return this.classList.remove("active");
+            $(".chord button.active")?.classList.remove("active");
+            this.classList.add("active");
+            app.emit("play-chord", ch, equivs, enharms, harms, chordEl)
+          } },
+          "button.inversion": { click () {
+            chordEl.dataset.inv = ++chordEl.dataset.inv % ch.length;
+            app.emit("display-chord", ch, equivs, enharms, harms, chordEl)
+          } }
+        }, chordEl)
+      })
     },
 
-    "play-intervals" (chord) {
-      const { audioctx, volume } = this,
-            pitchSteps = chord.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
+    "play-intervals" (stack) {
+      const { masterVolume, audioctx, volume } = this,
+            pitchSteps = stack.reduce((acc, [n, d]) => acc.concat([acc.at(-1) + this.curIvs.find(([[testn, testd]]) => n === testn && d === testd)[1]]), [0]),
             nextPitch = (i => () => pitchSteps[i++ % pitchSteps.length])(0),
             nextOsc = (i => () => this.oscs[i++ % 2])(0);
       volume.gain.setValueAtTime(.0001, audioctx.currentTime);
       nextOsc().frequency.setValueAtTime(220 * 2 ** (nextPitch() / this.edo), audioctx.currentTime);
       nextOsc().frequency.setValueAtTime(220 * 2 ** (nextPitch() / this.edo), audioctx.currentTime);
       volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .1);
-      volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .2);
-      volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + 1);
+      volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .2);
+      volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + 1);
       volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + 1.1);
       let id = setTimeout(() => {
         id = setInterval(() => {
@@ -512,20 +664,188 @@ $.targets({
           volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime);
           nextOsc().frequency.setValueAtTime(220 * 2 ** (thisPitch / this.edo), audioctx.currentTime);
           if (thisPitch === 0) nextOsc().frequency.setValueAtTime(220 * 2 ** (nextPitch() / this.edo), audioctx.currentTime);
-          volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .1);
-          volume.gain.linearRampToValueAtTime(.1, audioctx.currentTime + .9);
+          volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .1);
+          volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .9);
           volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + 1);
         }, 1000);
       }, 100);
       $.targets({ "stop-intervals" () {
+        clearTimeout(id);
         clearInterval(id);
+        volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .1);
+        app.stop("stop-intervals");
+        return new Promise(r => setTimeout(r, 100))
+      } }, app)
+    },
+
+    "display-chord" (chord, equivs, enharms, harms, chordEl) {
+      const { inv } = chordEl.dataset,
+            ch = chord.slice(inv).concat(chord.toSpliced(inv));
+      $(".spelling-chord", chordEl).innerText = `[${ch.map(([n, d]) => `${n}/${d}`).join(" ")}]`;
+      $(".pitches-chord", chordEl).innerText =
+        `[${equivs[inv].map(([n, d]) => `${n}/${d}`).join("-")}] [${genSteps(ch).join("-")}]`;
+      const pythag = "FCGDAEB".split("").reduce((acc, key, i) => ({ ...acc, [i - 1]: key }), {}),
+            hejiRatios = {
+              5: [[[3, 4]], [[5, 1]]],
+              7: [[], [[3, 2], [7, 1]]],
+              11: [[[3, 1], [11, 1]], []],
+              13: [[[3, 3]], [[13, 1]]],
+              17: [[[3, 7]], [[17, 1]]],
+              19: [[[3, 3], [19, 1]], []],
+              23: [[[23, 1]], [[3, 6]]],
+              29: [[[3, 2], [29, 1]], []],
+              31: [[], [[31, 1]]],
+              37: [[[37, 1]], [[3, 2]]],
+              41: [[[41, 1]], [[3, 4]]],
+              43: [[[3, 1], [43, 1]], []],
+              47: [[47, 1], [[3, 6]]]
+            };
+      let heji = "C-";
+      const keys = [];
+      for (let baseIv of equivs[inv]) {
+        const cacheId = this.curKeys.findIndex(([[a, b], k]) => k && a * baseIv[1] === b * baseIv[0]);
+        if (~cacheId) {
+          keys.push(this.curKeys[cacheId][1]);
+          continue
+        }
+        let ivs = [],
+            newIvs = [baseIv];
+        while (newIvs.length) {
+          ivs = ivs.concat(newIvs);
+          newIvs = enharms.filter(([[a, b], [c, d]]) =>
+            !~ivs.findIndex(([e, f]) => c * f === d * e) && ~newIvs.findIndex(([e, f]) => a * f === b * e))
+            .map(([, newIv]) => newIv)
+            // .sort()
+            // .filter(([a, b], i, ar) => i === 0 || a * ar[i - 1][1] !== b * ar[i - 1][0])
+        }
+        let key = ivs.map(iv => {
+              let decomp = iv.map(r => {
+                    const ivh = non2(r);
+                    return ivh === 1 ? [] : group(harms.find(([h]) => h === ivh)[1])
+                      .map(ar => [ar[0], ar.length])
+                  }),
+                  accid = {};
+              structuredClone(decomp).forEach((d, i) => {
+                d.forEach(([p, rad]) => {
+                  if (p === 3) return;
+                  const tone = hejiRatios[p].findIndex(side => ~side.findIndex(([q]) => p === q));
+                  accid[p] = (1 - 2 * (i ^ tone)) * rad;
+                  hejiRatios[p].forEach((side, j) => side.forEach(([q, qrad]) => {
+                    const k = decomp[i ^ j ^ !tone].findIndex(([r]) => q === r);
+                    ~k ? (decomp[i ^ j ^ !tone][k][1] += qrad) : decomp[i ^ j ^ !tone].push([q, qrad])
+                  }))
+                })
+              });
+              decomp[1].forEach(([p, rad], i, dc1) => {
+                const j = decomp[0].findIndex(([q]) => p === q);
+                if (!~j) return;
+                const qrad = decomp[0][j][1];
+                if (rad > qrad) decomp[1][i][1] -= qrad;
+                else decomp[1][i] = [];
+                if (rad < qrad) decomp[0][j][1] -= rad;
+                else decomp[0].splice(j, 1);
+              });
+              decomp[1] = decomp[1].filter(ar => ar.length);
+              const tone = decomp.findIndex(d => d.length),
+                    fifths = (1 - 2 * tone) * decomp[tone][0][1],
+                    sharps = Math.floor((fifths + 1) / 7);
+              let acstring = "", pref5 = () => "", prefNo5 = "";
+              if (sharps < -2) {
+                pref5 = n => ["", String.fromCodePoint(0xe2c1 + n), String.fromCodePoint(0xe2c0 + n)][-sharps % 3];
+                prefNo5 = ["", String.fromCodePoint(0xe260), String.fromCodePoint(0xe264)][-sharps % 3];
+                acstring = String.fromCodePoint(0xe266).repeat(Math.floor(-sharps / 3))
+              } else if (sharps > 2) {
+                pref5 = n => sharps % 2 ? String.fromCodePoint(0xe2c3 + n) : String.fromCodePoint(0xe2c4 + n);
+                prefNo5 = sharps % 2 ? String.fromCodePoint(0xe262) : String.fromCodePoint(0xe263);
+                acstring = String.fromCodePoint(0xe263).repeat(Math.floor(sharps / 2) - 1)
+              } else {
+                pref5 = n => String.fromCodePoint(0xe2c0 + n + (sharps + 2) % 5);
+                prefNo5 = sharps === 0 ? "" : String.fromCodePoint(0xe260 + (sharps + 6) % 5)
+              }
+              if (5 in accid) {
+                const arr = accid[5];
+                if (Math.abs(arr) < 3) {
+                  const arrowsOffset = 5 * (arr > 0 ? 2 * arr - 1 : -2 - 2 * arr);
+                  acstring += pref5(arrowsOffset);
+                } else {
+                  const arrowsOffset = 5 * (arr > 0 ? 2 * ((arr + 1) % 3) - 1 : -2 - 2 * ((-arr + 1) % 3));
+                  acstring += (arrowsOffset < 0 ? "" : pref5(arrowsOffset)) + String.fromCodePoint(0xe2d6 + 5 * (arr > 0)).repeat(Math.floor(arr / 3))
+                }
+              } else acstring = prefNo5 + acstring;
+              if (7 in accid) {
+                const sep = accid[7];
+                acstring += String.fromCodePoint(0xe2e0 + (sep > 0)).repeat(Math.floor((Math.abs(sep) - 1) / 2)) + 
+                  String.fromCodePoint(0xe2de + (sep > 0) + 2 * Math.abs((sep + 1) % 2));
+              }
+              Object.keys(hejiRatios).slice(2).forEach((p, i) => acstring += accid[p] > 0 ?
+                String.fromCodePoint((i < 7 ? 0xe2e3 : 0xee41) + 2 * i).repeat(accid[p]) :
+                String.fromCodePoint((i < 7 ? 0xe2e2 : 0xee40) + 2 * i).repeat(-accid[p]));
+              return pythag[(((fifths + 1) % 7 + 7) % 7) - 1] + `<span class="accidentals">${acstring}</span>`;
+            }).join("=");
+        if (ivs.length > 1) key = `(${key})`;
+        this.curKeys.forEach(k => {
+          const i = ivs.findIndex(([a, b]) => a * k[0][1] === b * k[0][0]);
+          if (~i) k.push(key)
+        });
+        keys.push(key)
+      }
+      $(".heji-chord", chordEl).innerHTML = heji + keys.join("-")
+    },
+
+    "play-chord" (chord, equivs, enharms, harms, chordEl) {
+      const { masterVolume, audioctx, volume, oscs } = this;
+      let { inv } = chordEl.dataset,
+          invchord = chord.slice(inv).concat(chord.toSpliced(inv)),
+          steps = genSteps(invchord);
+      for (let i = 0; i < steps.length - 2; i++) {
+        const src = audioctx.createOscillator()
+        oscs.push(src);
+        src.type = "triangle";
+        src.connect(volume);
+        src.frequency.value = 220;
+        src.start(audioctx.currentTime);
+      }
+      volume.gain.setValueAtTime(.0001, audioctx.currentTime);
+      for (let i in steps) oscs[i].frequency.setValueAtTime(220 * 2 ** (steps[i] / this.edo), audioctx.currentTime);
+      volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .1);
+      volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .2);
+      let id;
+      if ($("#chords .switch > input").checked) {
+        id = setTimeout(() => {
+          volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .9);
+          volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + 1);
+          let k = 0;
+          id = setInterval(() => {
+            if (!$("#chords .switch > input").checked) {
+              $(".chord button.active")?.classList.remove("active");
+              app.emit("stop-chord");
+              return
+            }
+            inv = chordEl.dataset.inv = ++chordEl.dataset.inv % chord.length;
+            invchord = chord.slice(inv).concat(chord.toSpliced(inv));
+            steps = genSteps(invchord);
+            app.emit("display-chord", chord, equivs, enharms, harms, chordEl);
+            volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime);
+            for (let i in steps) oscs[i].frequency.setValueAtTime(220 * 2 ** (steps[i] / this.edo), audioctx.currentTime);
+            volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .1);
+            volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .9);
+            volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + 1);
+          }, 1000)
+        }, 100)
+      }
+      $.targets({ "stop-chord" () {
+        clearTimeout(id);
         clearInterval(id);
-        app.stop("stop-intervals")
+        volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .1);
+        oscs.slice(2).forEach(osc => osc.stop(audioctx.currentTime + .1));
+        this.oscs = oscs.toSpliced(2);
+        app.stop("stop-chord");
+        return new Promise(r => setTimeout(r, 100))
       } }, app)
     },
 
     updateChordMaxOctaves (octaves) {
-      $.all(".chord, .chord > div:nth-child(n+2)").forEach(el => el.dataset.height > octaves ?
+      $.all(".stack, .stack > div:nth-child(n+2)").forEach(el => el.dataset.height == 0 || el.dataset.height > octaves ?
         el.classList.add("hide") :
         el.classList.remove("hide"))
     }
@@ -534,11 +854,15 @@ $.targets({
 });
 
 $.queries({
-  "#scale input": { change: function scaleChange () { $.all("#mapping, #temperaments, #chords").forEach(el => el.classList.add("hide")) } },
+  "#scale input": { change: function scaleChange () { $.all("#mapping, #temperaments, #stacks, #chords").forEach(el => el.classList.add("hide")) } },
   "#edo > input": { change () { app.emit("updateScale", this.valueAsNumber) } },
   "#computeMapping": { click () { app.emit("updateMapping") } },
   "#computeTemperaments": { click () { app.emit("updateTemperaments") } },
-  "#stackHeight > input": { change () { app.emit("updateChordMaxOctaves", this.valueAsNumber) } }
+  "#stackHeight > input": { change () {
+    $("#stackHeight > span").innerText = cardinal(this.valueAsNumber);
+    app.emit("updateChordMaxOctaves", this.valueAsNumber)
+    // app.emit("updateChords", $(".comma.active"))
+  } }
 })
 
   </script>
