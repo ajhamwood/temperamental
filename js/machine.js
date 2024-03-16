@@ -1,7 +1,8 @@
 // Utilities
 var $ = (() => { let wm = new WeakMap(), v = Object.values, r = Promise.resolve.bind(Promise),
   test = (obj, con) => obj.constructor === con || con.prototype.isPrototypeOf(obj),
-  add = (k, t, fn, es = wm.get(k) ?? {}) => { remove(k, t, fn.name); k.addEventListener(t, (es[t] ??= {})[fn.name] = fn); wm.set(k, es) },
+  add = (k, t, p, fn, es = wm.get(k) ?? {}) => { remove(k, t, fn.name);
+    k.addEventListener(t, (es[t] ??= {})[fn.name] = fn, ...(p ? [{ passive: !p }] : [])); wm.set(k, es) },
   remove = (k, t, fname, es = wm.get(k)) => { if (es && t in es && fname in es[t]) {
     k.removeEventListener(t, es[t][fname]); delete es[t][fname] && (v(es[t]).length || delete es[t]) && (v(es).length || wm.delete(k)) } };
 
@@ -16,7 +17,8 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
     on (t, fn) { (wm.get(this).es[t] ??= new Map()).set(fn.name, fn); return this }
     stop (t, fname = t) { let {es} = wm.get(this); es[t]?.delete(fname) && (es[t].size || delete es[t]); return this }
     emit (t, ...args) { let a = {}; wm.get(this).es[t]?.forEach(fn => a[fn.name] = fn.apply(this, args)); return a }
-    emitAsync (t, ...args) { let p = r({}); wm.get(this).es[t]?.forEach(fn => p = p.then(a => r(fn.apply(this, args)).then(v => ({...a, [fn.name]: v})))); return p } },
+    emitAsync (t, ...args) { let p = r({}); wm.get(this).es[t]
+      ?.forEach(fn => p = p.then(a => r(fn.apply(this, args)).then(v => ({...a, [fn.name]: v})))); return p } },
 
 //   $.pipe manages async event chronology
   pipe: (ps => (p, ...ands) => ps[p] = (ps[p] ?? r()).then(v => Promise.all(ands.map(ors =>
@@ -25,7 +27,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
 //   $.targets recursively adds event listeners to objects and removes them by name, indexed by regex
   targets (obj, target = window) {
     for (let ts in obj) if (test(obj[ts], Function)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.on(t, obj[ts]));
-      else if (test(target, EventTarget)) ts.split(' ').forEach(t => add(target, t, obj[ts].bind(target))) }
+      else if (test(target, EventTarget)) ts.split(' ').forEach(t => add(target, ...t.match(/([^*]*)(\*)?/).slice(1), obj[ts].bind(target))) }
     else if (test(obj[ts], String)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.stop(t, obj[ts]));
       else if (test(target, EventTarget)) ts.split(' ').forEach(t => remove(target, t, 'bound ' + obj[ts])) }
     else if (ts in target) $.targets(obj[ts], target[ts]);

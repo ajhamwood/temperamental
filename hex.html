@@ -1,0 +1,328 @@
+<!doctype html>
+<html>
+<head>
+  <title>General isomorphic keyboard</title>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <meta name='keywords' content='music, xenharmony, xenrhythm, notation'>
+  <meta name='description' content='Music notation experiment.'>
+  <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
+  <style>
+html, body { height: 100% }
+body {
+  margin: 0;
+  background-color: #000;
+  overflow: hidden }
+  canvas {
+    width: 100lvw;
+    height: 100lvh }
+  </style>
+</head>
+<body>
+  <canvas id="hex"></canvas>
+  <script src="js/machine.js"></script>
+  <script>
+
+//Utils
+class HexButton {
+  #g; #h; #grid; #osc; #volume
+
+  constructor (g, h, grid) {
+    this.#g = g;
+    this.#h = h;
+    this.#grid = grid
+  }
+
+  static vertices (g, h, grid) {
+    const r = grid.r, x = grid.w / 2, y = grid.h / 2,
+          k = .5 * Math.sqrt(3),
+          origin = [
+            [ x, y - r ], [ x - r * k, y - r / 2 ], [ x - r * k, y + r / 2 ],
+            [ x, y + r ], [ x + r * k, y + r / 2 ], [ x + r * k, y - r / 2 ]
+          ];
+    return origin.map(([a, b]) => grid.rotate(
+      Math.floor(a + r * k * (h + 2 * g)),
+      Math.floor(b + 1.5 * r * h)
+    ))
+  }
+
+  vertices () { return HexButton.vertices(this.#g, this.#h, this.#grid) }
+
+  centre () {
+    const { r, w: width, h: height } = this.#grid, g = this.#g, h = this.#h, k = .5 * Math.sqrt(3);
+    return this.#grid.rotate(
+      Math.floor(width / 2 + r * k * (h + 2 * g)),
+      Math.floor(height / 2 + 1.5 * r * h)
+    )
+  }
+
+  neighbours () {
+    const g = this.#g, h = this.#h;
+    return [
+      [ g - 1, h ], [ g, h - 1 ], [ g + 1, h - 1 ],
+      [ g + 1, h ], [ g, h + 1 ], [ g - 1, h + 1 ]
+    ]
+  }
+
+  getCoord () { return [ this.#g, this.#h ] }
+
+  note () {
+    const n = this.#g * this.#grid.gstep + this.#h * this.#grid.hstep, { edo } = this.#grid;
+    return [ Math.floor(n / edo), (n % edo + edo) % edo ]
+  }
+
+  start () {
+    const { audioctx, edo, masterVolume, wave, freqBasis, refNote } = this.#grid, [ octave, steps ] = this.note(),
+          osc = this.#osc = audioctx.createOscillator(),
+          volume = this.#volume = audioctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freqBasis * 2 ** (octave + ((refNote + steps) / edo));
+    osc.connect(volume);
+    volume.connect(audioctx.destination);
+    volume.gain.value = .0001;
+    volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .05)
+    osc.start(audioctx.currentTime)
+  }
+
+  stop () {
+    const { audioctx } = this.#grid, osc = this.#osc, volume = this.#volume;
+    volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .05);
+    osc.stop(audioctx.currentTime + .05);
+    this.#osc = null;
+    this.#volume = null
+  }
+
+}
+
+class HexGrid {
+  w = 0; h = 0; r = 50
+  edo = 5; gstep = 2; hstep = 1; theta = 0
+  #hexes = new Map(); #edges = new Set()
+  audioctx; masterVolume; freqBasis; refNote
+
+  constructor (opts = {}) {
+    Object.assign(this, opts);
+    this.#edges.add(this.#newHex(0, 0))
+    this.audioctx = opts.audioctx
+    this.masterVolume = opts.masterVolume
+  }
+
+  #newHex (g, h) {
+    const row = this.#hexes.get(g) ?? this.#hexes.set(g, new Map()).get(g),
+          hex = new HexButton(g, h, this);
+    row.set(h, hex);
+    return hex
+  }
+
+  setUnit (r) { this.r = r }
+
+  setCentre (w, h) {
+    this.w = w;
+    this.h = h
+  }
+
+  getHex (g, h) { return this.#hexes.get(g)?.get(h) }
+
+  hasHex (g, h) { return this.#hexes.get(g)?.has(h) ?? false }
+
+  * [Symbol.iterator] () { for (let [ , row ] of this.#hexes) for (let [ , hex ] of row) yield hex }
+  
+  populate () {
+    let viewEdges = new Set([ ...this.#edges ]);
+    while (viewEdges.size > 0) {
+      let newEdges = new Set([ ...this.#edges ]),
+          newViewEdges = new Set([ ...viewEdges ]);
+      for (let hex of viewEdges) {
+        let remove = true;
+        for (let [g, h] of hex.neighbours()) {
+          const thisHex = this.getHex(g, h);
+          if (thisHex) { if (viewEdges.has(thisHex)) newViewEdges.delete(thisHex) }
+          else {
+            const inside = HexButton.vertices(g, h, this).some(([x, y]) =>
+                    x > 0 && x < this.w && y > 0 && y < this.h); // Not actually sufficient
+            if (inside) {
+              const nextHex = this.#newHex(g, h);
+              newViewEdges.add(nextHex);
+              newEdges.add(nextHex)
+            } else remove = false;
+          }
+        }
+        newViewEdges.delete(hex)
+        if (remove) newEdges.delete(hex)
+      }
+      viewEdges = newViewEdges;
+      this.#edges = newEdges
+    }
+  }
+
+  rotate (x, y, rev = false) {
+    const cx = this.w / 2, cy = this.h / 2, theta = rev ? -this.theta : this.theta,
+          cos = Math.cos(theta), sin = Math.sin(theta);
+    return [ cos * (x - cx) + sin * (y - cy) + cx, cos * (y - cy) - sin * (x - cx) + cy ]
+  }
+
+  getCoord (x, y) {
+    ([ x, y ] = this.rotate(x, y, true));
+    const { r, w: width, h: height } = this,
+          a = (x - width / 2) / r / Math.sqrt(3) * 2,
+          b = (y - height / 2) / r * 2,
+          band = Math.floor(Math.floor((b + 1) / 3));
+    if (((Math.floor(b % 3)) + 3) % 3 === 1) {
+      const clampedA = ((a % 1) + 1) % 1, clampedB = ((b % 1) + 1) % 1,
+            topLeft = clampedA + clampedB > 1, bottomLeft = clampedA < clampedB,
+            h = 2 * Math.floor((b + 4) / 6), g = Math.floor((a - h) / 2);
+      if (band % 2) return Math.floor(a) % 2 ? [ g + 1, h - !topLeft ] : [ g + !bottomLeft, h - !bottomLeft ];
+      else return Math.floor(a) % 2 ? [ g + !bottomLeft, h + bottomLeft ] : [ g, h + topLeft ]
+    } else return [ Math.floor((a - band + 1) / 2), band ]
+  }
+
+}
+
+
+// Page state
+var app = new $.Machine({
+  gridctx: null,
+  hexGrid: null,
+  activeHexes: new Map(),
+  gridTouches: new Map(),
+  mousedown: false
+});
+
+// Events
+$.targets({
+
+  load () { app.emit("init") },
+
+  resize () { app.emit("resize") },
+
+  "touchstart* touchend* touchmove*" (e) {
+    e.preventDefault();
+    if (document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY) || e.type === "touchend")
+      app.emit("press", e.type.slice(5), e.changedTouches)
+  },
+
+  mousedown (e) {
+    app.mousedown = true;
+    app.emit("press", "start", [e]);
+  },
+  mousemove (e) { if (app.mousedown) app.emit("press", "move", [e]) },
+  "mouseup mouseout" (e) {
+    if (!app.mousedown) return
+    app.mousedown = false;
+    app.emit("press", "end", [e]);
+  },
+
+  app: {
+
+    init () {
+      this.canvas = $("#hex");
+      this.gridctx = this.canvas.getContext("2d");
+      this.hexGrid = new HexGrid({
+        r: 50, edo: 31, gstep: 5, hstep: 3, theta: Math.atan(1 / 2 / Math.sqrt(3)),
+        audioctx: new AudioContext(), masterVolume: .3, freqBasis: 220, refNote: 23
+      });
+      app.emit("resize");
+    },
+
+    resize () {
+      const body = $("body"), width = body.offsetWidth, height = body.offsetHeight;
+      $("canvas").width = width;
+      $("canvas").height = height;
+      this.centre = [ width, height ];
+      this.hexGrid.setCentre(...this.centre);
+      this.hexGrid.populate();
+      app.emit("redraw")
+    },
+
+    redraw (opts = {}) {
+      const { hexGrid, gridctx } = this;
+      if ("unit" in opts) hexGrid.setUnit(opts.unit);
+      gridctx.reset();
+      gridctx.font = (.4 * hexGrid.r) + "px sans";
+      gridctx.textBaseline = "middle";
+      for (let hex of hexGrid) {
+        const vertices = hex.vertices();
+        gridctx.beginPath();
+        gridctx.moveTo(...vertices[5]);
+        for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
+        gridctx.fillStyle = "#222";
+        gridctx.fill();
+        gridctx.strokeStyle = "#ddd";
+        gridctx.stroke();
+        const label = hex.note()[1], [ x, y ] = hex.centre(),
+              { width } = gridctx.measureText(label);
+        gridctx.fillStyle = "#ddd";
+        gridctx.fillText(label, x - width / 2, y)
+      }
+    },
+
+    colourHex (hex, bgColour, txColour) {
+      const { gridctx } = this, vertices = hex.vertices();
+      gridctx.beginPath();
+      gridctx.moveTo(...vertices[5]);
+      for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
+      gridctx.fillStyle = bgColour;
+      gridctx.fill();
+      gridctx.stroke();
+      const label = hex.note()[1], [ x, y ] = hex.centre(),
+            { width } = gridctx.measureText(label);
+      gridctx.fillStyle = txColour;
+      gridctx.fillText(label, x - width / 2, y)
+    },
+
+    press (type, touches) {
+      const { hexGrid, activeHexes, gridTouches } = this;
+      for (let t of touches) {
+        let hex, ids;
+        const coord = hexGrid.getCoord(t.clientX, t.clientY);
+        switch (type) {
+
+          case "start":
+            hex = hexGrid.getHex(...coord);
+            app.emit("colourHex", hex, "yellow", "#222");
+            if (!activeHexes.has(hex)) hex.start();
+            activeHexes.set(hex, (activeHexes.get(hex) ?? new Set()).add(t.identifier));
+            gridTouches.set(t.identifier, hex);
+            break;
+
+          case "move":
+            hex = gridTouches.get(t.identifier);
+            ids = activeHexes.get(hex);
+            if (hex.getCoord().some((v, i) => v !== coord[i])) {
+              ids.delete(t.identifier);
+              if (ids.size === 0) {
+                hex.stop();
+                activeHexes.delete(hex);
+                app.emit("colourHex", hex, "#222", "#ddd");
+              }
+              hex = hexGrid.getHex(...coord);
+              app.emit("colourHex", hex, "yellow", "#222");
+              if (!activeHexes.has(hex)) hex.start();
+              activeHexes.set(hex, (activeHexes.get(hex) ?? new Set()).add(t.identifier));
+              gridTouches.set(t.identifier, hex)
+            }
+            break
+
+          case "end":
+            hex = gridTouches.get(t.identifier);
+            ids = activeHexes.get(hex);
+            ids.delete(t.identifier);
+            if (ids.size === 0) {
+              hex.stop();
+              activeHexes.delete(hex);
+              app.emit("colourHex", hex, "#222", "#ddd")
+            }
+            gridTouches.delete(t.identifier)
+            
+        }
+      }
+    }
+
+  }
+});
+
+$.queries({})
+  </script>
+  <noscript><h6>Only viewable with JavaScript enabled.</h6></noscript>
+</body>
+</html>
