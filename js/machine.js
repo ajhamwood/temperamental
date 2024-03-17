@@ -36,7 +36,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
 //   $.queries adds event listeners to DOM nodes and removes them by name, indexed by selector
   queries (obj, root) {
     for (let q in obj) { let ns = q === "" ? [root] : $.all(q, root); if (ns.length) for (let ts in obj[q])
-      if (test(obj[q][ts], Function)) ts.split(' ').forEach(t => ns.forEach(n => add(n, t, obj[q][ts].bind(n))));
+      if (test(obj[q][ts], Function)) ts.split(' ').forEach(t => ns.forEach(n => add(n, t, false, obj[q][ts].bind(n))));
       else if (test(obj[q][ts], String)) ts.split(' ').forEach(t => ns.forEach(n => remove(n, t, 'bound ' + obj[q][ts]))) } },
 
 //   $.load enhances importNode

@@ -14,8 +14,8 @@ body {
   background-color: #000;
   overflow: hidden }
   canvas {
-    width: 100lvw;
-    height: 100lvh }
+    width: 100dvw;
+    height: 100dvh }
   </style>
 </head>
 <body>
@@ -24,6 +24,10 @@ body {
   <script>
 
 //Utils
+
+const clamp = (min, max, val) => Math.max(min, Math.min(max, val)),
+      lerp = (a, b, t) => a * (1 - t) + b * t;
+
 class HexButton {
   #g; #h; #grid; #osc; #volume
 
@@ -40,7 +44,7 @@ class HexButton {
             [ x, y - r ], [ x - r * k, y - r / 2 ], [ x - r * k, y + r / 2 ],
             [ x, y + r ], [ x + r * k, y + r / 2 ], [ x + r * k, y - r / 2 ]
           ];
-    return origin.map(([a, b]) => grid.rotate(
+    return origin.map(([ a, b ]) => grid.rotate(
       Math.floor(a + r * k * (h + 2 * g)),
       Math.floor(b + 1.5 * r * h)
     ))
@@ -72,13 +76,13 @@ class HexButton {
   }
 
   start () {
-    const { audioctx, edo, masterVolume, wave, freqBasis, refNote } = this.#grid, [ octave, steps ] = this.note(),
+    const { audioctx, edo, masterVolume, wave, freqBasis, refNote, equaliser } = this.#grid, [ octave, steps ] = this.note(),
           osc = this.#osc = audioctx.createOscillator(),
           volume = this.#volume = audioctx.createGain();
     osc.type = "triangle";
     osc.frequency.value = freqBasis * 2 ** (octave + ((refNote + steps) / edo));
     osc.connect(volume);
-    volume.connect(audioctx.destination);
+    volume.connect(equaliser);
     volume.gain.value = .0001;
     volume.gain.linearRampToValueAtTime(masterVolume, audioctx.currentTime + .05)
     osc.start(audioctx.currentTime)
@@ -95,10 +99,11 @@ class HexButton {
 }
 
 class HexGrid {
-  w = 0; h = 0; r = 50
+  w = 0; h = 0; unit = 50; r = 50
   edo = 5; gstep = 2; hstep = 1; theta = 0
   #hexes = new Map(); #edges = new Set()
   audioctx; masterVolume; freqBasis; refNote
+  equaliser
 
   constructor (opts = {}) {
     Object.assign(this, opts);
@@ -114,7 +119,7 @@ class HexGrid {
     return hex
   }
 
-  setUnit (r) { this.r = r }
+  setUnit (unit) { this.unit = unit }
 
   setCentre (w, h) {
     this.w = w;
@@ -162,7 +167,7 @@ class HexGrid {
   }
 
   getCoord (x, y) {
-    ([ x, y ] = this.rotate(x, y, true));
+    ([ x, y ] = this.rotate(x * 2, y * 2, true));
     const { r, w: width, h: height } = this,
           a = (x - width / 2) / r / Math.sqrt(3) * 2,
           b = (y - height / 2) / r * 2,
@@ -176,6 +181,56 @@ class HexGrid {
     } else return [ Math.floor((a - band + 1) / 2), band ]
   }
 
+  orient () {
+    const { gstep, hstep, edo, w } = this, res = [];
+    for (let y = 0; y <= edo / hstep; y++) {
+      const x = (edo - hstep * y) / gstep;
+      if (x === Math.floor(x)) res.push ([x, y])
+    }
+    const [ g, h ] = res[0],  // Also can swap x and y
+          x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5;
+    this.theta = Math.atan(y / x);
+    this.r = Math.min(this.unit * 2, w / (Math.hypot(x, y) + 2) / 2)
+  }
+
+}
+
+class Equaliser {
+  iso_freq = [20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000];
+  iso_curves = {
+    0: [76.55, 65.62, 55.12, 45.53, 37.63, 30.86, 25.02, 20.51, 16.65, 13.12, 10.09, 7.54, 5.11, 3.06, 1.48, 0.3, -0.3, -0.01, 1.03, -1.19, -4.11, -7.05, -9.03, -8.49, -4.48, 3.28, 9.83, 10.48, 8.38, 14.1, 79.65],
+    10: [83.75, 75.76, 68.21, 61.14, 54.96, 49.01, 43.24, 38.13, 33.48, 28.77, 24.84, 21.33, 18.05, 15.14, 12.98, 11.18, 9.99, 10, 11.26, 10.43, 7.27, 4.45, 3.04, 3.8, 7.46, 14.35, 20.98, 23.43, 22.33, 25.17, 81.47],
+    20: [89.58, 82.65, 75.98, 69.62, 64.02, 58.55, 53.19, 48.38, 43.94, 39.37, 35.51, 31.99, 28.69, 25.67, 23.43, 21.48, 20.1, 20.01, 21.46, 21.4, 18.15, 15.38, 14.26, 15.14, 18.63, 25.02, 31.52, 34.43, 33.04, 34.67, 84.18],
+    40: [99.85, 93.94, 88.17, 82.63, 77.78, 73.08, 68.48, 64.37, 60.59, 56.7, 53.41, 50.4, 47.58, 44.98, 43.05, 41.34, 40.06, 40.01, 41.82, 42.51, 39.23, 36.51, 35.61, 36.65, 40.01, 45.83, 51.8, 54.28, 51.49, 51.96, 92.77],
+    60: [109.51, 104.23, 99.08, 94.18, 89.96, 85.94, 82.05, 78.65, 75.56, 72.47, 69.86, 67.53, 65.39, 63.45, 62.05, 60.81, 59.89, 60.01, 62.15, 63.19, 59.96, 57.26, 56.42, 57.57, 60.89, 66.36, 71.66, 73.16, 68.63, 68.43, 104.92],
+    80: [118.99, 114.23, 109.65, 105.34, 101.72, 98.36, 95.17, 92.48, 90.09, 87.82, 85.92, 84.31, 82.89, 81.68, 80.86, 80.17, 79.67, 80.01, 82.48, 83.74, 80.59, 77.88, 77.07, 78.31, 81.62, 86.81, 91.41, 91.74, 85.41, 84.67, 118.95],
+    100: [128.41, 124.15, 120.11, 116.38, 113.35, 110.65, 108.16, 106.17, 104.48, 103.03, 101.85, 100.97, 100.3, 99.83, 99.62, 99.5, 99.44, 100.01, 102.81, 104.25, 101.18, 98.48, 97.67, 99, 102.3, 107.23, 111.11, 110.23, 102.07, 100.83, 133.73]
+  }
+  audioctx
+  constructor (audioctx) { this.audioctx = audioctx }
+  createFilter (phons, reso) {
+    phons = clamp(0, 100, phons);
+    reso = clamp(2, 31, reso);
+    const { audioctx } = this,
+          ixs = Array(reso).fill().map((_, i) => Math.round(i * 30 / (reso - 1))),
+          freqs = ixs.map(i => this.iso_freq[i]),
+          [ j, t ] = phons < 20 ?
+            [ 10 * Math.floor(phons / 10), (phons / 10) % 1 ] :
+            [ 20 * Math.floor(phons / 20), (phons / 20) % 1 ],
+          levels = ixs.map(i => j === 100 ? this.iso_curves[100][i] : lerp(this.iso_curves[j][i], this.iso_curves[phons < 20 ? j + 10 : j + 20][i], t)),
+          eqDest = ixs.reduce((prev, x, i) => {
+            const filter = audioctx.createBiquadFilter(),
+                  middle = freqs[i], from = i === 0 ? Math.max(10, freqs[0] ** 1.5 / Math.sqrt(freqs[1])) : Math.sqrt(freqs[i - 1] * freqs[i]),
+                  to = i === ixs.length - 1 ? Math.min(audioctx.sampleRate, freqs[i] ** 1.5 / Math.sqrt(freqs[i - 1])): Math.sqrt(freqs[i] * freqs[i + 1]);
+            filter.type = "peaking";
+            filter.frequency.value = middle;
+            filter.Q.value = middle / (to - from);
+            filter.gain.value = clamp(-40, 40, levels[i] / 2 - phons);
+            filter.connect(prev);
+            return filter
+          }, audioctx.destination);
+    return eqDest
+  }
 }
 
 
@@ -205,9 +260,12 @@ $.targets({
     app.mousedown = true;
     app.emit("press", "start", [e]);
   },
-  mousemove (e) { if (app.mousedown) app.emit("press", "move", [e]) },
+  mousemove (e) {
+    if (app.mousedown && document.elementFromPoint(e.clientX, e.clientY))
+      app.emit("press", "move", [e])
+  },
   "mouseup mouseout" (e) {
-    if (!app.mousedown) return
+    if (!app.mousedown || e.type === "mouseout") return
     app.mousedown = false;
     app.emit("press", "end", [e]);
   },
@@ -217,19 +275,21 @@ $.targets({
     init () {
       this.canvas = $("#hex");
       this.gridctx = this.canvas.getContext("2d");
+      const audioctx = new AudioContext();
       this.hexGrid = new HexGrid({
-        r: 50, edo: 31, gstep: 5, hstep: 3, theta: Math.atan(1 / 2 / Math.sqrt(3)),
-        audioctx: new AudioContext(), masterVolume: .3, freqBasis: 220, refNote: 23
+        unit: 45, edo: 31, gstep: 5, hstep: 3,
+        audioctx, masterVolume: .1, freqBasis: 220, refNote: 23,
+        equaliser: audioctx.destination//new Equaliser(audioctx).createFilter(40, 31)
       });
       app.emit("resize");
     },
 
     resize () {
-      const body = $("body"), width = body.offsetWidth, height = body.offsetHeight;
-      $("canvas").width = width;
-      $("canvas").height = height;
-      this.centre = [ width, height ];
+      $("canvas").width = innerWidth * 2;
+      $("canvas").height = innerHeight * 2;
+      this.centre = [ innerWidth * 2, innerHeight * 2 ];
       this.hexGrid.setCentre(...this.centre);
+      this.hexGrid.orient();
       this.hexGrid.populate();
       app.emit("redraw")
     },
