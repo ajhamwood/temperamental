@@ -26,15 +26,18 @@ body {
 //Utils
 
 const clamp = (min, max, val) => Math.max(min, Math.min(max, val)),
-      lerp = (a, b, t) => a * (1 - t) + b * t;
+      lerp = (a, b, t) => a * (1 - t) + b * t,
+      between = (min, max, val) => val <= max && val >= min,
+      mod = (n, m) => ((n % m) + m) % m;
 
 class HexButton {
-  #g; #h; #grid; #osc; #volume
+  #g; #h; #grid; #osc; #volume; #noteClass
 
-  constructor (g, h, grid) {
+  constructor (g, h, noteClass, grid) {
     this.#g = g;
     this.#h = h;
-    this.#grid = grid
+    this.#grid = grid;
+    this.#noteClass = noteClass
   }
 
   static vertices (g, h, grid) {
@@ -49,16 +52,16 @@ class HexButton {
       Math.floor(b + 1.5 * r * h)
     ))
   }
-
-  vertices () { return HexButton.vertices(this.#g, this.#h, this.#grid) }
-
-  centre () {
-    const { r, w: width, h: height } = this.#grid, g = this.#g, h = this.#h, k = .5 * Math.sqrt(3);
-    return this.#grid.rotate(
+  static centre (g, h, grid) {
+    const { r, w: width, h: height } = grid, k = .5 * Math.sqrt(3);
+    return grid.rotate(
       Math.floor(width / 2 + r * k * (h + 2 * g)),
       Math.floor(height / 2 + 1.5 * r * h)
     )
   }
+
+  vertices () { return HexButton.vertices(this.#g, this.#h, this.#grid) }
+  centre () { return HexButton.centre(this.#g, this.#h, this.#grid) }
 
   neighbours () {
     const g = this.#g, h = this.#h;
@@ -69,6 +72,9 @@ class HexButton {
   }
 
   getCoord () { return [ this.#g, this.#h ] }
+
+  setNoteClass (name) { this.#noteClass = name }
+  getColour () { return this.#grid.noteClassColours[this.#noteClass] ?? "#222" }
 
   note () {
     const n = this.#g * this.#grid.gstep + this.#h * this.#grid.hstep, { edo } = this.#grid;
@@ -99,27 +105,24 @@ class HexButton {
 }
 
 class HexGrid {
-  w = 0; h = 0; unit = 50; r = 50
+  w = 0; h = 0; unit = 50; r = this.unit * 2
   edo = 5; gstep = 2; hstep = 1; theta = 0
-  #hexes = new Map(); #edges = new Set()
+  #hexes = new Map(); #edges = new Set(); #notes = new Set()
+  noteClassColours = { middle: "#333" }
   audioctx; masterVolume; freqBasis; refNote
   equaliser
 
   constructor (opts = {}) {
     Object.assign(this, opts);
-    this.#edges.add(this.#newHex(0, 0))
-    this.audioctx = opts.audioctx
-    this.masterVolume = opts.masterVolume
+    // this.#edges.add(this.#newHex(0, 0))
   }
 
-  #newHex (g, h) {
+  #newHex (g, h, noteClass) {
     const row = this.#hexes.get(g) ?? this.#hexes.set(g, new Map()).get(g),
-          hex = new HexButton(g, h, this);
+          hex = new HexButton(g, h, noteClass, this);
     row.set(h, hex);
     return hex
   }
-
-  setUnit (unit) { this.unit = unit }
 
   setCentre (w, h) {
     this.w = w;
@@ -131,24 +134,68 @@ class HexGrid {
   hasHex (g, h) { return this.#hexes.get(g)?.has(h) ?? false }
 
   * [Symbol.iterator] () { for (let [ , row ] of this.#hexes) for (let [ , hex ] of row) yield hex }
-  
-  populate () {
+
+  updateGrid () {
+    const { gstep, hstep, edo, w } = this, res = [];
+
+    // Generate orientations
+    for (let y = 0; y <= edo / hstep; y++) {
+      const x = (edo - hstep * y) / gstep;
+      if (x === Math.floor(x)) res.push ([ x, y ])
+    }
+    const [ g, h ] = res[0],  // Also can swap g and h
+          x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
+          octLen = Math.hypot(x, y);
+    this.theta = Math.atan(y / x);
+    this.r = Math.min(this.unit * 2, w / (octLen + 2) / 2)
+    
+    // Central line
+    this.#edges.add(this.#newHex(0, 0, "middle"));
+    this.#notes.add(0);
+    let left = .5, right = .5, focus = [ [0, 0], [0, 0] ];
+    for (let i = 1; i <= g + h; i++) {
+      if (left / i <= h / (g + h)) { left++; focus[0][1]++ } else focus[0][0]++;
+      if (right / i < h / (g + h)) { right++; focus[1][1]++ } else focus[1][0]++;
+      this.#edges.add(this.#newHex(...focus[0], "middle"));
+      this.#notes.add(focus[0][0] * gstep + focus[0][1] * hstep);
+      if (focus[0].every((v, i) => v === focus[1][i])) continue
+      this.#edges.add(this.#newHex(...focus[1], "middle"));
+      this.#notes.add(focus[1][0] * gstep + focus[1][1] * hstep)
+    }
+
+    // One octave
+    this.fillGrid((g, h, { newNotes }) => HexButton.centre(g, h, this)[0] - this.w / 2 >= 0 &&
+      !~[ ...newNotes ].findIndex(note => mod(g * gstep + h * hstep - note, edo) === 0));
+
+    // Fill to sides
+    const home = [ ...this ];
+    this.fillGrid((g0, h0) => {
+      const near = ~home.findIndex(hex => {
+              const [ baseG, baseH ] = hex.getCoord();
+              return (baseG - g0) * h === (baseH - h0) * g  // require gcd(g, h) === 1
+            });
+      return near && HexButton.vertices(g0, h0, this).some(([ px, py ]) =>
+        px > 0 && px < this.w && py > 0 && py < this.h)
+    })
+  }
+
+  fillGrid (isInside) {
     let viewEdges = new Set([ ...this.#edges ]);
     while (viewEdges.size > 0) {
       let newEdges = new Set([ ...this.#edges ]),
-          newViewEdges = new Set([ ...viewEdges ]);
-      for (let hex of viewEdges) {
+          newViewEdges = new Set([ ...viewEdges ]),
+          newNotes = new Set([ ...this.#notes ]);
+      for (let hex of viewEdges) {  // Can I get all candidate new hexes first?
         let remove = true;
         for (let [g, h] of hex.neighbours()) {
           const thisHex = this.getHex(g, h);
           if (thisHex) { if (viewEdges.has(thisHex)) newViewEdges.delete(thisHex) }
           else {
-            const inside = HexButton.vertices(g, h, this).some(([x, y]) =>
-                    x > 0 && x < this.w && y > 0 && y < this.h); // Not actually sufficient
-            if (inside) {
+            if (isInside(g, h, { newEdges, newViewEdges, newNotes })) {
               const nextHex = this.#newHex(g, h);
               newViewEdges.add(nextHex);
-              newEdges.add(nextHex)
+              newEdges.add(nextHex);
+              newNotes.add(g * this.gstep + h * this.hstep)
             } else remove = false;
           }
         }
@@ -156,7 +203,8 @@ class HexGrid {
         if (remove) newEdges.delete(hex)
       }
       viewEdges = newViewEdges;
-      this.#edges = newEdges
+      this.#edges = newEdges;
+      this.#notes = newNotes
     }
   }
 
@@ -179,18 +227,6 @@ class HexGrid {
       if (band % 2) return Math.floor(a) % 2 ? [ g + 1, h - !topLeft ] : [ g + !bottomLeft, h - !bottomLeft ];
       else return Math.floor(a) % 2 ? [ g + !bottomLeft, h + bottomLeft ] : [ g, h + topLeft ]
     } else return [ Math.floor((a - band + 1) / 2), band ]
-  }
-
-  orient () {
-    const { gstep, hstep, edo, w } = this, res = [];
-    for (let y = 0; y <= edo / hstep; y++) {
-      const x = (edo - hstep * y) / gstep;
-      if (x === Math.floor(x)) res.push ([x, y])
-    }
-    const [ g, h ] = res[0],  // Also can swap x and y
-          x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5;
-    this.theta = Math.atan(y / x);
-    this.r = Math.min(this.unit * 2, w / (Math.hypot(x, y) + 2) / 2)
   }
 
 }
@@ -252,7 +288,7 @@ $.targets({
 
   "touchstart* touchend* touchmove*" (e) {
     e.preventDefault();
-    if (document.elementFromPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY) || e.type === "touchend")
+    if (app.hexGrid.hasHex(...app.hexGrid.getCoord(e.changedTouches[0].clientX, e.changedTouches[0].clientY)) || e.type === "touchend")
       app.emit("press", e.type.slice(5), e.changedTouches)
   },
 
@@ -261,7 +297,7 @@ $.targets({
     app.emit("press", "start", [e]);
   },
   mousemove (e) {
-    if (app.mousedown && document.elementFromPoint(e.clientX, e.clientY))
+    if (app.mousedown && app.hexGrid.hasHex(...app.hexGrid.getCoord(e.clientX, e.clientY)))
       app.emit("press", "move", [e])
   },
   "mouseup mouseout" (e) {
@@ -272,7 +308,7 @@ $.targets({
 
   app: {
 
-    init () {
+    init () { // presets: 12,2,1; 19,3,2; 22,4,1; 31,5,3; 41,7,3; 53,9,4
       this.canvas = $("#hex");
       this.gridctx = this.canvas.getContext("2d");
       const audioctx = new AudioContext();
@@ -287,33 +323,14 @@ $.targets({
     resize () {
       $("canvas").width = innerWidth * 2;
       $("canvas").height = innerHeight * 2;
-      this.centre = [ innerWidth * 2, innerHeight * 2 ];
-      this.hexGrid.setCentre(...this.centre);
-      this.hexGrid.orient();
-      this.hexGrid.populate();
-      app.emit("redraw")
-    },
-
-    redraw (opts = {}) {
       const { hexGrid, gridctx } = this;
-      if ("unit" in opts) hexGrid.setUnit(opts.unit);
+      hexGrid.setCentre(innerWidth * 2, innerHeight * 2);
+      hexGrid.updateGrid();
       gridctx.reset();
-      gridctx.font = (.4 * hexGrid.r) + "px sans";
       gridctx.textBaseline = "middle";
-      for (let hex of hexGrid) {
-        const vertices = hex.vertices();
-        gridctx.beginPath();
-        gridctx.moveTo(...vertices[5]);
-        for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
-        gridctx.fillStyle = "#222";
-        gridctx.fill();
-        gridctx.strokeStyle = "#ddd";
-        gridctx.stroke();
-        const label = hex.note()[1], [ x, y ] = hex.centre(),
-              { width } = gridctx.measureText(label);
-        gridctx.fillStyle = "#ddd";
-        gridctx.fillText(label, x - width / 2, y)
-      }
+      gridctx.font = (.4 * hexGrid.r) + "px sans";
+      gridctx.strokeStyle = "#ddd";
+      for (let hex of hexGrid) app.emit("colourHex", hex, hex.getColour(), "#ddd")
     },
 
     colourHex (hex, bgColour, txColour) {
@@ -353,7 +370,7 @@ $.targets({
               if (ids.size === 0) {
                 hex.stop();
                 activeHexes.delete(hex);
-                app.emit("colourHex", hex, "#222", "#ddd");
+                app.emit("colourHex", hex, hex.getColour(), "#ddd");
               }
               hex = hexGrid.getHex(...coord);
               app.emit("colourHex", hex, "yellow", "#222");
@@ -370,7 +387,7 @@ $.targets({
             if (ids.size === 0) {
               hex.stop();
               activeHexes.delete(hex);
-              app.emit("colourHex", hex, "#222", "#ddd")
+              app.emit("colourHex", hex, hex.getColour(), "#ddd")
             }
             gridTouches.delete(t.identifier)
             
