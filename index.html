@@ -8,14 +8,42 @@
   <meta name='description' content='Web app for composing, playing, and noodling on microtonal music.'>
   <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
   <style>
+@font-face {
+  font-family: HEJI2;
+  src: url('fonts/HEJI2Text.woff2') format('woff2'),
+       url('fonts/HEJI2Text.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+E260-E266, U+E2C0-E2FA;
+  size-adjust: 150%;
+  ascent-override: 0%;
+  descent-override: 0% }
+@font-face {
+  font-family: ArbutusSlab;
+  src: url('fonts/ArbutusSlab-Regular.woff2') format('woff2'),
+       url('fonts/ArbutusSlab-Regular.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap }
 
 @media (min-aspect-ratio: 1) {
-  body.menuActive { grid: "nav nav" auto "menu main" 1fr / min-content 1fr } }
+  body.menuActive { grid: "nav nav" auto "menu main" 1fr / min-content 1fr }
+  menu { max-width: 50dvw }
+  #track-editor > form > textarea {
+    width: 20em;
+    min-width: 10em }
+  #diamond-wrapper, #mapping { max-width: calc(50dvw - 3.5em - 2px) } }
 @media (max-aspect-ratio: 1) {
   body.menuActive { grid: "nav" auto "menu" min-content "main" auto }
-  menu { max-height: calc(50dvh - 4.9em) } }
+  menu { max-height: calc(50dvh - 4.9em) }
+  #track-editor > form > textarea {
+    width: 100% !important;
+    resize: vertical }
+  #diamond-wrapper, #mapping { max-width: calc(100dvw - 3.5em - 2px) } }
 
-html, body {height: 100dvh }
+html, body { height: 100dvh }
+body, button, select, input, textarea { font-family: HEJI2, ArbutusSlab }
 body {
   margin: 0;
   background-color: #222;
@@ -69,6 +97,7 @@ body {
       align-items: center }
       #breadcrumb-text { font-size: small }
       #breadcrumb-text::before { content: "// " }
+        #menu-actions > :nth-last-child(n+2) { margin-right: .5em }
     form {
       display: flex;
       flex-flow: row wrap }
@@ -77,15 +106,35 @@ body {
       width: max-content;
       height: max-content }
       #track-editor > form > * { width: 100% }
-      #track-editor > form > :nth-last-child(n+2) { margin-bottom: .5em }
       fieldset {
         display: flex;
-        flex-flow: column }
+        flex-flow: column;
+        align-items: start }
         fieldset > * { margin: .3em }
-        input[type="number"] { width: 3.5em }
+          input[type="number"] { width: 3.5em }
+          :is(#scale, #mapping) > * {
+            display: block;
+            margin-left: 1em }
+          #mapping { display: grid }
+            .harmonic {
+              grid-template-columns: subgrid;
+              display: grid !important;
+              grid-column: span 7;
+              gap: .3em }
+              .harmonic > :not(input) { text-align: end }
+              .harmonic:not(.prime) > input, .harmonic.prime > .steps { display: none }
+              #error::after { content: "¢" }
+          #diamond-wrapper, #mapping { overflow-x: scroll }
+          #diamond {
+            display: grid;
+            grid-template-columns: 1fr repeat(var(--size), auto);
+            grid-template-rows: repeat(var(--size), 2em);
+            justify-items: end;
+            width: max-content }
         #track-file {
           display: flex;
-          flex-flow: row }
+          flex-flow: row;
+          margin-bottom: .5em }
           #track-file > :nth-last-child(n+2) { margin-right: .5em }
           #track-name { flex: 1 }
           #track-name > * {
@@ -105,16 +154,35 @@ body {
           #track-savestate:not(.saving)::before {
             content: "✓";
             color: lawngreen }
-        #track-editor textarea {
-          min-width: 30em;
-          height: 10em;
-          resize: vertical }
+        #track-edit {
+          max-width: calc(100dvw - 1.5em);
+          height: 10em }
+        #insert-accidental {
+          display: none;
+          margin-top: .5em;
+          grid-template-columns: repeat(auto-fill, 3em);
+          text-align: center;
+          line-height: 3em;
+          gap: .5em;
+          justify-content: space-evenly }
+        #insert-accidental.activeSelect {
+          display: grid;
+          height: 6.5em;
+          overflow: scroll }
+          #insert-accidental > * {
+            display: inline-block;
+            background-color: #fff2;
+            border-radius: .5em;
+            cursor: pointer }
   main {
     background-color: #000;
     overflow: hidden }
     canvas {
-      width: 100%;
-      height: 100% }
+      transform: scale(.5);
+      transform-origin: 0 0 }
+  dialog { padding: 1em 0 }
+    #dialog-prompt { padding: 0 1em }
+    dialog > form { justify-content: space-evenly }
   </style>
 </head>
 <body>
@@ -169,10 +237,18 @@ body {
           <legend>Note</legend>
           <label id="refNote">Tuning root note: <input type="number" min="0" step="1"></label>
           <label id="freqBasis">Tuning root frequency: <input type="number" min="10" max="40000"> Hz</label>
-          <div>Scale:
-            <label id="edo">Divisions of octave: <input type="number" min="1" step="1"></label>
-            <button type="button">Advanced</button>
+          <div id="scale">Scale:
+            <label id="edo">Divisions of octave: <input type="number" min="1" step="1" max="270"></label>
+            <output></output>
           </div>
+        </fieldset>
+        <fieldset>
+          <legend>Harmonic mapping</legend>
+          <label id="limit">Harmonic limit: <input type="number" value="9" min="3" max="51" step="2"></label>
+          <label id="maxerror">Maximum error: <input type="number" value="30" min="0" max="100"> ¢</label>
+          <div id="mapping"></div>
+          <div>Tonality diamond:</div>
+          <div id="diamond-wrapper"><div id="diamond"></div></div>
         </fieldset>
         <fieldset>
           <legend>Waveform</legend>
@@ -200,10 +276,15 @@ body {
             <input id="track-name-field" type="text">
           </div>
           <span id="track-savestate"></span>
+          <button id="toggle-accidentals" type="button"></button>
           <button class="info" type="button">ⓘ</button>
           <button id="track-delete" type="button">✖</button>
         </div>
         <textarea id="track-edit"></textarea>
+        <div id="insert-accidental">
+          <div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+          <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
+        </div>
       </form>
     </li>
   </menu>
@@ -211,7 +292,7 @@ body {
     <canvas id="hex"></canvas>
   </main>
   <dialog id="delete-dialog">
-    <div>Delete track "<span id="delete-track-name"></span>"?</div>
+    <div id="dialog-prompt">Delete track "<span id="delete-track-name"></span>"?</div>
     <form method="dialog">
       <button type="button" data-action="Cancel">Cancel</button>
       <button type="button" data-action="Delete">Delete</button>
@@ -223,19 +304,140 @@ body {
   <template id="option">
     <option></option>
   </template>
+  <template id="harmonic">
+    <label class="harmonic">
+      <span id="nth-harmonic"></span> harmonic: <input type="number" step="1"><span class="steps"></span> steps, <span id="error"></span> error
+      <button type="button">▶</button>
+    </label>
+  </template>
+  <template id="diamond-cell">
+    <div class=".diamond-cell">
+      <span></span> (<span></span>, <span></span> steps) <button type="button">▶</button>
+    </div>
+  </template>
   <script src="js/machine.js"></script>
   <script>
 
 //Utils
 
-const clamp = (min, max, val) => Math.max(min, Math.min(max, val)),
+const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
+
+      clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined,
       lerp = (a, b, t) => a * (1 - t) + b * t,
       between = (min, max, val) => val <= max && val >= min,
       mod = (n, m) => ((n % m) + m) % m,
-      gcd = (a, b) => !b ? a : gcd(b, a % b);
+      gcd = (a, b) => !b ? a : gcd(b, a % b),
+      non2 = h => h / (h & (~(h - 1))),
+
+      group = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) => {
+        const i = a.findIndex(vs => cmp(vs[0], v));
+        return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
+      }, []),
+      decomp = (...iv) => iv.map(r => {
+        let ivh = non2(r), res = [], i = 1;
+        while (ivh !== 1) {
+          const p = primes[i];
+          if (gcd(ivh, p) === 1) i++;
+          else { res.push(p); ivh /= p }
+        }
+        return group(res).map(ar => [ar[0], ar.length])
+      }),
+
+      ordinal = (() => {
+        const rule = new Intl.PluralRules("en-AU", { type: "ordinal" }),
+              suf = new Map([ ["one", "st"], ["two", "nd"], ["few", "rd"], ["other", "th"] ]);
+        return n => `${n}${suf.get(rule.select(n))}`
+      })(),
+      contrast = hc => {
+        if (!hc.match(/\p{Hex_Digit}{6}/ug)) return null;
+        const [r, g, b] = hc.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+        return r * .299 + g * .587 + b * .114 >= 128 ? "#222222" : "#dddddd"
+      },
+
+      noteFromFactors = (() => {
+        const pythag = "FCGDAEB".split("").reduce((acc, key, i) => ({ ...acc, [i - 1]: key }), {}),
+              hejiRatios = {
+                5: [[[3, 4]], [[5, 1]]],
+                7: [[], [[3, 2], [7, 1]]],
+                11: [[[3, 1], [11, 1]], []],
+                13: [[[3, 3]], [[13, 1]]],
+                17: [[[3, 7]], [[17, 1]]],
+                19: [[[3, 3], [19, 1]], []],
+                23: [[[23, 1]], [[3, 6]]],
+                29: [[[3, 2], [29, 1]], []],
+                31: [[], [[31, 1]]],
+                37: [[[37, 1]], [[3, 2]]],
+                41: [[[41, 1]], [[3, 4]]],
+                43: [[[3, 1], [43, 1]], []],
+                47: [[47, 1], [[3, 6]]]
+              };
+        return factors => {
+          let accid = {};
+          factors = structuredClone(factors);
+          structuredClone(factors).forEach((d, i) => {
+            d.forEach(([p, rad]) => {
+              if (p === 3) return;
+              const tone = hejiRatios[p].findIndex(side => ~side.findIndex(([q]) => p === q));
+              accid[p] = (1 - 2 * (i ^ tone)) * rad;
+              hejiRatios[p].forEach((side, j) => side.forEach(([q, qrad]) => {
+                const k = factors[i ^ j ^ !tone].findIndex(([r]) => q === r);
+                ~k ? (factors[i ^ j ^ !tone][k][1] += qrad) : factors[i ^ j ^ !tone].push([q, qrad])
+              }))
+            })
+          });
+          factors[1].forEach(([p, rad], i, dc1) => {
+            const j = factors[0].findIndex(([q]) => p === q);
+            if (!~j) return;
+            const qrad = factors[0][j][1];
+            if (rad > qrad) factors[1][i][1] -= qrad;
+            else factors[1][i] = [];
+            if (rad < qrad) factors[0][j][1] -= rad;
+            else factors[0].splice(j, 1);
+          });
+          factors[1] = factors[1].filter(ar => ar.length);
+          const tone = factors.findIndex(d => d.length),
+                fifths = (1 - 2 * tone) * (~tone ? factors[tone][0][1] : 0),
+                sharps = Math.floor((fifths + 1) / 7);
+          let acstring = "", pref5 = () => "", prefNo5 = "";
+          if (sharps < -2) {
+            pref5 = n => ["", String.fromCodePoint(0xe2c1 + n), String.fromCodePoint(0xe2c0 + n)][(sharps === -3) - sharps % 3];
+            prefNo5 = ["", String.fromCodePoint(0xe260), String.fromCodePoint(0xe264)][-sharps % 3];
+            acstring = sharps === -3 && (5 in accid) ? String.fromCodePoint(0xe264) : String.fromCodePoint(0xe266).repeat(Math.floor(-sharps / 3))
+          } else if (sharps > 2) {
+            pref5 = n => sharps % 2 ? String.fromCodePoint(0xe2c3 + n) : String.fromCodePoint(0xe2c4 + n);
+            prefNo5 = sharps % 2 ? String.fromCodePoint(0xe265) : String.fromCodePoint(0xe263).repeat(2);
+            acstring = String.fromCodePoint(0xe263).repeat(Math.floor((sharps - 1) / 2) - !(5 in accid))
+          } else {
+            pref5 = n => String.fromCodePoint(0xe2c0 + n + (sharps + 2) % 5);
+            prefNo5 = sharps === 0 ? "" : String.fromCodePoint(0xe260 + (sharps + 6) % 5)
+          }
+          if (5 in accid) {
+            const arr = accid[5];
+            if (Math.abs(arr) < 3) {
+              const arrowsOffset = 5 * (arr > 0 ? 2 * arr - 1 : -2 - 2 * arr);
+              acstring += pref5(arrowsOffset);
+            } else {
+              const arrowsOffset = 5 * (arr > 0 ? 2 * ((arr + 1) % 3) - 1 : -2 - 2 * ((-arr + 1) % 3));
+              acstring += (arrowsOffset < 0 ? "" : pref5(arrowsOffset)) + String.fromCodePoint(0xe2d6 + 5 * (arr > 0)).repeat(Math.floor(arr / 3))
+            }
+          } else acstring = prefNo5 + acstring;
+          if (7 in accid) {
+            const sep = accid[7];
+            acstring += String.fromCodePoint(0xe2e0 + (sep > 0)).repeat(Math.floor((Math.abs(sep) - 1) / 2)) + 
+              String.fromCodePoint(0xe2de + (sep > 0) + 2 * Math.abs((sep + 1) % 2));
+          }
+          Object.keys(hejiRatios).slice(2).forEach((p, i) => acstring += accid[p] > 0 ?
+            String.fromCodePoint((i < 7 ? 0xe2e3 : 0xee41) + 2 * i).repeat(accid[p]) :
+            String.fromCodePoint((i < 7 ? 0xe2e2 : 0xee40) + 2 * i).repeat(-accid[p]));
+          return {
+            accid: { "3": fifths, ...accid },
+            string: pythag[(((fifths + 1) % 7 + 7) % 7) - 1] + acstring
+          };
+        }
+      })();
 
 class HexButton {
-  #g; #h; #grid; #osc; #volume; #noteClass
+  #g; #h; #grid; #osc; #volume; #noteClass; #label
 
   constructor (g, h, noteClass, grid) {
     this.#g = g;
@@ -277,17 +479,32 @@ class HexButton {
 
   getCoord () { return [ this.#g, this.#h ] }
 
-  setNoteClass (name) { this.#noteClass = name }
-  getColour () { return this.#grid.noteClassColours[this.#noteClass] ?? "#222" }
+  setNoteClass (noteClass) { this.#noteClass = noteClass }
+  setNoteLabel (label) { this.#label = label }
 
   note () {
     const n = this.#g * this.#grid.gstep + this.#h * this.#grid.hstep, { edo } = this.#grid;
     return [ Math.floor(n / edo), (n % edo + edo) % edo ]
   }
 
+  colour (bgColour) {
+    bgColour ??= this.#grid.noteColours[this.#noteClass ?? "default"];
+    const { gridctx } = app.state(), vertices = this.vertices();
+    gridctx.beginPath();
+    gridctx.moveTo(...vertices[5]);
+    for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
+    gridctx.fillStyle = bgColour;
+    gridctx.fill();
+    gridctx.stroke();
+    const [ x, y ] = this.centre(),
+          { width } = gridctx.measureText(this.#label);
+    gridctx.fillStyle = contrast(bgColour);
+    gridctx.fillText(this.#label ?? this.note()[1], x - width / 2, y)
+  }
+
   start () {
     const { audioctx, masterVolume } = app.state(),
-          { edo, freqBasis, refNote } = this.#grid, [ octave, steps ] = this.note(),
+          { edo, freqBasis, refNote, noteColours } = this.#grid, [ octave, steps ] = this.note(),
           osc = this.#osc = audioctx.createOscillator(),
           volume = this.#volume = audioctx.createGain();
     osc.type = "triangle";
@@ -296,16 +513,19 @@ class HexButton {
     volume.connect(masterVolume);
     volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime)
     volume.gain.linearRampToValueAtTime(1, audioctx.currentTime + .05)
-    osc.start(audioctx.currentTime)
+    osc.start(audioctx.currentTime);
+    this.colour(noteColours.active, noteColours.activeText);
   }
 
   stop () {
-    const { audioctx } = app.state(), osc = this.#osc, volume = this.#volume;
+    const { audioctx } = app.state(),
+          osc = this.#osc, volume = this.#volume;
     volume.gain.linearRampToValueAtTime(1, audioctx.currentTime);
     volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .05);
     osc.stop(audioctx.currentTime + .05);
     this.#osc = null;
-    this.#volume = null
+    this.#volume = null;
+    this.colour()
   }
 
 }
@@ -314,13 +534,16 @@ class HexGrid {
   w = 0; h = 0; unit = 50; r = this.unit * 2
   edo = 5; gstep = 2; hstep = 1; orientations = []; theta = 0
   #hexes = new Map(); #edges = new Set(); #notes = new Set()
-  noteClassColours = { middle: "#333" }
-  freqBasis; refNote; orientation
+  noteColours = {
+    default: "#333333", active: "#ffff00",
+    white: "#222222", black: "#555555"
+  }
+  freqBasis; refNote; orientation;
+  limit; maxerror
 
   constructor (opts = {}) {
     Object.assign(this, opts);
     if ("orientation" in opts) this.setOrientation(...opts.orientation)
-    // this.#edges.add(this.#newHex(0, 0))
   }
 
   #newHex (g, h, noteClass) {
@@ -432,6 +655,67 @@ class HexGrid {
       else return Math.floor(a) % 2 ? [ g + !bottomLeft, h + bottomLeft ] : [ g, h + topLeft ]
     } else return [ Math.floor((a - band + 1) / 2), band ]
   }
+
+  classifyKeys () { // TODO: make more passes with p=5
+    const { edo, hmap } = this;
+    let i = edo - 1, prev, k = 0, result = Array(edo).fill(),
+        intervals = app.intervals.map(([iv, step]) => [decomp(...iv), step]);
+    result[0] = [[], []];
+    while (i > 0 && (i !== prev || i === edo - 1)) {
+      prev = i;
+      for (let [[n, d], step] of intervals) {
+        let s = mod(step + k * hmap[0][1], edo),
+            ni = n.findIndex(([p]) => p === 3), nrad = n[ni]?.[1],
+            di = d.findIndex(([p]) => p === 3), drad = d[di]?.[1];
+        if (result[s] === undefined) {
+          i--;
+          result[s] = ~di ?
+            drad > k ? [n.slice(), d.with(di, [3, drad - k])] :
+              [ drad < k ? [[3, k - drad]].concat(n) : n.slice(), d.toSpliced(di, 1) ] :
+            [ ~ni ? n.with(ni, [3, nrad + k]) : [[3, k]].concat(n), d.slice() ]
+        }
+        s = mod(step - k * hmap[0][1], edo);
+        if (k > 0 && result[s] === undefined) {
+          i--;
+          result[s] = ~ni ?
+            nrad > k ? [n.with(ni, [3, nrad - k]), d.slice()] :
+              [ n.toSpliced(ni, 1), nrad < k ? [[3, k - nrad]].concat(d) : d.slice() ] :
+            [ n.slice(), ~di ? d.with(di, [3, drad + k]) : [[3, k]].concat(d) ]
+        }
+        if (i <= 0) break
+      }
+      k++
+    }
+    for (let hex of this) {
+      const [, key] = hex.note();
+      if (result[key] === undefined) {
+        hex.setNoteClass("default");
+        hex.setNoteLabel(key)
+      } else {
+        const { accid, string } = noteFromFactors(result[key]);
+        hex.setNoteClass(between(6, 10, mod(accid[3], 12)) ? "black" : "white");
+        hex.setNoteLabel(string)
+      }
+    }
+  }
+
+  redraw () {
+    const { gridctx } = app.state();
+    this.updateGrid();
+    this.classifyKeys();
+    gridctx.reset();
+    gridctx.textBaseline = "middle";
+    gridctx.font = (.5 * this.r) + "px HEJI2, ArbutusSlab";
+    gridctx.strokeStyle = "#ddd";
+    for (let hex of this) hex.colour()
+  }
+}
+
+class HexChord {
+  #hexes
+  constructor (...hexes) { this.#hexes = hexes }
+  start () { this.#hexes.forEach(hex => hex.start()) }
+  stop () { this.#hexes.forEach(hex => hex.stop()) }
 }
 
 // Page state
@@ -441,37 +725,36 @@ var app = new $.Machine({
       keyboards: {
         "12edo": {
           gstep: 2, hstep: 1, orientations: [[6,0],[5,2],[4,4],[3,6],[2,8],[1,10],[0,12]], orientation: [5, 2], unit: 45,
-          refNote: 9, freqBasis: 220, edo: 12, instrument: "triangle"
+          refNote: 9, freqBasis: 220, edo: 12, limit: 9, maxerror: 33, hmap: [[3, 7], [5, 4], [7, 10]], instrument: "triangle"
         },
         "19edo": {
           gstep: 3, hstep: 2, orientations: [[5,2],[3,5],[1,8]], orientation: [5, 2], unit: 45,
-          refNote: 14, freqBasis: 220, edo: 19, instrument: "triangle"
+          refNote: 14, freqBasis: 220, edo: 19, limit: 9, maxerror: 21, hmap: [[3, 11], [5, 6]], instrument: "triangle"
         },
         "22edo": {
           gstep: 4, hstep: 1, orientations: [[5,2],[4,6],[3,10],[2,14],[1,18],[0,22]], orientation: [5, 2], unit: 45,
-          refNote: 16, freqBasis: 220, edo: 22, instrument: "triangle"
+          refNote: 16, freqBasis: 220, edo: 22, limit: 9, maxerror: 18, hmap: [[3, 13], [5, 7], [7, 18]], instrument: "triangle"
         },
         "31edo": {
           gstep: 5, hstep: 3, orientations: [[5,2],[2,7]], orientation: [5, 2], unit: 45,
-          refNote: 23, freqBasis: 220, edo: 31, instrument: "triangle"
+          refNote: 23, freqBasis: 220, edo: 31, limit: 9, maxerror: 12, hmap: [[3, 18], [5, 10], [7, 25]], instrument: "triangle"
         },
         "41edo": {
           gstep: 7, hstep: 3, orientations: [[5,2],[2,9]], orientation: [5, 2], unit: 45,
-          refNote: 30, freqBasis: 220, edo: 41, instrument: "triangle"
+          refNote: 30, freqBasis: 220, edo: 41, limit: 9, maxerror: 9, hmap: [[3, 24], [5, 13], [7, 33]], instrument: "triangle"
         },
         "53edo": {
           gstep: 5, hstep: 4, orientations: [[9,2],[5,7],[1,12]], orientation: [5, 7], unit: 45,
-          refNote: 39, freqBasis: 220, edo: 53, instrument: "triangle"
+          refNote: 39, freqBasis: 220, edo: 53, limit: 9, maxerror: 7, hmap: [[3, 31], [5, 17], [7, 43]], instrument: "triangle"
         },
         "94edo": {
           gstep: 9, hstep: 7, orientations: [[5,7]], orientation: [5, 7], unit: 45,
-          refNote: 69, freqBasis: 220, edo: 94, instrument: "triangle"
+          refNote: 69, freqBasis: 220, edo: 94, limit: 9, maxerror: 4, hmap: [[3, 55], [5, 30], [7, 76]], instrument: "triangle"
         },
       },
 
-    // Keyboard
+      // Keyboard
       keyboardSelection: null,
-      keyboard: null,
       gridctx: null,
       hexGrid: null,
       activeHexes: new Map(),
@@ -479,6 +762,10 @@ var app = new $.Machine({
       mousedown: false,
       audioctx: null,
       masterVolume: null,
+
+      // Harmony
+      temperings: null,
+      intervals: null,
 
       // Track
       tracks: {},
@@ -494,7 +781,7 @@ $.targets({
 
   resize () {
     app.emit("resize");
-    app.emit("redraw")
+    app.hexGrid.redraw()
   },
 
   contextmenu (e) { e.preventDefault() },
@@ -513,19 +800,19 @@ $.targets({
   },
 
   mousedown (e) {
-    if (e.target === $("canvas") && app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX, e.layerY))) {
+    if (e.target === $("canvas") && app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX / 2, e.layerY / 2))) {
       app.mousedown = true;
-      app.emit("press", "start", e.layerX, e.layerY)
+      app.emit("press", "start", e.layerX / 2, e.layerY / 2)
     }
   },
   mousemove (e) {
-    if (app.mousedown && app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX, e.layerY)))
-      app.emit("press", "move", e.layerX, e.layerY)
+    if (app.mousedown && app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX / 2, e.layerY / 2)))
+      app.emit("press", "move", e.layerX / 2, e.layerY / 2)
   },
   "mouseup mouseout" (e) {
     if (app.mousedown && e.type !== "mouseout") {
       app.mousedown = false;
-      app.emit("press", "end", e.layerX, e.layerY)
+      app.emit("press", "end", e.layerX / 2, e.layerY / 2)
     }
   },
 
@@ -534,8 +821,8 @@ $.targets({
     init () {
       this.canvas = $("#hex");
       new ResizeObserver(() => {
-        this.emit("resize")
-        this.emit("redraw")
+        this.emit("resize");
+        this.hexGrid.redraw()
       }).observe($("main"));
       this.gridctx = this.canvas.getContext("2d");
       const audioctx = this.audioctx = new AudioContext(),
@@ -543,8 +830,7 @@ $.targets({
       masterVolume.connect(audioctx.destination);
       masterVolume.gain.value = $("#volume > input").valueAsNumber / 100;
       $("#track-select > select").selectedIndex = 0;
-      this.emit("load-presets");
-      this.emit("load-keyboard")
+      this.emit("load-presets")
     },
 
     "clear-storage" () { localStorage.clear() },
@@ -571,14 +857,21 @@ $.targets({
         localStorage.setItem("keyboardSelection", keyboardSelection)
       } else keyboardSelection = this.keyboardSelection = $("#keyboard-select > select").value = keyboardSelection;
       
-      this.keyboard = keyboardSelection === "Custom" ? JSON.parse(localStorage.getItem("keyboard")) : keyboards[keyboardSelection];
-      this.emit("fill-keyboard-settings", this.keyboard);
+      let keyboard = keyboardSelection === "Custom" ? JSON.parse(localStorage.getItem("keyboard")) : keyboards[keyboardSelection];
+
+      this.intervals = group(keyboard.hmap.reduce((acc, [n, i]) => acc.concat(keyboard.hmap.map(([d, j]) => {
+        const oct = Math.floor(Math.log2(n) - Math.log2(d)), c = gcd(n, d);
+        return [oct > 0 ? [n / c, (d / c) << oct] : oct < 0 ? [(n / c) << -oct, d / c] : [n / c, d / c], (i - j + keyboard.edo) % keyboard.edo]
+      })), []), ([a, b], [c, d]) => a * d === b * c).map(([v]) => v);
+
+      this.emit("fill-keyboard-settings", keyboard);
+      this.hexGrid = new HexGrid(keyboard);
 
       // Tracks
       let tracks = localStorage.getItem("tracks");
       if (!tracks) {
         this.tracks = tracks = {};
-        localStorage.setItem("keyboards", "{}");
+        localStorage.setItem("tracks", "{}");
       } else this.tracks = tracks = JSON.parse(tracks);
       const trackSelEl = $("#track-select select"), selectHrEl = $("#track-select hr");
       Object.keys(this.tracks).forEach(name => {
@@ -589,10 +882,8 @@ $.targets({
       })
     },
 
-    "clear-tracks" () { localStorage.removeItem("tracks") },
-
     // Keyboard
-    "fill-keyboard-settings" ({ unit, edo, gstep, hstep, freqBasis, refNote, orientation, orientations }) {
+    "fill-keyboard-settings" ({ unit, edo, gstep, hstep, freqBasis, refNote, orientation, orientations, limit, maxerror, hmap }) {
       $("#gstep > input").value = gstep;
       $("#hstep > input").value = hstep;
       $.all("#orientation > select > *").forEach(el => el.remove());
@@ -605,48 +896,54 @@ $.targets({
       $("#unit > input").value = unit;
       $("#refNote > input").value = refNote;
       $("#freqBasis > input").value = freqBasis;
-      $("#edo > input").value = edo
+      $("#edo > input").value = edo;
+      $("#scale > output").value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
+      $("#limit > input").value = limit;
+      $("#maxerror > input").value = maxerror;
+      $.all(".harmonic").forEach(el => {
+        let harm = parseInt(el.dataset.harm), steps;
+        if (el.classList.contains("prime")) $("input", el).value = steps = hmap.find(([q]) => harm === q)[1];
+        else $(".steps", el).innerText = steps = decomp(harm)[0].reduce((acc, [p, rad]) => acc + hmap.find(([q]) => p === q)[1] * rad, 0) % edo;
+        $("#error", el).innerText = ((steps / edo - (Math.log2(harm) % 1)) * 1200).toFixed(2)
+      });
     },
 
     "load-keyboard" () {
-      let keyboard, unit, edo, gstep, hstep, orientations, orientation, refNote, freqBasis;
       const keyboardSelection = this.keyboardSelection = $("#keyboard-select > select").value;
+      let keyboard = {};
       localStorage.setItem("keyboardSelection", keyboardSelection);
       if (keyboardSelection === "Custom") {
-        this.keyboard = {
-          unit: $("#unit > input").valueAsNumber,
-          edo: $("#edo > input").valueAsNumber,
-          gstep: $("#gstep > input").valueAsNumber,
-          hstep: $("#hstep > input").valueAsNumber,
-          freqBasis: $("#freqBasis > input").valueAsNumber,
-          refNote: $("#refNote > input").valueAsNumber,
-          orientation: $("#orientation > select").value.split(",").map(v => parseInt(v))
-        };
-        const hexGrid = this.hexGrid = new HexGrid(this.keyboard);
+        [ "unit", "edo", "gstep", "hstep", "refNote", "freqBasis", "limit", "maxerror" ]
+          .forEach(dataname => keyboard[dataname] = $(`#${dataname} > input`).valueAsNumber);
+        keyboard.orientation = $("#orientation > select").value.split(",").map(v => parseInt(v));
+        keyboard.hmap = $.all(".harmonic > input").map(el => [el.parentElement.dataset.harm, el.valueAsNumber]);
+        const hexGrid = this.hexGrid = new HexGrid(keyboard);
         hexGrid.genOrientations();
-        this.keyboard.orientations = hexGrid.orientations;
+        keyboard.orientations = hexGrid.orientations;
       
-        localStorage.setItem("keyboard", JSON.stringify(this.keyboard));
+        localStorage.setItem("keyboard", JSON.stringify(keyboard))
       } else {
         keyboard = this.keyboards[keyboardSelection];
         localStorage.removeItem("keyboard");
         this.emit("fill-keyboard-settings", keyboard);
-
+        
         const hexGrid = this.hexGrid = new HexGrid(keyboard);
         hexGrid.setOrientation(...keyboard.orientation);
       }
-      this.emit("resize")
-      this.emit("redraw")
+      this.emit("update-mapping");
+      this.emit("resize");
+      this.hexGrid.redraw();
     },
 
-    "orientation-change" (g, h) {
-      this.hexGrid.setOrientation(g, h);
-      this.emit("redraw")
+    "change-keyboard-edo" () {
+      const edo = $("#edo > input").valueAsNumber;
+      $("#scale > output").value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
+      $("#maxerror > input").value = Math.floor(400 / edo);
+      this.emit("update-mapping");
+      this.emit("change-keyboard-lattice");
     },
 
     "change-keyboard-lattice" () {
-      $("#keyboard-select > select").value = "Custom";
-      this.keyboard = null;
       const { hexGrid } = this.menuState[1],
             gstep = $("#gstep > input").valueAsNumber,
             hstep = $("#hstep > input").valueAsNumber,
@@ -657,9 +954,7 @@ $.targets({
         return
       }
       $("#keyboard-settings-apply").disabled = false;
-      hexGrid.gstep = gstep;
-      hexGrid.hstep = hstep;
-      hexGrid.edo = edo;
+      Object.assign(hexGrid, { gstep, hstep, edo });
       hexGrid.genOrientations();
       const orientation = hexGrid.orientations.find(([g, h]) => g + h === 7) || hexGrid.orientations[0];
       if (!orientation) {
@@ -672,6 +967,112 @@ $.targets({
         el.innerText = coord;
         el.setAttribute("name", coord)
       })
+    },
+
+    // Harmonic mapping
+    "update-mapping" () {
+      const limit = $("#limit > input").valueAsNumber,
+            maxerror = $("#maxerror > input").valueAsNumber,
+            edo = $("#edo > input").valueAsNumber,
+            getHex = (o, n) => [ ...this.hexGrid ].find(hex => hex.note().every((v, i) => v === (i ? n : o)));
+      let hmap = new Map($.all(".harmonic.prime > input").map(el => [ parseInt(el.parentElement.dataset.harm), el.valueAsNumber ]));
+      $.all(".harmonic").forEach(el => el.remove());
+
+      // Harmonics
+      for (let i = 3; i <= limit; i += 2) {
+        const just = Math.log2(i) % 1,
+              isComp = decomp(i)[0].reduce((s, [, r]) => s + r, 0) > 1,
+              steps = isComp ? decomp(i)[0].reduce((acc, [p, rad]) => acc + hmap.get(p) * rad, 0) % edo :
+                clamp(Math.ceil((just - maxerror / 1200) * edo), Math.floor((just + maxerror / 1200) * edo), hmap.get(i)) ?? Math.round(just * edo),
+              error = (steps / edo - just) * 1200;
+        hmap.set(i, steps);
+        if (Math.abs(error) >= maxerror || steps + edo * maxerror / 1200 < 1 || steps - edo * maxerror / 1200 > edo - 1) {
+          hmap.delete(i);
+          continue;
+        }
+        const labelEl = $.load("harmonic", "#mapping")[0][0],
+              inputEl = $("input", labelEl),
+              compositeEl = $(".steps", labelEl),
+              errorEl = $("#error", labelEl);
+        labelEl.dataset.harm = i;
+        if (isComp) compositeEl.innerText = steps;
+        else labelEl.classList.add("prime");
+        $("#nth-harmonic", labelEl).innerText = ordinal(i);
+        errorEl.innerText = error.toFixed(2);
+        inputEl.setAttribute("value", steps);
+        inputEl.setAttribute("min", Math.max(1, Math.ceil((just - maxerror / 1200) * edo)));
+        inputEl.setAttribute("max", Math.min(edo - 1, Math.floor((just + maxerror / 1200) * edo)));
+        $.queries({
+          input: { change () { app.emit("update-mapping") } },
+          button: (chord => ({
+            pointerdown (e) {
+              chord = new HexChord([ ...app.hexGrid ][0], getHex(0, steps));
+              this.setPointerCapture(e.pointerId); chord.start()
+            },
+            pointerup (e) { this.releasePointerCapture(e.pointerId); chord.stop() }
+          }))()
+        }, labelEl)
+      }
+      Object.assign(this.hexGrid, { limit, maxerror, edo, hmap: [...hmap] });
+
+      // Tonality diamond
+      const diamondEl = $("#diamond");
+      $.all(":scope > *", diamondEl).forEach(el => el.remove());
+      const temperings = this.temperings = $.all(".harmonic").map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ])
+              .sort(([p], [q]) => Math.log2(p) % 1 > Math.log2(q) % 1),
+            h = temperings.length;
+      diamondEl.style.setProperty("--size", 2 * h + 1);
+      for (let i = 0; i <= h; i++) {
+        const cell = $.load("diamond-cell", "#diamond")[0][0],
+              [ interval, note, width, button ] = $.all(":scope > *", cell);
+        cell.style.gridArea = `${h + 1}/${2 * i + 1}/span 1/span 2`;
+        interval.innerHTML = "<sup>1</sup>/<sub>1</sub>";
+        note.innerText = "C";
+        width.innerText = 0;
+        button.dataset.steps = 0
+      }
+      $.queries({ "button": (hex => ({
+        pointerdown (e) {
+          hex = [ ...app.hexGrid ][0];
+          this.setPointerCapture(e.pointerId); hex.start()
+        },
+        pointerup (e) { this.releasePointerCapture(e.pointerId); hex.stop() }
+      }))() }, diamondEl);
+      const ivs = [];
+      for (let i = h; i > 0; i--) for (let j = 0; j < i; j++) {
+        const upperCell = $.load("diamond-cell", "#diamond",)[0][0],
+              lowerCell = $.load("diamond-cell", "#diamond",)[0][0],
+              [ upperInterval, upperNote, upperWidth ] = $.all(":scope > *", upperCell),
+              [ lowerInterval, lowerNote, lowerWidth ] = $.all(":scope > *", lowerCell),
+              num = h - i + j, den = j - 1,
+              octave = Math.floor(Math.log2(temperings[num][0] / (temperings[den]?.[0] ?? 1))),
+              div = gcd(temperings[num][0], (temperings[den]?.[0] ?? 1)),
+              upNum = temperings[num][0] * (octave < 0 ? 2 ** -octave : 1) / div,
+              upDen = (temperings[den]?.[0] ?? 1) * (octave < 0 ? 1 : 2 ** octave) / div,
+              loNum = (temperings[den]?.[0] ?? 1) * (octave < -1 ? 1 : 2 ** (octave + 1)) / div,
+              loDen = temperings[num][0] * (octave < -1 ? 2 ** (-octave - 1) : 1) / div,
+              upSteps = (temperings[num][1] - (temperings[den]?.[1] ?? 0) + edo) % edo,
+              loSteps = (edo - upSteps) % edo;
+        upperCell.style.gridArea = `${i}/${h - i + 2 + 2 * j}/span 1/span 2`;
+        lowerCell.style.gridArea = `${2 * h + 2 - i}/${h - i + 2 + 2 * j}/span 1/span 2`;
+        if (!~ivs.findIndex(([n, d]) => n === upNum && d === upDen)) ivs.push([[upNum, upDen], upSteps]);
+        if (!~ivs.findIndex(([n, d]) => n === loNum && d === loDen)) ivs.push([[loNum, loDen], loSteps]);
+        upperInterval.innerHTML = `<sup>${upNum}</sup>/<sub>${upDen}</sub>`;
+        lowerInterval.innerHTML = `<sup>${loNum}</sup>/<sub>${loDen}</sub>`;
+        upperNote.innerText = noteFromFactors(decomp(upNum, upDen)).string;
+        lowerNote.innerText = noteFromFactors(decomp(loNum, loDen)).string;
+        upperWidth.innerText = upSteps;
+        lowerWidth.innerText = loSteps;
+        [ [ upperCell, upSteps ], [ lowerCell, loSteps ] ].forEach(([ cellEl, steps ]) => $.queries({ "button": (chord => ({
+            pointerdown (e) {
+              chord = new HexChord([ ...app.hexGrid ][0], getHex(0, steps));
+              this.setPointerCapture(e.pointerId); chord.start()
+            },
+            pointerup (e) { this.releasePointerCapture(e.pointerId); chord.stop() }
+          }))() }, cellEl))
+      }
+      this.intervals = ivs;
+      this.hexGrid.redraw()
     },
 
     // Track editor
@@ -775,6 +1176,7 @@ $.targets({
             } }
           });
           this.menuState[1] = { hexGrid: new HexGrid(this.hexGrid) };
+          this.emit("update-mapping");
           this.emit("fill-keyboard-settings", this.hexGrid);
           break;
         case "track-editor":
@@ -807,34 +1209,12 @@ $.targets({
     resize () {
       const { canvas, hexGrid } = this, { unit, orientation: [g, h] } = hexGrid,
             x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
-            { width, height } = canvas.getBoundingClientRect();
-      hexGrid.w = canvas.width = width * 2;
-      hexGrid.h = canvas.height = height * 2;
-      hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) + 2))
-    },
-
-    redraw () {
-      const { hexGrid, gridctx } = this;
-      hexGrid.updateGrid();
-      gridctx.reset();
-      gridctx.textBaseline = "middle";
-      gridctx.font = (.4 * hexGrid.r) + "px sans";
-      gridctx.strokeStyle = "#ddd";
-      for (let hex of hexGrid) this.emit("colourHex", hex, hex.getColour(), "#ddd")
-    },
-
-    colourHex (hex, bgColour, txColour) {
-      const { gridctx } = this, vertices = hex.vertices();
-      gridctx.beginPath();
-      gridctx.moveTo(...vertices[5]);
-      for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
-      gridctx.fillStyle = bgColour;
-      gridctx.fill();
-      gridctx.stroke();
-      const label = hex.note()[1], [ x, y ] = hex.centre(),
-            { width } = gridctx.measureText(label);
-      gridctx.fillStyle = txColour;
-      gridctx.fillText(label, x - width / 2, y)
+            { width, height } = $("main").getBoundingClientRect();
+      hexGrid.w = canvas.width = Math.ceil(width) * 2;
+      hexGrid.h = canvas.height = Math.ceil(height) * 2;
+      hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) + 2));
+      canvas.style.setProperty("width", Math.ceil(width));
+      canvas.style.setProperty("height", Math.ceil(height))
     },
 
     press (type, x, y, id) {
@@ -842,15 +1222,12 @@ $.targets({
             coord = hexGrid.getCoord(x, y);
       let hex, ids;
       switch (type) {
-
         case "start":
           hex = hexGrid.getHex(...coord);
-          this.emit("colourHex", hex, "yellow", "#222");
           if (!activeHexes.has(hex)) hex.start();
           activeHexes.set(hex, (activeHexes.get(hex) ?? new Set()).add(id));
           gridTouches.set(id, hex);
           break;
-
         case "move":
           hex = gridTouches.get(id);
           ids = activeHexes.get(hex);
@@ -858,28 +1235,23 @@ $.targets({
             ids.delete(id);
             if (ids.size === 0) {
               hex.stop();
-              activeHexes.delete(hex);
-              this.emit("colourHex", hex, hex.getColour(), "#ddd");
+              activeHexes.delete(hex)
             }
             hex = hexGrid.getHex(...coord);
-            this.emit("colourHex", hex, "yellow", "#222");
             if (!activeHexes.has(hex)) hex.start();
             activeHexes.set(hex, (activeHexes.get(hex) ?? new Set()).add(id));
             gridTouches.set(id, hex)
           }
-          break
-
+          break;
         case "end":
           hex = gridTouches.get(id);
           ids = activeHexes.get(hex);
           ids.delete(id);
           if (ids.size === 0) {
             hex.stop();
-            activeHexes.delete(hex);
-            this.emit("colourHex", hex, hex.getColour(), "#ddd")
+            activeHexes.delete(hex)
           }
           gridTouches.delete(id)
-          
       }
     },
 
@@ -903,8 +1275,13 @@ $.queries({
     else app.emit("menu-select", "keyboard-settings")
   } },
   "#keyboard-settings > form": { change (e) { $("#keyboard-select > select").value = "Custom" } },
-  "#keyboard-select > select": { change () { app.emit("load-keyboard") } },
-  ":is(#gstep, #hstep, #edo) > input": { change () { app.emit("change-keyboard-lattice")} },
+  "#keyboard-select > select": { change () {
+    app.emit("load-keyboard");
+    app.emit("update-mapping");
+  } },
+  "#edo > input": { change () { app.emit("change-keyboard-edo") } },
+  ":is(#gstep, #hstep) > input": { change () { app.emit("change-keyboard-lattice")} },
+  ":is(#limit, #maxerror) > input": { change () { app.emit("update-mapping") } },
   "#track-select > select": { change () {
     if (this.value === "None") app.emit("menu-cancel");
     else app.emit("menu-select", "track-editor", ...(this.value === "New" ? [] : [ this.value ]))
@@ -916,12 +1293,20 @@ $.queries({
   "#track-name-field": { "keyup blur" (e) {
     if (e.type === "blur" || e.key === "Enter") app.emit("track-name-update", this.value = this.value.trim())
   } },
-  "#track-edit": { keyup () { app.emit("track-save") } },
   "#track-delete": { click () {
     $("#delete-track-name").innerText = app.trackSelection;
     $("#delete-dialog").showModal()
   } },
-  "#delete-dialog button": { click () { app.emit("track-delete", this.dataset.action) } }
+  "#delete-dialog button": { click () { app.emit("track-delete", this.dataset.action) } },
+  "#track-edit": { keyup () { if (this.value !== app.tracks[app.trackSelection]) app.emit("track-save") } },
+  "#toggle-accidentals": { click () { $("#insert-accidental").classList.toggle("activeSelect") } },
+  "#insert-accidental > *": { click () {
+    const { value } = $("#track-edit"), editorEl = $("#track-edit"), selStart = editorEl.selectionStart;
+    $("#track-edit").value = value.slice(0, selStart) + this.innerText + value.slice(editorEl.selectionEnd)
+    if ($("#track-edit").value !== app.tracks[app.trackSelection]) app.emit("track-save")
+    editorEl.setSelectionRange(selStart + 1, selStart + 1);
+    editorEl.focus()
+  } }
 })
   </script>
   <noscript><h6>Only viewable with JavaScript enabled.</h6></noscript>

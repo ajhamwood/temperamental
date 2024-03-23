@@ -13,9 +13,20 @@
   src: url('fonts/HEJI2Text.otf') format('opentype');
   font-weight: normal;
   font-style: normal;
+  font-display: swap;
+  unicode-range: U+E260-E265, U+E2C0-E2FF;
+  size-adjust: 150%;
+  ascent-override: 0%;
+  descent-override: 0% }
+@font-face {
+  font-family: ArbutusSlab;
+  src: url('fonts/ArbutusSlab-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
   font-display: swap }
 html, body { height: fit-content }
 body {
+  font-family: HEJI2, ArbutusSlab;
   margin: 0;
   color: #ddd;
   background-color: #000 }
@@ -95,10 +106,6 @@ input { width: 3.5em }
     background-color: #222 }
     input:checked + .slider:before { transform: translateX(1em) }
 .hide { display: none }
-.accidentals {
-  font: x-large HEJI2;
-  vertical-align: middle;
-  line-height: 1.8rem }
   </style>
 </head>
 <body>
@@ -173,9 +180,6 @@ input { width: 3.5em }
       <button class="inversion" type="button">Next inversion</button>
       <button class="play" type="button"></button>
     </div>
-  </template>
-  <template id="accidentals">
-    <span class="accidentals"></span>
   </template>
   <script src="js/machine.js"></script>
   <script>
@@ -751,13 +755,13 @@ $.targets({
                     sharps = Math.floor((fifths + 1) / 7);
               let acstring = "", pref5 = () => "", prefNo5 = "";
               if (sharps < -2) {
-                pref5 = n => ["", String.fromCodePoint(0xe2c1 + n), String.fromCodePoint(0xe2c0 + n)][-sharps % 3];
+                pref5 = n => ["", String.fromCodePoint(0xe2c1 + n), String.fromCodePoint(0xe2c0 + n)][(sharps === -3) - sharps % 3];
                 prefNo5 = ["", String.fromCodePoint(0xe260), String.fromCodePoint(0xe264)][-sharps % 3];
-                acstring = String.fromCodePoint(0xe266).repeat(Math.floor(-sharps / 3))
+                acstring = sharps === -3 && (5 in accid) ? String.fromCodePoint(0xe264) : String.fromCodePoint(0xe266).repeat(Math.floor(-sharps / 3))
               } else if (sharps > 2) {
                 pref5 = n => sharps % 2 ? String.fromCodePoint(0xe2c3 + n) : String.fromCodePoint(0xe2c4 + n);
-                prefNo5 = sharps % 2 ? String.fromCodePoint(0xe262) : String.fromCodePoint(0xe263);
-                acstring = String.fromCodePoint(0xe263).repeat(Math.floor(sharps / 2) - 1)
+                prefNo5 = sharps % 2 ? String.fromCodePoint(0xe265) : String.fromCodePoint(0xe263).repeat(2);
+                acstring = String.fromCodePoint(0xe263).repeat(Math.floor((sharps - 1) / 2) - !(5 in accid))
               } else {
                 pref5 = n => String.fromCodePoint(0xe2c0 + n + (sharps + 2) % 5);
                 prefNo5 = sharps === 0 ? "" : String.fromCodePoint(0xe260 + (sharps + 6) % 5)
@@ -780,7 +784,7 @@ $.targets({
               Object.keys(hejiRatios).slice(2).forEach((p, i) => acstring += accid[p] > 0 ?
                 String.fromCodePoint((i < 7 ? 0xe2e3 : 0xee41) + 2 * i).repeat(accid[p]) :
                 String.fromCodePoint((i < 7 ? 0xe2e2 : 0xee40) + 2 * i).repeat(-accid[p]));
-              return pythag[(((fifths + 1) % 7 + 7) % 7) - 1] + `<span class="accidentals">${acstring}</span>`;
+              return pythag[(((fifths + 1) % 7 + 7) % 7) - 1] + acstring;
             }).join("=");
         if (ivs.length > 1) key = `(${key})`;
         this.curKeys.forEach(k => {
