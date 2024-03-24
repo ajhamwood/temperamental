@@ -62,13 +62,14 @@ body {
       justify-content: space-between }
     #controls { display: flex }
       #controls > :first-child { flex: 1 }
+        #controls > :nth-last-child(n + 2),
         #track-controls > * { margin-right: .5em }
       #volume > * { vertical-align: middle }
       #track-controls { display: none }
       #track-controls.activeControls { display: flex }
         #track-play:not(.trackPlaying)::before { content: "Play ▶" }
         #track-play.trackPlaying::before { content: "Pause ⏸" }
-    nav:focus-within:not(:has(:is(#panic, #volume > input):focus)) > #dropdown,
+    nav:focus-within:not(:has(:is(#refresh, #panic, #volume > input):focus)) > #dropdown,
     body.menuActive #dropdown { display: flex }
     #dropdown {
       display: none;
@@ -100,16 +101,14 @@ body {
         #menu-actions > :nth-last-child(n+2) { margin-right: .5em }
     form {
       display: flex;
-      flex-flow: row wrap }
-    form { align-items: start }
-    form > * {
-      width: max-content;
-      height: max-content }
+      flex-flow: row wrap;
+      gap: 0 .6em }
       #track-editor > form > * { width: 100% }
       fieldset {
         display: flex;
         flex-flow: column;
-        align-items: start }
+        align-items: start;
+        flex: auto }
         fieldset > * { margin: .3em }
           input[type="number"] { width: 3.5em }
           :is(#scale, #mapping) > * {
@@ -119,10 +118,10 @@ body {
             .harmonic {
               grid-template-columns: subgrid;
               display: grid !important;
-              grid-column: span 7;
+              grid-column: span 9;
               gap: .3em }
               .harmonic > :not(input) { text-align: end }
-              .harmonic:not(.prime) > input, .harmonic.prime > .steps { display: none }
+              .harmonic:not(.prime) > input, .harmonic.prime > span.steps { display: none }
               #error::after { content: "¢" }
           #diamond-wrapper, #mapping { overflow-x: scroll }
           #diamond {
@@ -177,6 +176,7 @@ body {
   main {
     background-color: #000;
     overflow: hidden }
+    main.hover { cursor: pointer }
     canvas {
       transform: scale(.5);
       transform-origin: 0 0 }
@@ -212,7 +212,8 @@ body {
         <button id="track-loop" type="button">Loop</button>
         <button id="track-play" type="button"></button>
       </div>
-      <button id="panic" type="button">Panic</div>
+      <button id="refresh" type="button">Refresh</button>
+      <button id="panic" type="button">Panic</button>
     </div>
   </nav>
   <menu>
@@ -306,8 +307,9 @@ body {
   </template>
   <template id="harmonic">
     <label class="harmonic">
-      <span id="nth-harmonic"></span> harmonic: <input type="number" step="1"><span class="steps"></span> steps, <span id="error"></span> error
+      <span id="nth-harmonic"></span> harmonic: <input class="steps" type="number" step="1"><span class="steps"></span> steps, <span id="error"></span> error
       <button type="button">▶</button>
+      <input class="hcolour" type="color">
     </label>
   </template>
   <template id="diamond-cell">
@@ -342,6 +344,7 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
         }
         return group(res).map(ar => [ar[0], ar.length])
       }),
+      comp = (...iv) => iv.map(ar => ar.reduce((n, [p, rad]) => n * p ** rad, 1)),
 
       ordinal = (() => {
         const rule = new Intl.PluralRules("en-AU", { type: "ordinal" }),
@@ -352,6 +355,12 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
         if (!hc.match(/\p{Hex_Digit}{6}/ug)) return null;
         const [r, g, b] = hc.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
         return r * .299 + g * .587 + b * .114 >= 128 ? "#222222" : "#dddddd"
+      },
+      colourMix = (hc1, hc2, t) => {
+        if (![hc1, hc2].every(hc => hc.match(/\p{Hex_Digit}{6}/ug))) return null;
+        const [r1, g1, b1] = hc1.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+        const [r2, g2, b2] = hc2.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+        return "#" + [[r1, r2], [g1, g2], [b1, b2]].reduce((a, [l, r]) => a + Math.round(lerp(l, r, t)).toString(16), "")
       },
 
       noteFromFactors = (() => {
@@ -437,7 +446,7 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
       })();
 
 class HexButton {
-  #g; #h; #grid; #osc; #volume; #noteClass; #label
+  #g; #h; #grid; #osc; #volume; #noteClass; #label; labelIv
 
   constructor (g, h, noteClass, grid) {
     this.#g = g;
@@ -478,6 +487,7 @@ class HexButton {
   }
 
   getCoord () { return [ this.#g, this.#h ] }
+  getNoteClass () { return this.#noteClass }
 
   setNoteClass (noteClass) { this.#noteClass = noteClass }
   setNoteLabel (label) { this.#label = label }
@@ -488,14 +498,34 @@ class HexButton {
   }
 
   colour (bgColour) {
-    bgColour ??= this.#grid.noteColours[this.#noteClass ?? "default"];
-    const { gridctx } = app.state(), vertices = this.vertices();
-    gridctx.beginPath();
-    gridctx.moveTo(...vertices[5]);
-    for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
-    gridctx.fillStyle = bgColour;
-    gridctx.fill();
-    gridctx.stroke();
+    const { noteColours } = app.state(),
+          [ colourBase, oharm, uharm ] = this.#noteClass?.match(/(black|white)(?:(\d{1,2})o)?(?:(\d{1,2})u)?/)?.slice(1) ?? [],
+          { gridctx } = app.state(), vertices = this.vertices(),
+          drawHex = c => {
+            gridctx.beginPath();
+            gridctx.moveTo(...vertices[5]);
+            for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
+            gridctx.fillStyle = c;
+            gridctx.fill();
+            gridctx.stroke();
+          }
+    if (bgColour) drawHex(bgColour);
+    else if (colourBase) {
+      const bc = noteColours[colourBase], oc = oharm ? colourMix(bc, noteColours[oharm], .1) : null,
+            uc = uharm ? colourMix(bc, noteColours[uharm], .1) : null;
+      if (oc && uc) {
+        bgColour = colourMix(oc, uc, .5);
+        drawHex(colourMix(oc, noteColours.white, .1));
+        const [cx, cy] = this.centre();
+        gridctx.save();
+        gridctx.beginPath();
+        gridctx.arc(cx, cy, this.#grid.r, 0, Math.PI);
+        gridctx.closePath();
+        gridctx.clip();
+        drawHex(colourMix(uc, noteColours.black, .1));
+        gridctx.restore();
+      } else drawHex(bgColour = (oc ? colourMix(oc, noteColours.white, .1) : uc ? colourMix(uc, noteColours.black, .1) : bc))
+    } else drawHex(bgColour = noteColours.default);
     const [ x, y ] = this.centre(),
           { width } = gridctx.measureText(this.#label);
     gridctx.fillStyle = contrast(bgColour);
@@ -503,8 +533,8 @@ class HexButton {
   }
 
   start () {
-    const { audioctx, masterVolume } = app.state(),
-          { edo, freqBasis, refNote, noteColours } = this.#grid, [ octave, steps ] = this.note(),
+    const { audioctx, masterVolume, noteColours } = app.state(),
+          { edo, freqBasis, refNote } = this.#grid, [ octave, steps ] = this.note(),
           osc = this.#osc = audioctx.createOscillator(),
           volume = this.#volume = audioctx.createGain();
     osc.type = "triangle";
@@ -514,7 +544,7 @@ class HexButton {
     volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime)
     volume.gain.linearRampToValueAtTime(1, audioctx.currentTime + .05)
     osc.start(audioctx.currentTime);
-    this.colour(noteColours.active, noteColours.activeText);
+    this.colour(noteColours.active);
   }
 
   stop () {
@@ -534,10 +564,6 @@ class HexGrid {
   w = 0; h = 0; unit = 50; r = this.unit * 2
   edo = 5; gstep = 2; hstep = 1; orientations = []; theta = 0
   #hexes = new Map(); #edges = new Set(); #notes = new Set()
-  noteColours = {
-    default: "#333333", active: "#ffff00",
-    white: "#222222", black: "#555555"
-  }
   freqBasis; refNote; orientation;
   limit; maxerror
 
@@ -688,12 +714,20 @@ class HexGrid {
     }
     for (let hex of this) {
       const [, key] = hex.note();
+      hex.labelIv = result[key];
       if (result[key] === undefined) {
         hex.setNoteClass("default");
         hex.setNoteLabel(key)
       } else {
         const { accid, string } = noteFromFactors(result[key]);
-        hex.setNoteClass(between(6, 10, mod(accid[3], 12)) ? "black" : "white");
+        let noteClass = between(6, 10, mod(accid[3], 12)) ? "black" : "white";
+        const ot = result[key][0].find(([p]) => p !== 3);
+        if (ot) noteClass += ot[0] + "o";
+        const ut = result[key][1].find(([p]) => p !== 3);
+        if (ut) noteClass += ut[0] + "u";
+        hex.setNoteClass(noteClass);
+        // hex.setNoteClass(noteClass + Object.keys(accid)
+        //   .map(k => k + (accid[k] > 0 ? "o" : "u")).sort((a, b) => a.slice(-1)).join(""));
         hex.setNoteLabel(string)
       }
     }
@@ -754,6 +788,11 @@ var app = new $.Machine({
       },
 
       // Keyboard
+      noteColours: {
+        default: "#333333", active: "#ffff00",
+        white: "#222222", black: "#777777",
+        5: "#ff0000", 7: "#0000ff", 11: "#00ff00"
+      },
       keyboardSelection: null,
       gridctx: null,
       hexGrid: null,
@@ -806,7 +845,9 @@ $.targets({
     }
   },
   mousemove (e) {
-    if (app.mousedown && app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX / 2, e.layerY / 2)))
+    const hover = app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX / 2, e.layerY / 2));
+    $("main").classList.toggle("hover", hover);
+    if (app.mousedown && hover)
       app.emit("press", "move", e.layerX / 2, e.layerY / 2)
   },
   "mouseup mouseout" (e) {
@@ -859,13 +900,22 @@ $.targets({
       
       let keyboard = keyboardSelection === "Custom" ? JSON.parse(localStorage.getItem("keyboard")) : keyboards[keyboardSelection];
 
-      this.intervals = group(keyboard.hmap.reduce((acc, [n, i]) => acc.concat(keyboard.hmap.map(([d, j]) => {
+      let hmap = new Map(keyboard.hmap.map(([k, v]) => [parseInt(k), v])),
+          hs = Array((keyboard.limit + 1) / 2).fill().map((_, i) => [ 2 * i + 1, decomp(2 * i + 1)[0].reduce((s, [p, rad]) => s + hmap.get(p) * rad, 0) % keyboard.edo ]);
+      this.intervals = group(group(hs.reduce((acc, [n, i]) => acc.concat(hs.map(([d, j]) => {
         const oct = Math.floor(Math.log2(n) - Math.log2(d)), c = gcd(n, d);
         return [oct > 0 ? [n / c, (d / c) << oct] : oct < 0 ? [(n / c) << -oct, d / c] : [n / c, d / c], (i - j + keyboard.edo) % keyboard.edo]
-      })), []), ([a, b], [c, d]) => a * d === b * c).map(([v]) => v);
+      })), []), ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v), ([a], [b]) => a.some(k => non2(k) === 1) === b.some(k => non2(k) === 1))
+        .sort((ivs, jvs) => ivs.length > jvs.length).map(ivs => ivs.sort(() => 2 * Math.random() > 1)).flat()
 
       this.emit("fill-keyboard-settings", keyboard);
       this.hexGrid = new HexGrid(keyboard);
+
+      let noteColours = localStorage.getItem("noteColours");
+      if (!noteColours) {
+        noteColours = this.noteColours;
+        localStorage.setItem("noteColours", JSON.stringify(noteColours))
+      } else localStorage.setItem("noteColours", JSON.stringify(this.noteColours = JSON.parse(noteColours)));      
 
       // Tracks
       let tracks = localStorage.getItem("tracks");
@@ -883,7 +933,9 @@ $.targets({
     },
 
     // Keyboard
-    "fill-keyboard-settings" ({ unit, edo, gstep, hstep, freqBasis, refNote, orientation, orientations, limit, maxerror, hmap }) {
+    "fill-keyboard-settings" ({
+      unit, edo, gstep, hstep, freqBasis, refNote,
+      orientation, orientations, limit, maxerror, hmap }) {
       $("#gstep > input").value = gstep;
       $("#hstep > input").value = hstep;
       $.all("#orientation > select > *").forEach(el => el.remove());
@@ -899,13 +951,7 @@ $.targets({
       $("#edo > input").value = edo;
       $("#scale > output").value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
       $("#limit > input").value = limit;
-      $("#maxerror > input").value = maxerror;
-      $.all(".harmonic").forEach(el => {
-        let harm = parseInt(el.dataset.harm), steps;
-        if (el.classList.contains("prime")) $("input", el).value = steps = hmap.find(([q]) => harm === q)[1];
-        else $(".steps", el).innerText = steps = decomp(harm)[0].reduce((acc, [p, rad]) => acc + hmap.find(([q]) => p === q)[1] * rad, 0) % edo;
-        $("#error", el).innerText = ((steps / edo - (Math.log2(harm) % 1)) * 1200).toFixed(2)
-      });
+      $("#maxerror > input").value = maxerror
     },
 
     "load-keyboard" () {
@@ -916,7 +962,7 @@ $.targets({
         [ "unit", "edo", "gstep", "hstep", "refNote", "freqBasis", "limit", "maxerror" ]
           .forEach(dataname => keyboard[dataname] = $(`#${dataname} > input`).valueAsNumber);
         keyboard.orientation = $("#orientation > select").value.split(",").map(v => parseInt(v));
-        keyboard.hmap = $.all(".harmonic > input").map(el => [el.parentElement.dataset.harm, el.valueAsNumber]);
+        keyboard.hmap = $.all(".harmonic.prime > input.steps").map(el => [el.parentElement.dataset.harm, el.valueAsNumber]);
         const hexGrid = this.hexGrid = new HexGrid(keyboard);
         hexGrid.genOrientations();
         keyboard.orientations = hexGrid.orientations;
@@ -925,10 +971,10 @@ $.targets({
       } else {
         keyboard = this.keyboards[keyboardSelection];
         localStorage.removeItem("keyboard");
-        this.emit("fill-keyboard-settings", keyboard);
         
         const hexGrid = this.hexGrid = new HexGrid(keyboard);
         hexGrid.setOrientation(...keyboard.orientation);
+        this.emit("fill-keyboard-settings", this.hexGrid);
       }
       this.emit("update-mapping");
       this.emit("resize");
@@ -975,7 +1021,7 @@ $.targets({
             maxerror = $("#maxerror > input").valueAsNumber,
             edo = $("#edo > input").valueAsNumber,
             getHex = (o, n) => [ ...this.hexGrid ].find(hex => hex.note().every((v, i) => v === (i ? n : o)));
-      let hmap = new Map($.all(".harmonic.prime > input").map(el => [ parseInt(el.parentElement.dataset.harm), el.valueAsNumber ]));
+      let hmap = new Map($.all(".harmonic.prime > input.steps").map(el => [ parseInt(el.parentElement.dataset.harm), el.valueAsNumber ]));
       $.all(".harmonic").forEach(el => el.remove());
 
       // Harmonics
@@ -985,25 +1031,31 @@ $.targets({
               steps = isComp ? decomp(i)[0].reduce((acc, [p, rad]) => acc + hmap.get(p) * rad, 0) % edo :
                 clamp(Math.ceil((just - maxerror / 1200) * edo), Math.floor((just + maxerror / 1200) * edo), hmap.get(i)) ?? Math.round(just * edo),
               error = (steps / edo - just) * 1200;
-        hmap.set(i, steps);
+        if (!isComp) hmap.set(i, steps);
         if (Math.abs(error) >= maxerror || steps + edo * maxerror / 1200 < 1 || steps - edo * maxerror / 1200 > edo - 1) {
           hmap.delete(i);
           continue;
         }
         const labelEl = $.load("harmonic", "#mapping")[0][0],
-              inputEl = $("input", labelEl),
-              compositeEl = $(".steps", labelEl),
-              errorEl = $("#error", labelEl);
+              inputEl = $("input.steps", labelEl),
+              compositeEl = $("span.steps", labelEl),
+              errorEl = $("#error", labelEl),
+              colourEl = $("input.hcolour", labelEl);
         labelEl.dataset.harm = i;
-        if (isComp) compositeEl.innerText = steps;
-        else labelEl.classList.add("prime");
         $("#nth-harmonic", labelEl).innerText = ordinal(i);
-        errorEl.innerText = error.toFixed(2);
         inputEl.setAttribute("value", steps);
         inputEl.setAttribute("min", Math.max(1, Math.ceil((just - maxerror / 1200) * edo)));
         inputEl.setAttribute("max", Math.min(edo - 1, Math.floor((just + maxerror / 1200) * edo)));
+        if (isComp) compositeEl.innerText = steps;
+        else labelEl.classList.add("prime");
+        errorEl.innerText = error.toFixed(2);
+        if (i === 3) {
+          colourEl.value = this.noteColours.white;
+          labelEl.appendChild(colourEl.cloneNode()).value = this.noteColours.black;
+        } else colourEl.value = this.noteColours[i] ??= this.noteColours.default;
         $.queries({
-          input: { change () { app.emit("update-mapping") } },
+          "input.steps": { change () { app.emit("update-mapping") } },
+          "input.hcolour": { change () { app.emit("set-colour", i, this.value, this === $.all("input.hcolour")[1]) } },
           button: (chord => ({
             pointerdown (e) {
               chord = new HexChord([ ...app.hexGrid ][0], getHex(0, steps));
@@ -1038,7 +1090,7 @@ $.targets({
         },
         pointerup (e) { this.releasePointerCapture(e.pointerId); hex.stop() }
       }))() }, diamondEl);
-      const ivs = [];
+      const ivs = [[[1,1],0]];
       for (let i = h; i > 0; i--) for (let j = 0; j < i; j++) {
         const upperCell = $.load("diamond-cell", "#diamond",)[0][0],
               lowerCell = $.load("diamond-cell", "#diamond",)[0][0],
@@ -1071,7 +1123,15 @@ $.targets({
             pointerup (e) { this.releasePointerCapture(e.pointerId); chord.stop() }
           }))() }, cellEl))
       }
-      this.intervals = ivs;
+      this.intervals = group(group(ivs, ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v), ([a], [b]) => a.some(k => non2(k) === 1) === b.some(k => non2(k) === 1))
+        .sort((ivs, jvs) => ivs.length > jvs.length).map(ivs => ivs.sort(() => 2 * Math.random() > 1)).flat()
+      this.hexGrid.redraw()
+    },
+
+    "set-colour" (harm, colour, isBlackKeys) {
+      if (harm === 3) this.noteColours[isBlackKeys ? "black" : "white"] = colour;
+      else this.noteColours[harm] = colour;
+      localStorage.setItem("noteColours", JSON.stringify(this.noteColours));
       this.hexGrid.redraw()
     },
 
@@ -1176,8 +1236,8 @@ $.targets({
             } }
           });
           this.menuState[1] = { hexGrid: new HexGrid(this.hexGrid) };
-          this.emit("update-mapping");
           this.emit("fill-keyboard-settings", this.hexGrid);
+          this.emit("update-mapping");
           break;
         case "track-editor":
           $("#breadcrumb-text").innerText = "Track ✎";
@@ -1266,21 +1326,27 @@ $.targets({
 });
 
 $.queries({
-  nav: { touchstart (e) { if ($.all("#panic, #volume > input").every(el => e.target !== el)) this.focus() } },
+  nav: { touchstart (e) { if ($.all("#refresh, #panic, #volume > input").every(el => e.target !== el)) this.focus() } },
   form: { submit (e) { e.preventDefault() } },
   "#volume > input": { change () { app.emit("volume-change", this.valueAsNumber) } },
+  "#refresh": { click () {
+    app.intervals = group(app.intervals, ([a], [b]) => a.some(k => non2(k) === 1) === b.some(k => non2(k) === 1))
+      .sort((ivs, jvs) => ivs.length > jvs.length).map(ivs => ivs.sort(() => 2 * Math.random() > 1)).flat();
+    app.hexGrid.redraw()
+  } },
   "#panic": { click () { app.emit("panic") } },
   "#keyboard-settings-button": { click () {
     if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
     else app.emit("menu-select", "keyboard-settings")
   } },
   "#keyboard-settings > form": { change (e) { $("#keyboard-select > select").value = "Custom" } },
-  "#keyboard-select > select": { change () {
-    app.emit("load-keyboard");
-    app.emit("update-mapping");
-  } },
+  "#keyboard-select > select": { change () { app.emit("load-keyboard") } },
   "#edo > input": { change () { app.emit("change-keyboard-edo") } },
-  ":is(#gstep, #hstep) > input": { change () { app.emit("change-keyboard-lattice")} },
+  ":is(#gstep, #hstep) > input": { change () {
+    app.emit("change-keyboard-lattice");
+    const selEl = $("#orientation > select");
+    if (selEl.children.length) selEl.showPicker();
+  } },
   ":is(#limit, #maxerror) > input": { change () { app.emit("update-mapping") } },
   "#track-select > select": { change () {
     if (this.value === "None") app.emit("menu-cancel");
