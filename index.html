@@ -35,7 +35,7 @@
     min-width: 10em }
   #diamond-wrapper, #mapping { max-width: calc(50dvw - 3.5em - 2px) } }
 @media (max-aspect-ratio: 1) {
-  body.menuActive { grid: "nav" auto "menu" min-content "main" auto }
+  body.menuActive { grid: "nav" auto "menu" min-content "main" auto / 100dvw }
   menu { max-height: calc(50dvh - 4.9em) }
   #track-editor > form > textarea {
     width: 100% !important;
@@ -49,7 +49,7 @@ body {
   background-color: #222;
   color: #ddd;
   display: grid;
-  grid: "nav" auto "main" 1fr;
+  grid: "nav" auto "main" 1fr / 100dvw;
   overflow: hidden;
   touch-action: none }
   nav {
@@ -61,8 +61,8 @@ body {
       flex-flow: row;
       justify-content: space-between }
     #controls { display: flex }
-      #controls > :first-child { flex: 1 }
-        #controls > :nth-last-child(n + 2),
+      #controls > :nth-child(2) { flex: 1 }
+        #controls > :nth-last-child(n+2),
         #track-controls > * { margin-right: .5em }
       #volume > * { vertical-align: middle }
       #track-controls { display: none }
@@ -121,7 +121,8 @@ body {
               grid-column: span 9;
               gap: .3em }
               .harmonic > :not(input) { text-align: end }
-              .harmonic:not(.prime) > input, .harmonic.prime > span.steps { display: none }
+              .harmonic:not(.prime) > input, .harmonic.prime > span.steps,
+              .harmonic.prime.power > input.hcolour  { display: none }
               #error::after { content: "¢" }
           #diamond-wrapper, #mapping { overflow-x: scroll }
           #diamond {
@@ -130,6 +131,7 @@ body {
             grid-template-rows: repeat(var(--size), 2em);
             justify-items: end;
             width: max-content }
+            .diamond-cell.activeEnharmonic { border-bottom: 1px solid }
         #track-file {
           display: flex;
           flex-flow: row;
@@ -174,8 +176,10 @@ body {
             border-radius: .5em;
             cursor: pointer }
   main {
-    background-color: #000;
-    overflow: hidden }
+    overflow: hidden;
+    background-blend-mode: soft-light;
+    background-size: cover;
+    background-position-y: center }
     main.hover { cursor: pointer }
     canvas {
       transform: scale(.5);
@@ -207,6 +211,10 @@ body {
       <div id="volume">
         <span>Volume</span>
         <input type="range" min="0" max="100" step="1">
+      </div>
+      <div id="octaves">
+        <span>Octaves</span>
+        <input type="number" value="2" min="1" max="5" steps="1">
       </div>
       <div id="track-controls">
         <button id="track-loop" type="button">Loop</button>
@@ -313,7 +321,7 @@ body {
     </label>
   </template>
   <template id="diamond-cell">
-    <div class=".diamond-cell">
+    <div class="diamond-cell">
       <span></span> (<span></span>, <span></span> steps) <button type="button">▶</button>
     </div>
   </template>
@@ -362,6 +370,7 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
         const [r2, g2, b2] = hc2.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
         return "#" + [[r1, r2], [g1, g2], [b1, b2]].reduce((a, [l, r]) => a + Math.round(lerp(l, r, t)).toString(16), "")
       },
+      scaleVolume = value => value && 10 ** (2 * (value / 100 - 1)),
 
       noteFromFactors = (() => {
         const pythag = "FCGDAEB".split("").reduce((acc, key, i) => ({ ...acc, [i - 1]: key }), {}),
@@ -383,17 +392,21 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
         return factors => {
           let accid = {};
           factors = structuredClone(factors);
+
+          // Factorise out commas
           structuredClone(factors).forEach((d, i) => {
             d.forEach(([p, rad]) => {
               if (p === 3) return;
               const tone = hejiRatios[p].findIndex(side => ~side.findIndex(([q]) => p === q));
               accid[p] = (1 - 2 * (i ^ tone)) * rad;
               hejiRatios[p].forEach((side, j) => side.forEach(([q, qrad]) => {
-                const k = factors[i ^ j ^ !tone].findIndex(([r]) => q === r);
-                ~k ? (factors[i ^ j ^ !tone][k][1] += qrad) : factors[i ^ j ^ !tone].push([q, qrad])
+                const targetSide = i ^ j ^ !tone, k = factors[targetSide].findIndex(([r]) => q === r);
+                ~k ? (factors[targetSide][k][1] += qrad * rad) : factors[targetSide].push([q, qrad * rad])
               }))
             })
           });
+
+          // Normalise to Pythagorean key
           factors[1].forEach(([p, rad], i, dc1) => {
             const j = factors[0].findIndex(([q]) => p === q);
             if (!~j) return;
@@ -404,6 +417,8 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
             else factors[0].splice(j, 1);
           });
           factors[1] = factors[1].filter(ar => ar.length);
+
+          // Build string
           const tone = factors.findIndex(d => d.length),
                 fifths = (1 - 2 * tone) * (~tone ? factors[tone][0][1] : 0),
                 sharps = Math.floor((fifths + 1) / 7);
@@ -422,12 +437,12 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
           }
           if (5 in accid) {
             const arr = accid[5];
-            if (Math.abs(arr) < 3) {
+            if (Math.abs(arr) <= 3) {
               const arrowsOffset = 5 * (arr > 0 ? 2 * arr - 1 : -2 - 2 * arr);
               acstring += pref5(arrowsOffset);
             } else {
-              const arrowsOffset = 5 * (arr > 0 ? 2 * ((arr + 1) % 3) - 1 : -2 - 2 * ((-arr + 1) % 3));
-              acstring += (arrowsOffset < 0 ? "" : pref5(arrowsOffset)) + String.fromCodePoint(0xe2d6 + 5 * (arr > 0)).repeat(Math.floor(arr / 3))
+              const arrowsOffset = 5 * (arr > 0 ? 2 * (arr % 3) - 1 : 2 * (-arr % 3) - 2);
+              acstring += (arrowsOffset < 0 ? "" : pref5(arrowsOffset)) + String.fromCodePoint(0xe2d6 + 5 * (arr > 0)).repeat(Math.floor(Math.abs(arr) / 3))
             }
           } else acstring = prefNo5 + acstring;
           if (7 in accid) {
@@ -446,33 +461,36 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
       })();
 
 class HexButton {
-  #g; #h; #grid; #osc; #volume; #noteClass; #label; labelIv
+  #g; #h; #grid; #osc; #volume; #noteClass; #label; isGhost
 
-  constructor (g, h, noteClass, grid) {
+  constructor (g, h, grid, isGhost = false) {
     this.#g = g;
     this.#h = h;
     this.#grid = grid;
-    this.#noteClass = noteClass
+    this.isGhost = isGhost
   }
 
   static vertices (g, h, grid) {
-    const r = grid.r, x = grid.w / 2, y = grid.h / 2,
-          k = .5 * Math.sqrt(3),
+    const { r, w, h: ht, c } = grid, x = w / 2, y = ht / 2, k = .5 * Math.sqrt(3),
           origin = [
             [ x, y - r ], [ x - r * k, y - r / 2 ], [ x - r * k, y + r / 2 ],
             [ x, y + r ], [ x + r * k, y + r / 2 ], [ x + r * k, y - r / 2 ]
           ];
-    return origin.map(([ a, b ]) => grid.rotate(
-      Math.floor(a + r * k * (h + 2 * g)),
-      Math.floor(b + 1.5 * r * h)
-    ))
+    return origin.map(([ a, b ]) => {
+      const [ rx, ry ] = grid.rotate(
+              Math.floor(a + r * k * (h + 2 * g)),
+              Math.floor(b + 1.5 * r * h)
+            );
+      return [ rx - c, ry ]
+    })
   }
   static centre (g, h, grid) {
-    const { r, w: width, h: height } = grid, k = .5 * Math.sqrt(3);
-    return grid.rotate(
-      Math.floor(width / 2 + r * k * (h + 2 * g)),
-      Math.floor(height / 2 + 1.5 * r * h)
-    )
+    const { r, w: width, h: height, c } = grid, k = .5 * Math.sqrt(3),
+          [ rx, ry ] = grid.rotate(
+            Math.floor(width / 2 + r * k * (h + 2 * g)),
+            Math.floor(height / 2 + 1.5 * r * h)
+          );
+    return [ rx - c, ry ]
   }
 
   vertices () { return HexButton.vertices(this.#g, this.#h, this.#grid) }
@@ -500,18 +518,22 @@ class HexButton {
   colour (bgColour) {
     const { noteColours } = app.state(),
           [ colourBase, oharm, uharm ] = this.#noteClass?.match(/(black|white)(?:(\d{1,2})o)?(?:(\d{1,2})u)?/)?.slice(1) ?? [],
-          { gridctx } = app.state(), vertices = this.vertices(),
+          { gridctx } = app.state(), vertices = this.vertices(), { isGhost } = this,
           drawHex = c => {
             gridctx.beginPath();
             gridctx.moveTo(...vertices[5]);
             for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
-            gridctx.fillStyle = c;
+            gridctx.strokeStyle = isGhost ? c : "#dddddd";
+            gridctx.fillStyle = isGhost ? "#00000000" : c;
+            gridctx.lineWidth = isGhost ? 6 : 1;
             gridctx.fill();
             gridctx.stroke();
           }
+    gridctx.globalCompositeOperation = isGhost ? "lighten" : "source-over";
     if (bgColour) drawHex(bgColour);
     else if (colourBase) {
-      const bc = noteColours[colourBase], oc = oharm ? colourMix(bc, noteColours[oharm], .1) : null,
+      const bc = noteColours[isGhost ? colourBase === "white" ? "black" : "white" : colourBase],
+            oc = oharm ? colourMix(bc, noteColours[oharm], .1) : null,
             uc = uharm ? colourMix(bc, noteColours[uharm], .1) : null;
       if (oc && uc) {
         bgColour = colourMix(oc, uc, .5);
@@ -526,9 +548,10 @@ class HexButton {
         gridctx.restore();
       } else drawHex(bgColour = (oc ? colourMix(oc, noteColours.white, .1) : uc ? colourMix(uc, noteColours.black, .1) : bc))
     } else drawHex(bgColour = noteColours.default);
+    gridctx.font = (isGhost ? "bold  " : "") + (.5 * this.#grid.r) + "px HEJI2, ArbutusSlab";
     const [ x, y ] = this.centre(),
           { width } = gridctx.measureText(this.#label);
-    gridctx.fillStyle = contrast(bgColour);
+    gridctx.fillStyle = isGhost ? bgColour : contrast(bgColour);
     gridctx.fillText(this.#label ?? this.note()[1], x - width / 2, y)
   }
 
@@ -543,8 +566,7 @@ class HexButton {
     volume.connect(masterVolume);
     volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime)
     volume.gain.linearRampToValueAtTime(1, audioctx.currentTime + .05)
-    osc.start(audioctx.currentTime);
-    this.colour(noteColours.active);
+    osc.start(audioctx.currentTime)
   }
 
   stop () {
@@ -554,17 +576,17 @@ class HexButton {
     volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .05);
     osc.stop(audioctx.currentTime + .05);
     this.#osc = null;
-    this.#volume = null;
-    this.colour()
+    this.#volume = null
   }
 
 }
 
 class HexGrid {
-  w = 0; h = 0; unit = 50; r = this.unit * 2
+  w = 0; h = 0; c; unit = 50; r = this.unit * 2; octLen
   edo = 5; gstep = 2; hstep = 1; orientations = []; theta = 0
-  #hexes = new Map(); #edges = new Set(); #notes = new Set()
-  freqBasis; refNote; orientation;
+  #hexes = new Map(); #edges; #notes; #keys
+  active = new Map(); touches = new Map(); scheduled = new Set()
+  freqBasis; refNote; orientation
   limit; maxerror
 
   constructor (opts = {}) {
@@ -572,9 +594,9 @@ class HexGrid {
     if ("orientation" in opts) this.setOrientation(...opts.orientation)
   }
 
-  #newHex (g, h, noteClass) {
+  #newHex (g, h, isGhost) {
     const row = this.#hexes.get(g) ?? this.#hexes.set(g, new Map()).get(g),
-          hex = new HexButton(g, h, noteClass, this);
+          hex = new HexButton(g, h, this, isGhost);
     row.set(h, hex);
     return hex
   }
@@ -598,66 +620,89 @@ class HexGrid {
     this.theta = Math.atan(y / x)
   }
 
-  updateGrid () {
-    const { gstep, hstep, edo, w } = this, [ g, h ] = this.orientation,
-          octLen = Math.hypot((2 * g + h) * Math.sqrt(3) / 2, h * 1.5);
+  updateGrid (force) {
+    if (this.#notes && !force) return;
+    const { gstep, hstep, edo, c, w, octLen } = this, [ g, h ] = this.orientation;
 
     // Central line
-    this.#edges.add(this.#newHex(0, 0, "middle"));
-    this.#notes.add(0);
+    this.#hexes = new Map();
+    this.#edges = new Set([this.#newHex(0, 0, false)]);
+    this.#notes = new Set([0]);
     let left = .5, right = .5, focus = [ [0, 0], [0, 0] ];
     for (let i = 1; i <= g + h; i++) {
       if (left / i <= h / (g + h)) { left++; focus[0][1]++ } else focus[0][0]++;
       if (right / i < h / (g + h)) { right++; focus[1][1]++ } else focus[1][0]++;
-      this.#edges.add(this.#newHex(...focus[0], "middle"));
+      this.#edges.add(this.#newHex(...focus[0], false));
       this.#notes.add(focus[0][0] * gstep + focus[0][1] * hstep);
       if (focus[0].every((v, i) => v === focus[1][i])) continue
-      this.#edges.add(this.#newHex(...focus[1], "middle"));
+      this.#edges.add(this.#newHex(...focus[1], false));
       this.#notes.add(focus[1][0] * gstep + focus[1][1] * hstep)
     }
 
     // One octave
-    this.fillGrid((g, h, { newNotes }) => HexButton.centre(g, h, this)[0] - this.w / 2 >= 0 &&
-      !~[ ...newNotes ].findIndex(note => mod(g * gstep + h * hstep - note, edo) === 0));
+    this.fillGrid({
+      candidate: (g0, h0) => between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
+        !this.#notes.has(mod(g0 * gstep + h0 * hstep, edo)),
+      filter: hexes => group(hexes, ([a, b], [c, d]) => mod((a - c) * gstep + (b - d) * hstep, edo) === 0)
+        .map(enhs => enhs.sort((a, b) => Math.abs(this.h / 2 - HexButton.centre(...a, this)[1]) > Math.abs(this.h / 2 - HexButton.centre(...b, this)[1]))[0]),
+      isGhost: () => false
+    });
+
+    // Two octaves
+    this.#notes = new Set();
+    this.fillGrid({
+      candidate: (g0, h0) => between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
+        !this.#notes.has(mod(g0 * gstep + h0 * hstep, edo)),
+      filter: hexes => group(hexes, ([a, b], [c, d]) => mod((a - c) * gstep + (b - d) * hstep, edo) === 0)
+        .filter(([[g0, h0]]) => !this.#notes.has(mod(g0 * gstep + h0 * hstep, edo)))
+        .map(enhs => enhs.sort((a, b) => Math.abs(this.h / 2 - HexButton.centre(...a, this)[1]) > Math.abs(this.h / 2 - HexButton.centre(...b, this)[1]))[0]),
+      isGhost: () => true
+    });
 
     // Fill to sides
     const home = [ ...this ];
-    this.fillGrid((g0, h0) => {
-      const near = ~home.findIndex(hex => {
-              const [ baseG, baseH ] = hex.getCoord();
-              return (baseG - g0) * h === (baseH - h0) * g  // require gcd(g, h) === 1
-            });
-      return near && HexButton.vertices(g0, h0, this).some(([ px, py ]) =>
-        px > 0 && px < this.w && py > 0 && py < this.h)
+    this.fillGrid({
+      candidate: (g0, h0) => {
+        const homeEquiv = ~home.findIndex(hex => {
+                const [ baseG, baseH ] = hex.getCoord();
+                return (baseG - g0) * h === (baseH - h0) * g // require gcd(g, h) === 1
+              });
+        return homeEquiv && HexButton.vertices(g0, h0, this).some(([ px, py ]) =>
+          px > 0 && px < this.w && py > 0 && py < this.h)
+      },
+      isGhost: (g0, h0) => home.find(hex => {
+        const [ baseG, baseH ] = hex.getCoord();
+        return (baseG - g0) * h === (baseH - h0) * g 
+      }).isGhost
     })
   }
 
-  fillGrid (isInside) {
+  async fillGrid ({ candidate, filter = x => x, isGhost }) {
     let viewEdges = new Set([ ...this.#edges ]);
     while (viewEdges.size > 0) {
-      let newEdges = new Set([ ...this.#edges ]),
-          newViewEdges = new Set([ ...viewEdges ]),
-          newNotes = new Set([ ...this.#notes ]);
-      for (let hex of viewEdges) {  // Can I get all candidate new hexes first?
+      let newViewEdges = new Map(), removeViewEdges = new Set(), newNotes = new Set();
+      for (let hex of viewEdges) {
         let remove = true;
         for (let [g, h] of hex.neighbours()) {
           const thisHex = this.getHex(g, h);
-          if (thisHex) { if (viewEdges.has(thisHex)) newViewEdges.delete(thisHex) }
-          else {
-            if (isInside(g, h, { newEdges, newViewEdges, newNotes })) {
-              const nextHex = this.#newHex(g, h);
-              newViewEdges.add(nextHex);
-              newEdges.add(nextHex);
-              newNotes.add(g * this.gstep + h * this.hstep)
-            } else remove = false;
-          }
+          if (thisHex) { if (viewEdges.has(thisHex)) removeViewEdges.add(thisHex) }
+          else if (candidate(g, h)) {
+            newViewEdges.get(g)?.add(h) ?? newViewEdges.set(g, new Set([h]));
+            newNotes.add(mod(g * this.gstep + h * this.hstep, this.edo));
+          } else remove = false;
         }
-        newViewEdges.delete(hex)
-        if (remove) newEdges.delete(hex)
+        removeViewEdges.add(hex)
+        if (remove) this.#edges.delete(hex)
       }
-      viewEdges = newViewEdges;
-      this.#edges = newEdges;
-      this.#notes = newNotes
+      filter([ ...(function * () {
+        for (let [g, s] of newViewEdges) for (let h of s) yield [g, h]
+      })() ]).forEach(([g, h]) => {
+        const nextHex = this.#newHex(g, h, isGhost(g, h));
+        this.#edges.add(nextHex);
+        viewEdges.add(nextHex)
+      });
+      removeViewEdges.forEach(hex => viewEdges.delete(hex));
+      this.#notes = new Set([ ...this.#notes, ...newNotes ])
     }
   }
 
@@ -668,9 +713,9 @@ class HexGrid {
   }
 
   getCoord (x, y) {
-    ([ x, y ] = this.rotate(x * 2, y * 2, true));
-    const { r, w: width, h: height } = this,
-          a = (x - width / 2) / r / Math.sqrt(3) * 2,
+    const { r, w: width, h: height, c } = this;
+    ([ x, y ] = this.rotate(x * 2 + c, y * 2, true));
+    const a = (x - width / 2) / r / Math.sqrt(3) * 2,
           b = (y - height / 2) / r * 2,
           band = Math.floor(Math.floor((b + 1) / 3));
     if (((Math.floor(b % 3)) + 3) % 3 === 1) {
@@ -682,66 +727,81 @@ class HexGrid {
     } else return [ Math.floor((a - band + 1) / 2), band ]
   }
 
-  classifyKeys () { // TODO: make more passes with p=5
-    const { edo, hmap } = this;
-    let i = edo - 1, prev, k = 0, result = Array(edo).fill(),
+  classifyKeys (force) {  // BUG?: will not work when first harmonic is 15, 21, 35 or 45
+    if (this.#keys && !force) return;
+    const { edo, hmap } = this,
+          [p0, prad] = hmap.length ? decomp(hmap[0][0])[0][0] : [], pstep = hmap[0]?.[1];
+    this.#keys = new Map();
+    let i = edo - 1, prev, k = 0, result = Array(edo).fill(), prevResult,
         intervals = app.intervals.map(([iv, step]) => [decomp(...iv), step]);
-    result[0] = [[], []];
-    while (i > 0 && (i !== prev || i === edo - 1)) {
+    result[0] = [[[], []]];
+    while (i > 0 && (i !== prev || i === edo - 1) && hmap.length) {
       prev = i;
+      prevResult = structuredClone(result);
       for (let [[n, d], step] of intervals) {
-        let s = mod(step + k * hmap[0][1], edo),
-            ni = n.findIndex(([p]) => p === 3), nrad = n[ni]?.[1],
-            di = d.findIndex(([p]) => p === 3), drad = d[di]?.[1];
-        if (result[s] === undefined) {
-          i--;
-          result[s] = ~di ?
-            drad > k ? [n.slice(), d.with(di, [3, drad - k])] :
-              [ drad < k ? [[3, k - drad]].concat(n) : n.slice(), d.toSpliced(di, 1) ] :
-            [ ~ni ? n.with(ni, [3, nrad + k]) : [[3, k]].concat(n), d.slice() ]
-        }
-        s = mod(step - k * hmap[0][1], edo);
-        if (k > 0 && result[s] === undefined) {
-          i--;
-          result[s] = ~ni ?
-            nrad > k ? [n.with(ni, [3, nrad - k]), d.slice()] :
-              [ n.toSpliced(ni, 1), nrad < k ? [[3, k - nrad]].concat(d) : d.slice() ] :
-            [ n.slice(), ~di ? d.with(di, [3, drad + k]) : [[3, k]].concat(d) ]
-        }
-        if (i <= 0) break
+        let s = mod(step + k / prad * pstep, edo),
+            ni = n.findIndex(([p]) => p === p0), nrad = n[ni]?.[1],
+            di = d.findIndex(([p]) => p === p0), drad = d[di]?.[1];
+        if (prevResult[s] === undefined) (result[s] ??= (i--, [])).push(~di ?
+          drad > k ? [n.slice(), d.with(di, [p0, drad - k])] :
+            [ drad < k ? [[p0, k - drad]].concat(n) : n.slice(), d.toSpliced(di, 1) ] :
+          [ ~ni ? n.with(ni, [p0, nrad + k]) : k ? [[p0, k]].concat(n) : n.slice(), d.slice() ]);
+        s = mod(step - k / prad * pstep, edo);
+        if (k > 0 && prevResult[s] === undefined) (result[s] ??= (i--, [])).push(~ni ?
+          nrad > k ? [n.with(ni, [p0, nrad - k]), d.slice()] :
+            [ n.toSpliced(ni, 1), nrad < k ? [[p0, k - nrad]].concat(d) : d.slice() ] :
+          [ n.slice(), ~di ? d.with(di, [p0, drad + k]) : k ? [[p0, k]].concat(d) : d.slice() ])
       }
-      k++
+      k += prad
     }
+    result.forEach(ivs => ivs?.forEach(iv => iv?.forEach(fs => fs.sort(([a], [b]) => a > b))));
     for (let hex of this) {
-      const [, key] = hex.note();
-      hex.labelIv = result[key];
+      const key = hex.note()[1], labels = [];
       if (result[key] === undefined) {
         hex.setNoteClass("default");
         hex.setNoteLabel(key)
-      } else {
-        const { accid, string } = noteFromFactors(result[key]);
+      } else for (let i = 0, ivs = result[key]; i < ivs.length; i++) {
+        const { accid, string: label } = noteFromFactors(ivs[i]);
         let noteClass = between(6, 10, mod(accid[3], 12)) ? "black" : "white";
-        const ot = result[key][0].find(([p]) => p !== 3);
+        const ot = ivs[i][0].findLast(([p]) => p !== 3);
         if (ot) noteClass += ot[0] + "o";
-        const ut = result[key][1].find(([p]) => p !== 3);
+        const ut = ivs[i][1].findLast(([p]) => p !== 3);
         if (ut) noteClass += ut[0] + "u";
+        labels.push({ label, noteClass, interval: ivs[i] })
+        if (i) continue;
         hex.setNoteClass(noteClass);
-        // hex.setNoteClass(noteClass + Object.keys(accid)
-        //   .map(k => k + (accid[k] > 0 ? "o" : "u")).sort((a, b) => a.slice(-1)).join(""));
-        hex.setNoteLabel(string)
+        hex.setNoteLabel(label)
       }
-    }
+      this.#keys.has(key) ? this.#keys.get(key).addNote(hex) :
+        this.#keys.set(key, new HexKey(hex, labels));
+      }
   }
 
-  redraw () {
-    const { gridctx } = app.state();
-    this.updateGrid();
-    this.classifyKeys();
+  getEnharmonics (key) { return this.#keys.get(key).getLabels() }
+
+  renameKey (key, i) {
+    this.#keys.get(key).setLabel(i);
+    this.redraw()
+  }
+  getHexFromSteps (steps) { return this.#keys.get(steps).getNotes().find(hex => !hex.isGhost && hex.note()[0] === 0) }
+
+  async redraw (force) {
+    const { gridctx } = app.state(), canvas = $("canvas"), { width, height } = canvas;
+    this.updateGrid(force);
+    this.classifyKeys(force);
     gridctx.reset();
     gridctx.textBaseline = "middle";
-    gridctx.font = (.5 * this.r) + "px HEJI2, ArbutusSlab";
-    gridctx.strokeStyle = "#ddd";
-    for (let hex of this) hex.colour()
+    gridctx.fillStyle = "#000000";
+    gridctx.fillRect(0, 0, width, height);
+    for (let hex of this) hex.colour();
+    $("main").style.backgroundImage = `url('${URL.createObjectURL(new Blob([await new Promise(r => canvas.toBlob(r))]))}')`
+  }
+
+  colour () {
+    const { gridctx } = app.state(), canvas = $("canvas"), { width, height } = canvas;
+    gridctx.clearRect(0, 0, width, height);
+    for (let [hex] of this.active) hex.colour(app.noteColours.active);
+    for (let hex of this.scheduled) hex.colour(app.noteColours.active);
   }
 }
 
@@ -750,6 +810,23 @@ class HexChord {
   constructor (...hexes) { this.#hexes = hexes }
   start () { this.#hexes.forEach(hex => hex.start()) }
   stop () { this.#hexes.forEach(hex => hex.stop()) }
+  getHexes () { return this.#hexes }
+}
+
+class HexKey {
+  #labels; #notes
+  constructor (note, labels) {
+    this.#notes = new Set([note]);
+    this.#labels = labels
+  }
+  addNote (note) { this.#notes.add(note) }
+  getNotes () { return [ ...this.#notes ] }
+  getLabels () { return this.#labels.slice() }
+  setLabel (i) { this.#notes.forEach(note => {
+    const { label, noteClass } = this.#labels[i];
+    note.setNoteClass(noteClass);
+    note.setNoteLabel(label)
+  }) }
 }
 
 // Page state
@@ -788,16 +865,16 @@ var app = new $.Machine({
       },
 
       // Keyboard
+      octaves: null,
       noteColours: {
         default: "#333333", active: "#ffff00",
         white: "#222222", black: "#777777",
-        5: "#ff0000", 7: "#0000ff", 11: "#00ff00"
+        5: "#ff0000", 7: "#0000ff", 11: "#00ff00", 13: "#ff00ff"
       },
       keyboardSelection: null,
       gridctx: null,
       hexGrid: null,
-      activeHexes: new Map(),
-      gridTouches: new Map(),
+      getGridScope: () => app.menuState[0] === "keyboard-settings" ? app.menuState[1] : app,
       mousedown: false,
       audioctx: null,
       masterVolume: null,
@@ -820,7 +897,7 @@ $.targets({
 
   resize () {
     app.emit("resize");
-    app.hexGrid.redraw()
+    app.getGridScope().hexGrid.redraw(true)
   },
 
   contextmenu (e) { e.preventDefault() },
@@ -831,21 +908,24 @@ $.targets({
     const canvas = $("canvas");
     if (e.target === canvas) 
       for (let { clientX, clientY, identifier } of e.changedTouches) {
-        const x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop;
-        if ((app.gridTouches.has(identifier) || e.type === "touchstart") &&
-          (app.hexGrid.hasHex(...app.hexGrid.getCoord(x, y)) || e.type === "touchend"))
+        const x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop,
+              { hexGrid } = app.getGridScope()
+        if ((app.getGridScope().hexGrid.touches.has(identifier) || e.type === "touchstart") &&
+          (hexGrid.hasHex(...hexGrid.getCoord(x, y)) || e.type === "touchend"))
           app.emit("press", e.type.slice(5), x, y, identifier)
       }
   },
 
   mousedown (e) {
-    if (e.target === $("canvas") && app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX / 2, e.layerY / 2))) {
+    const { hexGrid } = app.getGridScope();
+    if (e.target === $("canvas") && hexGrid.hasHex(...hexGrid.getCoord(e.layerX / 2, e.layerY / 2))) {
       app.mousedown = true;
       app.emit("press", "start", e.layerX / 2, e.layerY / 2)
     }
   },
   mousemove (e) {
-    const hover = app.hexGrid.hasHex(...app.hexGrid.getCoord(e.layerX / 2, e.layerY / 2));
+    const { hexGrid } = app.getGridScope(),
+          hover = hexGrid.hasHex(...hexGrid.getCoord(e.layerX / 2, e.layerY / 2));
     $("main").classList.toggle("hover", hover);
     if (app.mousedown && hover)
       app.emit("press", "move", e.layerX / 2, e.layerY / 2)
@@ -863,13 +943,14 @@ $.targets({
       this.canvas = $("#hex");
       new ResizeObserver(() => {
         this.emit("resize");
-        this.hexGrid.redraw()
+        this.getGridScope().hexGrid.redraw()
       }).observe($("main"));
       this.gridctx = this.canvas.getContext("2d");
       const audioctx = this.audioctx = new AudioContext(),
             masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
-      masterVolume.gain.value = $("#volume > input").valueAsNumber / 100;
+      masterVolume.gain.value = scaleVolume($("#volume > input").valueAsNumber);
+      this.octaves = $("#octaves > input").valueAsNumber;
       $("#track-select > select").selectedIndex = 0;
       this.emit("load-presets")
     },
@@ -891,6 +972,7 @@ $.targets({
       const customKeybOptEl = $.load("option", "#keyboard-select > select")[0][0]
       customKeybOptEl.innerText = "Custom";
       customKeybOptEl.setAttribute("name", "Custom");
+      customKeybOptEl.disabled = true;
 
       let keyboardSelection = localStorage.getItem("keyboardSelection");
       if (!keyboardSelection) {
@@ -902,14 +984,13 @@ $.targets({
 
       let hmap = new Map(keyboard.hmap.map(([k, v]) => [parseInt(k), v])),
           hs = Array((keyboard.limit + 1) / 2).fill().map((_, i) => [ 2 * i + 1, decomp(2 * i + 1)[0].reduce((s, [p, rad]) => s + hmap.get(p) * rad, 0) % keyboard.edo ]);
-      this.intervals = group(group(hs.reduce((acc, [n, i]) => acc.concat(hs.map(([d, j]) => {
+      this.intervals = group(hs.reduce((acc, [n, i]) => acc.concat(hs.map(([d, j]) => {
         const oct = Math.floor(Math.log2(n) - Math.log2(d)), c = gcd(n, d);
         return [oct > 0 ? [n / c, (d / c) << oct] : oct < 0 ? [(n / c) << -oct, d / c] : [n / c, d / c], (i - j + keyboard.edo) % keyboard.edo]
-      })), []), ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v), ([a], [b]) => a.some(k => non2(k) === 1) === b.some(k => non2(k) === 1))
-        .sort((ivs, jvs) => ivs.length > jvs.length).map(ivs => ivs.sort(() => 2 * Math.random() > 1)).flat()
+      })), []), ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v);
 
       this.emit("fill-keyboard-settings", keyboard);
-      this.hexGrid = new HexGrid(keyboard);
+      app.getGridScope().hexGrid = new HexGrid(keyboard);
 
       let noteColours = localStorage.getItem("noteColours");
       if (!noteColours) {
@@ -955,42 +1036,43 @@ $.targets({
     },
 
     "load-keyboard" () {
-      const keyboardSelection = this.keyboardSelection = $("#keyboard-select > select").value;
+      keyboardSelection = this.keyboardSelection = $("#keyboard-select > select").value;
       let keyboard = {};
       localStorage.setItem("keyboardSelection", keyboardSelection);
       if (keyboardSelection === "Custom") {
         [ "unit", "edo", "gstep", "hstep", "refNote", "freqBasis", "limit", "maxerror" ]
           .forEach(dataname => keyboard[dataname] = $(`#${dataname} > input`).valueAsNumber);
         keyboard.orientation = $("#orientation > select").value.split(",").map(v => parseInt(v));
-        keyboard.hmap = $.all(".harmonic.prime > input.steps").map(el => [el.parentElement.dataset.harm, el.valueAsNumber]);
-        const hexGrid = this.hexGrid = new HexGrid(keyboard);
+        keyboard.hmap = $.all(".harmonic.prime > input.steps").map(el => [parseInt(el.parentElement.dataset.harm), el.valueAsNumber]);
+        const hexGrid = this.getGridScope().hexGrid = new HexGrid(keyboard);
         hexGrid.genOrientations();
         keyboard.orientations = hexGrid.orientations;
       
         localStorage.setItem("keyboard", JSON.stringify(keyboard))
       } else {
+        $("#keyboard-select > select").namedItem("Custom").disabled = true
         keyboard = this.keyboards[keyboardSelection];
         localStorage.removeItem("keyboard");
         
-        const hexGrid = this.hexGrid = new HexGrid(keyboard);
+        const hexGrid = this.getGridScope().hexGrid = new HexGrid(keyboard);
         hexGrid.setOrientation(...keyboard.orientation);
-        this.emit("fill-keyboard-settings", this.hexGrid);
+        this.emit("fill-keyboard-settings", hexGrid);
       }
       this.emit("update-mapping");
       this.emit("resize");
-      this.hexGrid.redraw();
+      this.getGridScope().hexGrid.redraw(true);
     },
 
     "change-keyboard-edo" () {
       const edo = $("#edo > input").valueAsNumber;
       $("#scale > output").value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
       $("#maxerror > input").value = Math.floor(400 / edo);
-      this.emit("update-mapping");
       this.emit("change-keyboard-lattice");
+      this.emit("update-mapping")
     },
 
     "change-keyboard-lattice" () {
-      const { hexGrid } = this.menuState[1],
+      const { hexGrid } = this.getGridScope(),
             gstep = $("#gstep > input").valueAsNumber,
             hstep = $("#hstep > input").valueAsNumber,
             edo = $("#edo > input").valueAsNumber;
@@ -1013,6 +1095,7 @@ $.targets({
         el.innerText = coord;
         el.setAttribute("name", coord)
       })
+      $("#orientation > select").namedItem(orientation).selected = true
     },
 
     // Harmonic mapping
@@ -1020,15 +1103,20 @@ $.targets({
       const limit = $("#limit > input").valueAsNumber,
             maxerror = $("#maxerror > input").valueAsNumber,
             edo = $("#edo > input").valueAsNumber,
-            getHex = (o, n) => [ ...this.hexGrid ].find(hex => hex.note().every((v, i) => v === (i ? n : o)));
-      let hmap = new Map($.all(".harmonic.prime > input.steps").map(el => [ parseInt(el.parentElement.dataset.harm), el.valueAsNumber ]));
+            { hexGrid } = this.getGridScope(),
+            getHex = (o, n) => [ ...hexGrid ].find(hex => hex.note().every((v, i) => v === (i ? n : o)));
       $.all(".harmonic").forEach(el => el.remove());
+      let hmap = new Map();
 
       // Harmonics
       for (let i = 3; i <= limit; i += 2) {
         const just = Math.log2(i) % 1,
-              isComp = decomp(i)[0].reduce((s, [, r]) => s + r, 0) > 1,
-              steps = isComp ? decomp(i)[0].reduce((acc, [p, rad]) => acc + hmap.get(p) * rad, 0) % edo :
+              isComp = decomp(i)[0].reduce((s, [p, r]) => s + r * hmap.has(p), 0) > 1,
+              steps = isComp ?
+                decomp(i)[0].reduce((acc, [p, rad]) => {
+                  const [pp, pr] = Array(rad).fill().map((_,i) => [p ** (i + 1), i + 1]).find(([pp]) => hmap.get(pp))
+                  return acc + hmap.get(pp) * (rad / pr)
+                }, 0) % edo :
                 clamp(Math.ceil((just - maxerror / 1200) * edo), Math.floor((just + maxerror / 1200) * edo), hmap.get(i)) ?? Math.round(just * edo),
               error = (steps / edo - just) * 1200;
         if (!isComp) hmap.set(i, steps);
@@ -1047,7 +1135,10 @@ $.targets({
         inputEl.setAttribute("min", Math.max(1, Math.ceil((just - maxerror / 1200) * edo)));
         inputEl.setAttribute("max", Math.min(edo - 1, Math.floor((just + maxerror / 1200) * edo)));
         if (isComp) compositeEl.innerText = steps;
-        else labelEl.classList.add("prime");
+        else {
+          labelEl.classList.add("prime");
+          if (decomp(i)[0][0][1] > 1) labelEl.classList.add("power");
+        }
         errorEl.innerText = error.toFixed(2);
         if (i === 3) {
           colourEl.value = this.noteColours.white;
@@ -1058,14 +1149,24 @@ $.targets({
           "input.hcolour": { change () { app.emit("set-colour", i, this.value, this === $.all("input.hcolour")[1]) } },
           button: (chord => ({
             pointerdown (e) {
-              chord = new HexChord([ ...app.hexGrid ][0], getHex(0, steps));
-              this.setPointerCapture(e.pointerId); chord.start()
+              const { hexGrid: grid } = app.getGridScope();
+              let enhi = grid.getEnharmonics(steps).findIndex(({ interval }) => comp(interval[0])[0] === i && interval[1].length === 0);
+              ~enhi && grid.renameKey(steps, enhi);
+              chord = new HexChord([ ...grid ][0], getHex(0, steps));
+              this.setPointerCapture(e.pointerId); chord.start();
+              chord.getHexes().forEach(hex => grid.scheduled.add(hex));
+              grid.colour();
             },
-            pointerup (e) { this.releasePointerCapture(e.pointerId); chord.stop() }
+            pointerup (e) {
+              const { hexGrid: grid } = app.getGridScope();
+              chord.getHexes().forEach(hex => grid.scheduled.delete(hex));
+              grid.colour();
+              this.releasePointerCapture(e.pointerId); chord.stop()
+            }
           }))()
         }, labelEl)
       }
-      Object.assign(this.hexGrid, { limit, maxerror, edo, hmap: [...hmap] });
+      Object.assign(hexGrid, { limit, maxerror, edo, hmap: [...hmap] });
 
       // Tonality diamond
       const diamondEl = $("#diamond");
@@ -1078,6 +1179,7 @@ $.targets({
         const cell = $.load("diamond-cell", "#diamond")[0][0],
               [ interval, note, width, button ] = $.all(":scope > *", cell);
         cell.style.gridArea = `${h + 1}/${2 * i + 1}/span 1/span 2`;
+        cell.dataset.interval = "1/1";
         interval.innerHTML = "<sup>1</sup>/<sub>1</sub>";
         note.innerText = "C";
         width.innerText = 0;
@@ -1085,10 +1187,22 @@ $.targets({
       }
       $.queries({ "button": (hex => ({
         pointerdown (e) {
-          hex = [ ...app.hexGrid ][0];
-          this.setPointerCapture(e.pointerId); hex.start()
+          $.all('.diamond-cell[data-interval="1/1"]').forEach(el => el.classList.add("activeEnharmonic"));
+          this.setPointerCapture(e.pointerId);
+          const { hexGrid: grid } = app.getGridScope();
+          hex = [ ...grid ][0];
+          hex.start();
+          grid.scheduled.add(hex);
+          grid.colour();
         },
-        pointerup (e) { this.releasePointerCapture(e.pointerId); hex.stop() }
+        pointerup (e) {
+          $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
+          this.releasePointerCapture(e.pointerId);
+          hex.stop();
+          const { hexGrid: grid } = app.getGridScope();
+          grid.scheduled.delete(hex);
+          grid.colour();
+        }
       }))() }, diamondEl);
       const ivs = [[[1,1],0]];
       for (let i = h; i > 0; i--) for (let j = 0; j < i; j++) {
@@ -1107,6 +1221,8 @@ $.targets({
               loSteps = (edo - upSteps) % edo;
         upperCell.style.gridArea = `${i}/${h - i + 2 + 2 * j}/span 1/span 2`;
         lowerCell.style.gridArea = `${2 * h + 2 - i}/${h - i + 2 + 2 * j}/span 1/span 2`;
+        upperCell.dataset.interval = `${upNum}/${upDen}`;
+        lowerCell.dataset.interval = `${loNum}/${loDen}`;
         if (!~ivs.findIndex(([n, d]) => n === upNum && d === upDen)) ivs.push([[upNum, upDen], upSteps]);
         if (!~ivs.findIndex(([n, d]) => n === loNum && d === loDen)) ivs.push([[loNum, loDen], loSteps]);
         upperInterval.innerHTML = `<sup>${upNum}</sup>/<sub>${upDen}</sub>`;
@@ -1115,24 +1231,47 @@ $.targets({
         lowerNote.innerText = noteFromFactors(decomp(loNum, loDen)).string;
         upperWidth.innerText = upSteps;
         lowerWidth.innerText = loSteps;
-        [ [ upperCell, upSteps ], [ lowerCell, loSteps ] ].forEach(([ cellEl, steps ]) => $.queries({ "button": (chord => ({
+        [ [ upperCell, upSteps ], [ lowerCell, loSteps ] ].forEach(([ cellEl, steps ], half) => $.queries({ "button": (chord => ({
             pointerdown (e) {
-              chord = new HexChord([ ...app.hexGrid ][0], getHex(0, steps));
-              this.setPointerCapture(e.pointerId); chord.start()
+              const { hexGrid: grid } = app.getGridScope(),
+                    enhs = grid.getEnharmonics(steps).map(({ interval }) => interval),
+                    enhi = enhs.findIndex(iv =>
+                      comp(iv[0])[0] === (temperings[half ? den : num]?.[0] ?? 1) &&
+                      comp(iv[1])[0] === (temperings[half ? num : den]?.[0] ?? 1));
+              $.all(`.diamond-cell:is(${enhs.map(iv => {  // TODO use steps instead
+                const n = comp(iv[0]), d = comp(iv[1]),
+                      oct = Math.floor(Math.log2(n) - Math.log2(d)),
+                      num = oct < 0 ? n << -oct : n, den = oct > 0 ? d << oct : d;
+                return `[data-interval="${num}/${den}"]`
+              })})`)
+                .forEach(el => el.classList.add("activeEnharmonic"));
+              ~enhi && grid.renameKey(steps, enhi);
+              chord = new HexChord([ ...grid ][0], app.getGridScope().hexGrid.getHexFromSteps(steps));
+              this.setPointerCapture(e.pointerId);
+              chord.start();
+              chord.getHexes().forEach(hex => grid.scheduled.add(hex));
+              grid.colour();
             },
-            pointerup (e) { this.releasePointerCapture(e.pointerId); chord.stop() }
+            pointerup (e) {
+              $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
+              this.releasePointerCapture(e.pointerId);
+              chord.stop();
+              const { hexGrid: grid } = app.getGridScope();
+              chord.getHexes().forEach(hex => grid.scheduled.delete(hex));
+              grid.colour();
+            }
           }))() }, cellEl))
       }
       this.intervals = group(group(ivs, ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v), ([a], [b]) => a.some(k => non2(k) === 1) === b.some(k => non2(k) === 1))
         .sort((ivs, jvs) => ivs.length > jvs.length).map(ivs => ivs.sort(() => 2 * Math.random() > 1)).flat()
-      this.hexGrid.redraw()
+      hexGrid.redraw(true)
     },
 
     "set-colour" (harm, colour, isBlackKeys) {
       if (harm === 3) this.noteColours[isBlackKeys ? "black" : "white"] = colour;
       else this.noteColours[harm] = colour;
       localStorage.setItem("noteColours", JSON.stringify(this.noteColours));
-      this.hexGrid.redraw()
+      this.getGridScope().hexGrid.redraw()
     },
 
     // Track editor
@@ -1261,57 +1400,66 @@ $.targets({
           $("#track-controls").classList.remove("activeControls");
           $("#track-select > select").selectedIndex = 0
       }
-      this.menuState = []
+      this.menuState = [];
+      this.emit("resize");
+      this.getGridScope().hexGrid.redraw(true)
     },
 
-    "volume-change" (value) { this.masterVolume.gain.value = value / 100 },
+    "volume-change" (value) { this.masterVolume.gain.value = scaleVolume(value) },
 
     resize () {
-      const { canvas, hexGrid } = this, { unit, orientation: [g, h] } = hexGrid,
+      const { hexGrid } = this.getGridScope(),
+            { canvas, octaves } = this, { unit, orientation: [g, h], theta } = hexGrid,
             x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
-            { width, height } = $("main").getBoundingClientRect();
-      hexGrid.w = canvas.width = Math.ceil(width) * 2;
+            { width, height } = $("main").getBoundingClientRect(),
+            r = hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) * octaves + 2) * 2);
+      hexGrid.w = canvas.width = Math.ceil(width) * 2,
       hexGrid.h = canvas.height = Math.ceil(height) * 2;
-      hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) + 2));
+      hexGrid.c = (octaves % 2) * Math.hypot(x, y) * r / 2;
+      hexGrid.octLen = Math.hypot(x, y) * r;
       canvas.style.setProperty("width", Math.ceil(width));
       canvas.style.setProperty("height", Math.ceil(height))
     },
 
     press (type, x, y, id) {
-      const { hexGrid, activeHexes, gridTouches } = this,
-            coord = hexGrid.getCoord(x, y);
+      const { hexGrid } = this.getGridScope(),
+            { active, touches } = hexGrid,
+            coord = hexGrid.getCoord(x, y), [g, h] = coord;
       let hex, ids;
       switch (type) {
         case "start":
           hex = hexGrid.getHex(...coord);
-          if (!activeHexes.has(hex)) hex.start();
-          activeHexes.set(hex, (activeHexes.get(hex) ?? new Set()).add(id));
-          gridTouches.set(id, hex);
+          if (!active.has(hex)) hex.start();
+          active.set(hex, (active.get(hex) ?? new Set()).add(id));
+          touches.set(id, hex);
+          hexGrid.colour();
           break;
         case "move":
-          hex = gridTouches.get(id);
-          ids = activeHexes.get(hex);
+          hex = touches.get(id);
+          ids = active.get(hex);
           if (hex.getCoord().some((v, i) => v !== coord[i])) {
             ids.delete(id);
             if (ids.size === 0) {
               hex.stop();
-              activeHexes.delete(hex)
+              active.delete(hex)
             }
             hex = hexGrid.getHex(...coord);
-            if (!activeHexes.has(hex)) hex.start();
-            activeHexes.set(hex, (activeHexes.get(hex) ?? new Set()).add(id));
-            gridTouches.set(id, hex)
+            if (!active.has(hex)) hex.start();
+            active.set(hex, (active.get(hex) ?? new Set()).add(id));
+            touches.set(id, hex);
+            hexGrid.colour()
           }
           break;
         case "end":
-          hex = gridTouches.get(id);
-          ids = activeHexes.get(hex);
+          hex = touches.get(id);
+          ids = active.get(hex);
           ids.delete(id);
           if (ids.size === 0) {
             hex.stop();
-            activeHexes.delete(hex)
+            active.delete(hex)
           }
-          gridTouches.delete(id)
+          touches.delete(id)
+          hexGrid.colour()
       }
     },
 
@@ -1329,11 +1477,12 @@ $.queries({
   nav: { touchstart (e) { if ($.all("#refresh, #panic, #volume > input").every(el => e.target !== el)) this.focus() } },
   form: { submit (e) { e.preventDefault() } },
   "#volume > input": { change () { app.emit("volume-change", this.valueAsNumber) } },
-  "#refresh": { click () {
-    app.intervals = group(app.intervals, ([a], [b]) => a.some(k => non2(k) === 1) === b.some(k => non2(k) === 1))
-      .sort((ivs, jvs) => ivs.length > jvs.length).map(ivs => ivs.sort(() => 2 * Math.random() > 1)).flat();
-    app.hexGrid.redraw()
+  "#octaves > input": { change () {
+    app.octaves = this.valueAsNumber;
+    app.emit("resize");
+    app.getGridScope().hexGrid.redraw(true)
   } },
+  "#refresh": { click () { app.getGridScope().hexGrid.redraw() } },
   "#panic": { click () { app.emit("panic") } },
   "#keyboard-settings-button": { click () {
     if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
@@ -1341,11 +1490,33 @@ $.queries({
   } },
   "#keyboard-settings > form": { change (e) { $("#keyboard-select > select").value = "Custom" } },
   "#keyboard-select > select": { change () { app.emit("load-keyboard") } },
-  "#edo > input": { change () { app.emit("change-keyboard-edo") } },
+  "#edo > input": { change () {
+    app.emit("change-keyboard-edo");
+    app.emit("resize");
+    app.getGridScope().hexGrid.redraw(true);
+    this.focus()
+  } },
   ":is(#gstep, #hstep) > input": { change () {
     app.emit("change-keyboard-lattice");
     const selEl = $("#orientation > select");
-    if (selEl.children.length) selEl.showPicker();
+    if (selEl.children.length) {
+      app.emit("resize");
+      app.getGridScope().hexGrid.redraw(true);
+      selEl.showPicker();
+    }
+  } },
+  "#orientation > select": { change () {
+    const { hexGrid } = app.getGridScope();
+    hexGrid.setOrientation(...JSON.parse(`[${this.value}]`));
+    app.emit("resize");
+    hexGrid.redraw(true);
+    this.focus()
+  } },
+  "#unit > input": { change () {
+    const { hexGrid } = app.getGridScope();
+    hexGrid.unit = this.valueAsNumber;
+    app.emit("resize");
+    hexGrid.redraw(true)
   } },
   ":is(#limit, #maxerror) > input": { change () { app.emit("update-mapping") } },
   "#track-select > select": { change () {
