@@ -176,14 +176,15 @@ body {
             border-radius: .5em;
             cursor: pointer }
   main {
-    overflow: hidden;
-    background-blend-mode: soft-light;
-    background-size: cover;
-    background-position-y: center }
+    background-color: #000;
+    overflow: hidden }
     main.hover { cursor: pointer }
     canvas {
       transform: scale(.5);
-      transform-origin: 0 0 }
+      transform-origin: 0 0;
+      mix-blend-mode: lighten;
+      background-size: cover;
+      background-position-y: center }
   dialog { padding: 1em 0 }
     #dialog-prompt { padding: 0 1em }
     dialog > form { justify-content: space-evenly }
@@ -328,6 +329,8 @@ body {
   <script src="js/machine.js"></script>
   <script>
 
+
+
 //Utils
 
 const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
@@ -460,6 +463,10 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
         }
       })();
 
+
+
+// Keyboard grid
+
 class HexButton {
   #g; #h; #grid; #osc; #volume; #noteClass; #label; isGhost
 
@@ -515,21 +522,22 @@ class HexButton {
     return [ Math.floor(n / edo), (n % edo + edo) % edo ]
   }
 
-  colour (bgColour) {
+  colour ({ bgColour, ctx } = {}) {
+    ctx ??= app.state().gridctx;
     const { noteColours } = app.state(),
           [ colourBase, oharm, uharm ] = this.#noteClass?.match(/(black|white)(?:(\d{1,2})o)?(?:(\d{1,2})u)?/)?.slice(1) ?? [],
-          { gridctx } = app.state(), vertices = this.vertices(), { isGhost } = this,
+          vertices = this.vertices(), { isGhost } = this,
           drawHex = c => {
-            gridctx.beginPath();
-            gridctx.moveTo(...vertices[5]);
-            for (let [ x, y ] of vertices) gridctx.lineTo(x, y);
-            gridctx.strokeStyle = isGhost ? c : "#dddddd";
-            gridctx.fillStyle = isGhost ? "#00000000" : c;
-            gridctx.lineWidth = isGhost ? 6 : 1;
-            gridctx.fill();
-            gridctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(...vertices[5]);
+            for (let [ x, y ] of vertices) ctx.lineTo(x, y);
+            ctx.strokeStyle = isGhost ? c : "#dddddd";
+            ctx.fillStyle = isGhost ? "#00000000" : c;
+            ctx.lineWidth = isGhost ? 6 : 1;
+            ctx.fill();
+            ctx.stroke();
           }
-    gridctx.globalCompositeOperation = isGhost ? "lighten" : "source-over";
+    ctx.globalCompositeOperation = isGhost ? "lighten" : "source-over";
     if (bgColour) drawHex(bgColour);
     else if (colourBase) {
       const bc = noteColours[isGhost ? colourBase === "white" ? "black" : "white" : colourBase],
@@ -539,20 +547,20 @@ class HexButton {
         bgColour = colourMix(oc, uc, .5);
         drawHex(colourMix(oc, noteColours.white, .1));
         const [cx, cy] = this.centre();
-        gridctx.save();
-        gridctx.beginPath();
-        gridctx.arc(cx, cy, this.#grid.r, 0, Math.PI);
-        gridctx.closePath();
-        gridctx.clip();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.#grid.r, 0, Math.PI);
+        ctx.closePath();
+        ctx.clip();
         drawHex(colourMix(uc, noteColours.black, .1));
-        gridctx.restore();
+        ctx.restore();
       } else drawHex(bgColour = (oc ? colourMix(oc, noteColours.white, .1) : uc ? colourMix(uc, noteColours.black, .1) : bc))
     } else drawHex(bgColour = noteColours.default);
-    gridctx.font = (isGhost ? "bold  " : "") + (.5 * this.#grid.r) + "px HEJI2, ArbutusSlab";
+    ctx.font = (isGhost ? "bold  " : "") + (.5 * this.#grid.r) + "px HEJI2, ArbutusSlab";
     const [ x, y ] = this.centre(),
-          { width } = gridctx.measureText(this.#label);
-    gridctx.fillStyle = isGhost ? bgColour : contrast(bgColour);
-    gridctx.fillText(this.#label ?? this.note()[1], x - width / 2, y)
+          { width } = ctx.measureText(this.#label);
+    ctx.fillStyle = isGhost ? bgColour : contrast(bgColour);
+    ctx.fillText(this.#label ?? this.note()[1], x - width / 2, y)
   }
 
   start () {
@@ -588,6 +596,7 @@ class HexGrid {
   active = new Map(); touches = new Map(); scheduled = new Set()
   freqBasis; refNote; orientation
   limit; maxerror
+  #bgImgCache
 
   constructor (opts = {}) {
     Object.assign(this, opts);
@@ -640,11 +649,13 @@ class HexGrid {
     }
 
     // One octave
+    const rank = (g, h) => mod(g * gstep + h * hstep, edo),
+          dev = coord => Math.abs(this.h / 2 - HexButton.centre(...coord, this)[1]);
     this.fillGrid({
       candidate: (g0, h0) => between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
-        !this.#notes.has(mod(g0 * gstep + h0 * hstep, edo)),
-      filter: hexes => group(hexes, ([a, b], [c, d]) => mod((a - c) * gstep + (b - d) * hstep, edo) === 0)
-        .map(enhs => enhs.sort((a, b) => Math.abs(this.h / 2 - HexButton.centre(...a, this)[1]) > Math.abs(this.h / 2 - HexButton.centre(...b, this)[1]))[0]),
+        !this.#notes.has(rank(g0, h0)),
+      filter: hexes => group(hexes, ([a, b], [c, d]) => rank(a - c, b - d) === 0)
+        .map(enhs => enhs.sort((a, b) => dev(a) > dev(b))[0]),
       isGhost: () => false
     });
 
@@ -652,10 +663,10 @@ class HexGrid {
     this.#notes = new Set();
     this.fillGrid({
       candidate: (g0, h0) => between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
-        !this.#notes.has(mod(g0 * gstep + h0 * hstep, edo)),
-      filter: hexes => group(hexes, ([a, b], [c, d]) => mod((a - c) * gstep + (b - d) * hstep, edo) === 0)
-        .filter(([[g0, h0]]) => !this.#notes.has(mod(g0 * gstep + h0 * hstep, edo)))
-        .map(enhs => enhs.sort((a, b) => Math.abs(this.h / 2 - HexButton.centre(...a, this)[1]) > Math.abs(this.h / 2 - HexButton.centre(...b, this)[1]))[0]),
+        !this.#notes.has(rank(g0, h0)),
+      filter: hexes => group(hexes, ([a, b], [c, d]) => rank(a - c, b - d) === 0)
+        .filter(([[g0, h0]]) => !this.#notes.has(rank(g0, h0)))
+        .map(enhs => enhs.sort((a, b) => dev(a) > dev(b))[0]),
       isGhost: () => true
     });
 
@@ -672,7 +683,7 @@ class HexGrid {
       },
       isGhost: (g0, h0) => home.find(hex => {
         const [ baseG, baseH ] = hex.getCoord();
-        return (baseG - g0) * h === (baseH - h0) * g 
+        return (baseG - g0) * h === (baseH - h0) * g
       }).isGhost
     })
   }
@@ -786,22 +797,22 @@ class HexGrid {
   getHexFromSteps (steps) { return this.#keys.get(steps).getNotes().find(hex => !hex.isGhost && hex.note()[0] === 0) }
 
   async redraw (force) {
-    const { gridctx } = app.state(), canvas = $("canvas"), { width, height } = canvas;
+    const { gridctx, canvas } = app.state(), { width, height } = canvas;
     this.updateGrid(force);
     this.classifyKeys(force);
-    gridctx.reset();
-    gridctx.textBaseline = "middle";
     gridctx.fillStyle = "#000000";
     gridctx.fillRect(0, 0, width, height);
     for (let hex of this) hex.colour();
-    $("main").style.backgroundImage = `url('${URL.createObjectURL(new Blob([await new Promise(r => canvas.toBlob(r))]))}')`
+    const url = URL.createObjectURL(new Blob([await new Promise(r => canvas.toBlob(r))]));
+    canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache}')`;
+    this.#bgImgCache = url
   }
 
   colour () {
-    const { gridctx } = app.state(), canvas = $("canvas"), { width, height } = canvas;
+    const { gridctx, canvas } = app.state(), { width, height } = canvas;
     gridctx.clearRect(0, 0, width, height);
-    for (let [hex] of this.active) hex.colour(app.noteColours.active);
-    for (let hex of this.scheduled) hex.colour(app.noteColours.active);
+    for (let [hex] of this.active) hex.colour({ bgColour: app.noteColours.active });
+    for (let hex of this.scheduled) hex.colour({ bgColour: app.noteColours.active });
   }
 }
 
@@ -829,7 +840,10 @@ class HexKey {
   }) }
 }
 
+
+
 // Page state
+
 var app = new $.Machine({
     // Navigation
       menuState: [],
@@ -872,6 +886,7 @@ var app = new $.Machine({
         5: "#ff0000", 7: "#0000ff", 11: "#00ff00", 13: "#ff00ff"
       },
       keyboardSelection: null,
+      canvas: null,
       gridctx: null,
       hexGrid: null,
       getGridScope: () => app.menuState[0] === "keyboard-settings" ? app.menuState[1] : app,
@@ -888,7 +903,10 @@ var app = new $.Machine({
       trackSelection: null
     });
 
+
+
 // Events
+
 $.targets({
 
   load () { app.emit("init") },
@@ -896,14 +914,14 @@ $.targets({
   keydown (e) { if (e.key === "Escape") document.activeElement.blur() },
 
   resize () {
-    app.emit("resize");
-    app.getGridScope().hexGrid.redraw(true)
+    app.emit("resize", true);
+    app.getGridScope().hexGrid.redraw()
   },
 
   contextmenu (e) { e.preventDefault() },
 
   "touchstart touchend touchmove" (e) {
-    const nav = $("canvas");
+    const nav = $("nav");
     if (e.type === "touchstart" && document.activeElement === nav && !e.composedPath().includes(nav)) $(nav).blur();
     const canvas = $("canvas");
     if (e.target === canvas) 
@@ -941,11 +959,11 @@ $.targets({
 
     init () {
       this.canvas = $("#hex");
+      this.gridctx = this.canvas.getContext("2d");
       new ResizeObserver(() => {
-        this.emit("resize");
+        this.emit("resize", true);
         this.getGridScope().hexGrid.redraw()
       }).observe($("main"));
-      this.gridctx = this.canvas.getContext("2d");
       const audioctx = this.audioctx = new AudioContext(),
             masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
@@ -958,6 +976,7 @@ $.targets({
     "clear-storage" () { localStorage.clear() },
 
     "load-presets" () {
+
       // Keyboards
       let keyboards = localStorage.getItem("keyboards");
       if (!keyboards) {
@@ -1011,9 +1030,80 @@ $.targets({
         el.setAttribute("name", name);
         trackSelEl.insertBefore(el, selectHrEl)
       })
+
     },
 
+    resize (reset) {
+      const { hexGrid } = this.getGridScope(),
+            { canvas, octaves } = this, { unit, orientation: [g, h], theta } = hexGrid,
+            x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
+            { width, height } = $("main").getBoundingClientRect(),
+            r = hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) * octaves + 2) * 2);
+      if (reset) {
+        hexGrid.w = canvas.width = Math.ceil(width) * 2,
+        hexGrid.h = canvas.height = Math.ceil(height) * 2;
+        this.gridctx.textBaseline = "middle"
+      }
+      hexGrid.c = (octaves % 2) * Math.hypot(x, y) * r / 2;
+      hexGrid.octLen = Math.hypot(x, y) * r;
+      canvas.style.setProperty("width", Math.ceil(width));
+      canvas.style.setProperty("height", Math.ceil(height));
+    },
+
+    press (type, x, y, id) {
+      const { hexGrid } = this.getGridScope(),
+            { active, touches } = hexGrid,
+            coord = hexGrid.getCoord(x, y), [g, h] = coord;
+      let hex, ids;
+      switch (type) {
+        case "start":
+          hex = hexGrid.getHex(...coord);
+          if (!active.has(hex)) hex.start();
+          active.set(hex, (active.get(hex) ?? new Set()).add(id));
+          touches.set(id, hex);
+          hexGrid.colour();
+          break;
+        case "move":
+          hex = touches.get(id);
+          ids = active.get(hex);
+          if (hex.getCoord().some((v, i) => v !== coord[i])) {
+            ids.delete(id);
+            if (ids.size === 0) {
+              hex.stop();
+              active.delete(hex)
+            }
+            hex = hexGrid.getHex(...coord);
+            if (!active.has(hex)) hex.start();
+            active.set(hex, (active.get(hex) ?? new Set()).add(id));
+            touches.set(id, hex);
+            hexGrid.colour()
+          }
+          break;
+        case "end":
+          hex = touches.get(id);
+          ids = active.get(hex);
+          ids.delete(id);
+          if (ids.size === 0) {
+            hex.stop();
+            active.delete(hex)
+          }
+          touches.delete(id)
+          hexGrid.colour()
+      }
+    },
+
+    panic () {
+      this.audioctx.close();
+      const audioctx = this.audioctx = new AudioContext(),
+            masterVolume = this.masterVolume = audioctx.createGain();
+      masterVolume.connect(audioctx.destination);
+      masterVolume.gain.value = $("#volume > input").valueAsNumber / 100;
+    },
+
+
+
     // Keyboard
+
     "fill-keyboard-settings" ({
       unit, edo, gstep, hstep, freqBasis, refNote,
       orientation, orientations, limit, maxerror, hmap }) {
@@ -1065,6 +1155,7 @@ $.targets({
 
     "change-keyboard-edo" () {
       const edo = $("#edo > input").valueAsNumber;
+      $("#refNote > input").value = Math.round(Math.log2(5 / 3) * edo);
       $("#scale > output").value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
       $("#maxerror > input").value = Math.floor(400 / edo);
       this.emit("change-keyboard-lattice");
@@ -1098,7 +1189,10 @@ $.targets({
       $("#orientation > select").namedItem(orientation).selected = true
     },
 
+
+
     // Harmonic mapping
+
     "update-mapping" () {
       const limit = $("#limit > input").valueAsNumber,
             maxerror = $("#maxerror > input").valueAsNumber,
@@ -1250,6 +1344,7 @@ $.targets({
               this.setPointerCapture(e.pointerId);
               chord.start();
               chord.getHexes().forEach(hex => grid.scheduled.add(hex));
+              // debugger
               grid.colour();
             },
             pointerup (e) {
@@ -1274,7 +1369,10 @@ $.targets({
       this.getGridScope().hexGrid.redraw()
     },
 
+
+
     // Track editor
+
     "track-name-update" (name) {
       const { tracks, trackSelection } = this, trackSelEl = $("#track-select > select");
       if (name === "New" || name in tracks && trackSelEl.value !== name) {
@@ -1351,7 +1449,10 @@ $.targets({
       this.emit("menu-cancel")
     },
 
+
+
     // Menu
+
     "menu-select" (which, ...data) {
       this.emit("menu-cancel");
       this.menuState = [which];
@@ -1401,89 +1502,35 @@ $.targets({
           $("#track-select > select").selectedIndex = 0
       }
       this.menuState = [];
-      this.emit("resize");
+      this.emit("resize", true);
       this.getGridScope().hexGrid.redraw(true)
     },
 
-    "volume-change" (value) { this.masterVolume.gain.value = scaleVolume(value) },
+    "volume-change" (value) { this.masterVolume.gain.value = scaleVolume(value) }
 
-    resize () {
-      const { hexGrid } = this.getGridScope(),
-            { canvas, octaves } = this, { unit, orientation: [g, h], theta } = hexGrid,
-            x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
-            { width, height } = $("main").getBoundingClientRect(),
-            r = hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) * octaves + 2) * 2);
-      hexGrid.w = canvas.width = Math.ceil(width) * 2,
-      hexGrid.h = canvas.height = Math.ceil(height) * 2;
-      hexGrid.c = (octaves % 2) * Math.hypot(x, y) * r / 2;
-      hexGrid.octLen = Math.hypot(x, y) * r;
-      canvas.style.setProperty("width", Math.ceil(width));
-      canvas.style.setProperty("height", Math.ceil(height))
-    },
-
-    press (type, x, y, id) {
-      const { hexGrid } = this.getGridScope(),
-            { active, touches } = hexGrid,
-            coord = hexGrid.getCoord(x, y), [g, h] = coord;
-      let hex, ids;
-      switch (type) {
-        case "start":
-          hex = hexGrid.getHex(...coord);
-          if (!active.has(hex)) hex.start();
-          active.set(hex, (active.get(hex) ?? new Set()).add(id));
-          touches.set(id, hex);
-          hexGrid.colour();
-          break;
-        case "move":
-          hex = touches.get(id);
-          ids = active.get(hex);
-          if (hex.getCoord().some((v, i) => v !== coord[i])) {
-            ids.delete(id);
-            if (ids.size === 0) {
-              hex.stop();
-              active.delete(hex)
-            }
-            hex = hexGrid.getHex(...coord);
-            if (!active.has(hex)) hex.start();
-            active.set(hex, (active.get(hex) ?? new Set()).add(id));
-            touches.set(id, hex);
-            hexGrid.colour()
-          }
-          break;
-        case "end":
-          hex = touches.get(id);
-          ids = active.get(hex);
-          ids.delete(id);
-          if (ids.size === 0) {
-            hex.stop();
-            active.delete(hex)
-          }
-          touches.delete(id)
-          hexGrid.colour()
-      }
-    },
-
-    panic () {
-      this.audioctx.close();
-      const audioctx = this.audioctx = new AudioContext(),
-            masterVolume = this.masterVolume = audioctx.createGain();
-      masterVolume.connect(audioctx.destination);
-      masterVolume.gain.value = $("#volume > input").valueAsNumber / 100;
-    }
   }
 });
 
+
+
+// Elements
+
 $.queries({
+
   nav: { touchstart (e) { if ($.all("#refresh, #panic, #volume > input").every(el => e.target !== el)) this.focus() } },
   form: { submit (e) { e.preventDefault() } },
   "#volume > input": { change () { app.emit("volume-change", this.valueAsNumber) } },
   "#octaves > input": { change () {
     app.octaves = this.valueAsNumber;
-    app.emit("resize");
+    app.emit("resize", true);
     app.getGridScope().hexGrid.redraw(true)
   } },
-  "#refresh": { click () { app.getGridScope().hexGrid.redraw() } },
+  "#refresh": { click () {
+    app.emit("resize", true);
+    app.getGridScope().hexGrid.redraw(true)
+  } },
   "#panic": { click () { app.emit("panic") } },
+
   "#keyboard-settings-button": { click () {
     if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
     else app.emit("menu-select", "keyboard-settings")
@@ -1519,6 +1566,7 @@ $.queries({
     hexGrid.redraw(true)
   } },
   ":is(#limit, #maxerror) > input": { change () { app.emit("update-mapping") } },
+
   "#track-select > select": { change () {
     if (this.value === "None") app.emit("menu-cancel");
     else app.emit("menu-select", "track-editor", ...(this.value === "New" ? [] : [ this.value ]))
@@ -1544,6 +1592,7 @@ $.queries({
     editorEl.setSelectionRange(selStart + 1, selStart + 1);
     editorEl.focus()
   } }
+
 })
   </script>
   <noscript><h6>Only viewable with JavaScript enabled.</h6></noscript>
