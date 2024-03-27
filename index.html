@@ -33,14 +33,14 @@
   #track-editor > form > textarea {
     width: 20em;
     min-width: 10em }
-  #diamond-wrapper, #mapping { max-width: calc(50dvw - 3.5em - 2px) } }
+  .interval-display, #mapping { max-width: calc(50dvw - 3.5em - 2px) } }
 @media (max-aspect-ratio: 1) {
   body.menuActive { grid: "nav" auto "menu" min-content "main" auto / 100dvw }
   menu { max-height: calc(50dvh - 4.9em) }
   #track-editor > form > textarea {
     width: 100% !important;
     resize: vertical }
-  #diamond-wrapper, #mapping { max-width: calc(100dvw - 3.5em - 2px) } }
+  .interval-display, #mapping { max-width: calc(100dvw - 3.5em - 2px) } }
 
 html, body { height: 100dvh }
 body, button, select, input, textarea { font-family: HEJI2, ArbutusSlab }
@@ -59,9 +59,12 @@ body {
     nav > * {
       padding: .5em;
       flex-flow: row;
-      justify-content: space-between }
+      justify-content: space-between;
+      align-items: center }
     #controls { display: flex }
-      #controls > :nth-child(2) { flex: 1 }
+      #controls > :nth-child(3) {
+        flex: 1;
+        text-align: center }
         #controls > :nth-last-child(n+2),
         #track-controls > * { margin-right: .5em }
       #volume > * { vertical-align: middle }
@@ -69,6 +72,8 @@ body {
       #track-controls.activeControls { display: flex }
         #track-play:not(.trackPlaying)::before { content: "Play ▶" }
         #track-play.trackPlaying::before { content: "Pause ⏸" }
+      #edo-info::after { content: "EDO" }
+      #limit-info::after { content: "-limit" }
     nav:focus-within:not(:has(:is(#refresh, #panic, #volume > input):focus)) > #dropdown,
     body.menuActive #dropdown { display: flex }
     #dropdown {
@@ -109,11 +114,12 @@ body {
         flex-flow: column;
         align-items: start;
         flex: auto }
-        fieldset > * { margin: .3em }
+        fieldset > * { padding: .3em }
           input[type="number"] { width: 3.5em }
           :is(#scale, #mapping) > * {
             display: block;
             margin-left: 1em }
+            :is(.harmonic, .interval-cell) > button { cursor: pointer }
           #mapping { display: grid }
             .harmonic {
               grid-template-columns: subgrid;
@@ -124,14 +130,68 @@ body {
               .harmonic:not(.prime) > input, .harmonic.prime > span.steps,
               .harmonic.prime.power > input.hcolour  { display: none }
               #error::after { content: "¢" }
-          #diamond-wrapper, #mapping { overflow-x: scroll }
+          .choice {
+            display: flex;
+            flex-flow: row;
+            gap: .5em }
+          .choice input[type="radio"] { display: none }
+          .choice > label {
+            display: block;
+            cursor: pointer }
+          .choice > label:active {
+            background-color: #ddd;
+            color: #222 }
+          .choice > label:has(input[type="radio"]:checked) { border-bottom: 1px solid }
+          .interval-display { display: none }
+          .choice:has(label#diamond-choice > input[type="radio"]:checked) ~ #diamond-wrapper,
+          .choice:has(label#table-choice > input[type="radio"]:checked) ~ #ivtable-wrapper { display: block }
+          .interval-display, #mapping { overflow-x: scroll }
+            .interval-cell.activeEnharmonic {
+              border-bottom: 1px solid;
+              margin-bottom: -1px }
           #diamond {
             display: grid;
             grid-template-columns: 1fr repeat(var(--size), auto);
             grid-template-rows: repeat(var(--size), 2em);
             justify-items: end;
             width: max-content }
-            .diamond-cell.activeEnharmonic { border-bottom: 1px solid }
+          #interval-table {
+            display: grid;
+            grid-template-columns: repeat(calc(var(--harms) + 1), auto);
+            grid-template-rows: repeat(calc(var(--edo) + 1), minmax(0, min-content));
+            gap: .5em;
+            width: max-content }
+            .interval-th {
+              position: relative;
+              display: grid;
+              place-items: center }
+              .table-border {
+                position: absolute;
+                z-index: -1 }
+              .column-head > span::after { content: "-limit" }
+              .column-head > .table-border {
+                border-left: 1px solid #ddd8;
+                width: calc(100% + .5em);
+                align-self: start;
+                height: var(--table-height) }
+              .row-head > .table-border {
+                border-top: 1px solid #ddd8;
+                height: calc(100% + .5em);
+                justify-self: start;
+                width: var(--table-width) }
+            .interval-td {
+              display: flex;
+              flex-flow: column;
+              gap: .5em;
+              place-self: end / center;
+              align-items: end }
+            .interval { width: max-content }
+              #table-unison {
+                text-align: center;
+                margin: calc(1px - .25em) 0 calc(1px - .25em) 0;
+                background-color: #222;
+                width: calc(100% - .25em);
+                padding: .25em }
         #track-file {
           display: flex;
           flex-flow: row;
@@ -182,7 +242,7 @@ body {
     canvas {
       transform: scale(.5);
       transform-origin: 0 0;
-      mix-blend-mode: lighten;
+      /* mix-blend-mode: lighten; */
       background-size: cover;
       background-position-y: center }
   dialog { padding: 1em 0 }
@@ -216,6 +276,10 @@ body {
       <div id="octaves">
         <span>Octaves</span>
         <input type="number" value="2" min="1" max="5" steps="1">
+      </div>
+      <div id="info">
+        <span id="edo-info"></span>
+        <span id="limit-info"></span>
       </div>
       <div id="track-controls">
         <button id="track-loop" type="button">Loop</button>
@@ -257,8 +321,12 @@ body {
           <label id="limit">Harmonic limit: <input type="number" value="9" min="3" max="51" step="2"></label>
           <label id="maxerror">Maximum error: <input type="number" value="30" min="0" max="100"> ¢</label>
           <div id="mapping"></div>
-          <div>Tonality diamond:</div>
-          <div id="diamond-wrapper"><div id="diamond"></div></div>
+          <div id="interval-view" class="choice">
+            <label id="diamond-choice"><input type="radio" name="interval-view" checked>Tonality diamond</label>
+            <label id="table-choice"><input type="radio" name="interval-view">Interval table</label>
+          </div>
+          <div id="diamond-wrapper" class="interval-display"><div id="diamond"></div></div>
+          <div id="ivtable-wrapper" class="interval-display"><div id="interval-table"></div></div>
         </fieldset>
         <fieldset>
           <legend>Waveform</legend>
@@ -321,10 +389,19 @@ body {
       <input class="hcolour" type="color">
     </label>
   </template>
-  <template id="diamond-cell">
-    <div class="diamond-cell">
+  <template id="interval-cell">
+    <div class="interval-cell">
       <span></span> (<span></span>, <span></span> steps) <button type="button">▶</button>
     </div>
+  </template>
+  <template id="interval-th">
+    <div class="interval-th">
+      <div class="table-border"></div>
+      <span></span>
+   </div>
+  </template>
+  <template id="interval-td">
+    <div class="interval-td"> </div>
   </template>
   <script src="js/machine.js"></script>
   <script>
@@ -794,18 +871,21 @@ class HexGrid {
     this.#keys.get(key).setLabel(i);
     this.redraw()
   }
+  getLabelsFromSteps (steps) { return this.#keys.get(steps).getLabels() }
   getHexFromSteps (steps) { return this.#keys.get(steps).getNotes().find(hex => !hex.isGhost && hex.note()[0] === 0) }
 
-  async redraw (force) {
+  redraw (force) {
     const { gridctx, canvas } = app.state(), { width, height } = canvas;
     this.updateGrid(force);
     this.classifyKeys(force);
     gridctx.fillStyle = "#000000";
     gridctx.fillRect(0, 0, width, height);
     for (let hex of this) hex.colour();
-    const url = URL.createObjectURL(new Blob([await new Promise(r => canvas.toBlob(r))]));
-    canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache}')`;
-    this.#bgImgCache = url
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(new Blob([blob]));
+      canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache}')`;
+      this.#bgImgCache = url
+    })
   }
 
   colour () {
@@ -964,6 +1044,12 @@ $.targets({
         this.emit("resize", true);
         this.getGridScope().hexGrid.redraw()
       }).observe($("main"));
+      const ivTable = $("#interval-table");
+      new ResizeObserver(() => {
+        const { width, height } = ivTable.getBoundingClientRect();
+        ivTable.style.setProperty("--table-width", Math.round(width) + "px");
+        ivTable.style.setProperty("--table-height", Math.round(height) + "px")
+      }).observe(ivTable);
       const audioctx = this.audioctx = new AudioContext(),
             masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
@@ -1000,6 +1086,8 @@ $.targets({
       } else keyboardSelection = this.keyboardSelection = $("#keyboard-select > select").value = keyboardSelection;
       
       let keyboard = keyboardSelection === "Custom" ? JSON.parse(localStorage.getItem("keyboard")) : keyboards[keyboardSelection];
+      $("#edo-info").innerText = keyboard.edo;
+      $("#limit-info").innerText = keyboard.limit;
 
       let hmap = new Map(keyboard.hmap.map(([k, v]) => [parseInt(k), v])),
           hs = Array((keyboard.limit + 1) / 2).fill().map((_, i) => [ 2 * i + 1, decomp(2 * i + 1)[0].reduce((s, [p, rad]) => s + hmap.get(p) * rad, 0) % keyboard.edo ]);
@@ -1148,9 +1236,9 @@ $.targets({
         hexGrid.setOrientation(...keyboard.orientation);
         this.emit("fill-keyboard-settings", hexGrid);
       }
-      this.emit("update-mapping");
-      this.emit("resize");
-      this.getGridScope().hexGrid.redraw(true);
+      $("#edo-info").innerText = keyboard.edo;
+      $("#limit-info").innerText = keyboard.limit;
+      this.emit("update-mapping")
     },
 
     "change-keyboard-edo" () {
@@ -1197,8 +1285,7 @@ $.targets({
       const limit = $("#limit > input").valueAsNumber,
             maxerror = $("#maxerror > input").valueAsNumber,
             edo = $("#edo > input").valueAsNumber,
-            { hexGrid } = this.getGridScope(),
-            getHex = (o, n) => [ ...hexGrid ].find(hex => hex.note().every((v, i) => v === (i ? n : o)));
+            { hexGrid } = this.getGridScope();
       $.all(".harmonic").forEach(el => el.remove());
       let hmap = new Map();
 
@@ -1246,7 +1333,7 @@ $.targets({
               const { hexGrid: grid } = app.getGridScope();
               let enhi = grid.getEnharmonics(steps).findIndex(({ interval }) => comp(interval[0])[0] === i && interval[1].length === 0);
               ~enhi && grid.renameKey(steps, enhi);
-              chord = new HexChord([ ...grid ][0], getHex(0, steps));
+              chord = new HexChord([ ...grid ][0], grid.getHexFromSteps(steps));
               this.setPointerCapture(e.pointerId); chord.start();
               chord.getHexes().forEach(hex => grid.scheduled.add(hex));
               grid.colour();
@@ -1270,40 +1357,20 @@ $.targets({
             h = temperings.length;
       diamondEl.style.setProperty("--size", 2 * h + 1);
       for (let i = 0; i <= h; i++) {
-        const cell = $.load("diamond-cell", "#diamond")[0][0],
+        const cell = $.load("interval-cell", "#diamond")[0][0],
               [ interval, note, width, button ] = $.all(":scope > *", cell);
         cell.style.gridArea = `${h + 1}/${2 * i + 1}/span 1/span 2`;
-        cell.dataset.interval = "1/1";
         interval.innerHTML = "<sup>1</sup>/<sub>1</sub>";
         note.innerText = "C";
-        width.innerText = 0;
-        button.dataset.steps = 0
+        width.innerText = button.dataset.steps = 0
+        button.dataset.interval = "1/1";
       }
-      $.queries({ "button": (hex => ({
-        pointerdown (e) {
-          $.all('.diamond-cell[data-interval="1/1"]').forEach(el => el.classList.add("activeEnharmonic"));
-          this.setPointerCapture(e.pointerId);
-          const { hexGrid: grid } = app.getGridScope();
-          hex = [ ...grid ][0];
-          hex.start();
-          grid.scheduled.add(hex);
-          grid.colour();
-        },
-        pointerup (e) {
-          $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
-          this.releasePointerCapture(e.pointerId);
-          hex.stop();
-          const { hexGrid: grid } = app.getGridScope();
-          grid.scheduled.delete(hex);
-          grid.colour();
-        }
-      }))() }, diamondEl);
       const ivs = [[[1,1],0]];
       for (let i = h; i > 0; i--) for (let j = 0; j < i; j++) {
-        const upperCell = $.load("diamond-cell", "#diamond",)[0][0],
-              lowerCell = $.load("diamond-cell", "#diamond",)[0][0],
-              [ upperInterval, upperNote, upperWidth ] = $.all(":scope > *", upperCell),
-              [ lowerInterval, lowerNote, lowerWidth ] = $.all(":scope > *", lowerCell),
+        const upperCell = $.load("interval-cell", "#diamond",)[0][0],
+              lowerCell = $.load("interval-cell", "#diamond",)[0][0],
+              [ upperInterval, upperNote, upperWidth, upperButton ] = $.all(":scope > *", upperCell),
+              [ lowerInterval, lowerNote, lowerWidth, lowerButton ] = $.all(":scope > *", lowerCell),
               num = h - i + j, den = j - 1,
               octave = Math.floor(Math.log2(temperings[num][0] / (temperings[den]?.[0] ?? 1))),
               div = gcd(temperings[num][0], (temperings[den]?.[0] ?? 1)),
@@ -1315,51 +1382,113 @@ $.targets({
               loSteps = (edo - upSteps) % edo;
         upperCell.style.gridArea = `${i}/${h - i + 2 + 2 * j}/span 1/span 2`;
         lowerCell.style.gridArea = `${2 * h + 2 - i}/${h - i + 2 + 2 * j}/span 1/span 2`;
-        upperCell.dataset.interval = `${upNum}/${upDen}`;
-        lowerCell.dataset.interval = `${loNum}/${loDen}`;
         if (!~ivs.findIndex(([n, d]) => n === upNum && d === upDen)) ivs.push([[upNum, upDen], upSteps]);
         if (!~ivs.findIndex(([n, d]) => n === loNum && d === loDen)) ivs.push([[loNum, loDen], loSteps]);
         upperInterval.innerHTML = `<sup>${upNum}</sup>/<sub>${upDen}</sub>`;
         lowerInterval.innerHTML = `<sup>${loNum}</sup>/<sub>${loDen}</sub>`;
         upperNote.innerText = noteFromFactors(decomp(upNum, upDen)).string;
         lowerNote.innerText = noteFromFactors(decomp(loNum, loDen)).string;
-        upperWidth.innerText = upSteps;
-        lowerWidth.innerText = loSteps;
-        [ [ upperCell, upSteps ], [ lowerCell, loSteps ] ].forEach(([ cellEl, steps ], half) => $.queries({ "button": (chord => ({
-            pointerdown (e) {
-              const { hexGrid: grid } = app.getGridScope(),
-                    enhs = grid.getEnharmonics(steps).map(({ interval }) => interval),
-                    enhi = enhs.findIndex(iv =>
-                      comp(iv[0])[0] === (temperings[half ? den : num]?.[0] ?? 1) &&
-                      comp(iv[1])[0] === (temperings[half ? num : den]?.[0] ?? 1));
-              $.all(`.diamond-cell:is(${enhs.map(iv => {  // TODO use steps instead
-                const n = comp(iv[0]), d = comp(iv[1]),
-                      oct = Math.floor(Math.log2(n) - Math.log2(d)),
-                      num = oct < 0 ? n << -oct : n, den = oct > 0 ? d << oct : d;
-                return `[data-interval="${num}/${den}"]`
-              })})`)
-                .forEach(el => el.classList.add("activeEnharmonic"));
-              ~enhi && grid.renameKey(steps, enhi);
-              chord = new HexChord([ ...grid ][0], app.getGridScope().hexGrid.getHexFromSteps(steps));
-              this.setPointerCapture(e.pointerId);
-              chord.start();
-              chord.getHexes().forEach(hex => grid.scheduled.add(hex));
-              // debugger
-              grid.colour();
-            },
-            pointerup (e) {
-              $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
-              this.releasePointerCapture(e.pointerId);
-              chord.stop();
-              const { hexGrid: grid } = app.getGridScope();
-              chord.getHexes().forEach(hex => grid.scheduled.delete(hex));
-              grid.colour();
-            }
-          }))() }, cellEl))
+        upperButton.dataset.interval = `${upNum}/${upDen}`;
+        lowerButton.dataset.interval = `${loNum}/${loDen}`;
+        upperWidth.innerText = upperButton.dataset.steps = upSteps;
+        lowerWidth.innerText = lowerButton.dataset.steps = loSteps
       }
-      this.intervals = group(group(ivs, ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v), ([a], [b]) => a.some(k => non2(k) === 1) === b.some(k => non2(k) === 1))
-        .sort((ivs, jvs) => ivs.length > jvs.length).map(ivs => ivs.sort(() => 2 * Math.random() > 1)).flat()
+      this.intervals = group(ivs, ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v).sort(([, a], [, b]) => a > b);
+      app.emit("resize", true);
       hexGrid.redraw(true)
+
+      // Interval table
+      const ivTable = $("#interval-table");
+      $.all(":scope > *", ivTable).forEach(el => el.remove());
+      const hs = [...hmap.keys()];
+      ivTable.style.setProperty("--harms", hs.length);
+      ivTable.style.setProperty("--edo", edo);
+      tableLegendEl = $.load("interval-th", "", ivTable)[0][0].innerHTML = "Steps";
+      hs.forEach((p, k) => {
+        const el = $.load("interval-th", "", ivTable)[0][0];
+        el.classList.add("column-head");
+        el.style.gridColumnStart = k + 2;
+        $("span", el).innerText = p
+      })
+      for (k = 0; k < edo; k++) {
+        const el = $.load("interval-th", "", ivTable)[0][0];
+        el.classList.add("row-head");
+        el.style.gridRowStart = k + 2;
+        $("span", el).innerText = k
+      }
+      for (let steps = 0; steps < edo; steps++) hexGrid.getLabelsFromSteps(steps)
+        .forEach(({ interval: iv, label, noteClass }) => {
+          const [ n, d ] = iv.map(side => side.reduce(([b, l], [n, d]) =>
+                  [b * BigInt(n) ** BigInt(d), l + Math.log2(n) * d], [1n, 0]))
+                  .reduce(([bn, ln], [bd, ld]) => {
+                    const oct = BigInt(Math.floor(ln - ld));
+                    return [oct < 0 ? bn << -oct : bn, oct > 0 ? bd << oct : bd]
+                  }),
+                curh = noteClass.match(/\d{1,2}/g)
+                  ?.map(s => parseInt(s)).sort((a, b) => a < b)[0] ?? (steps ? 3 : 1);
+          let td = $(`.interval-td[data-cell="${steps},${curh}"]`);
+          if (!td) {
+            td = $.load("interval-td", "", ivTable)[0][0];
+            td.style.gridArea = steps === 0 ?
+              `2/2/span 1/span ${hs.length}` :
+              `${steps + 2}/${hs.findIndex(h => h % curh === 0) + 2}`;
+            td.dataset.cell = `${steps},${curh}`
+          }
+          const cell = $.load("interval-cell", "", td)[0][0],
+                [ interval, note, width, button ] = $.all(":scope > *", cell);
+          if (steps === 0) cell.id = "table-unison";
+          interval.innerHTML = `<sup>${n}</sup>/<sub>${d}</sub>`;
+          note.innerText = label;
+          width.innerText = button.dataset.steps = steps
+          button.dataset.interval = `${n}/${d}`;
+        })
+
+      // Play interval buttons
+      $.queries({
+        '.interval-display button[data-steps="0"]': (hex => ({
+          pointerdown (e) {
+            this.setPointerCapture(e.pointerId);
+            if (this.closest("#diamond"))
+              $.all('.interval-display button[data-steps="0"]').forEach(el => el.parentElement.classList.add("activeEnharmonic"));
+            const { hexGrid: grid } = app.getGridScope();
+            (hex = [ ...grid ][0]).start();
+            grid.scheduled.add(hex);
+            grid.colour();
+          },
+          pointerup (e) {
+            $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
+            hex.stop();
+            const { hexGrid: grid } = app.getGridScope();
+            grid.scheduled.delete(hex);
+            grid.colour();
+            this.releasePointerCapture(e.pointerId);
+          }
+        }))(),
+        '.interval-display button:not([data-steps="0"])': (chord => ({
+          pointerdown (e) {
+            this.setPointerCapture(e.pointerId);
+            const { hexGrid: grid } = app.getGridScope(),
+                  steps = parseInt(this.dataset.steps),
+                  [n, d] = this.dataset.interval.split("/").map(v => non2(parseInt(v))),
+                  enhi = grid.getEnharmonics(steps).findIndex(({ interval: iv }) => comp(iv[0])[0] === n && comp(iv[1])[0] === d);
+            $.all(`button[data-steps="${steps}"]`, this.closest(".interval-display"))
+              .forEach(el => el.parentElement.classList.add("activeEnharmonic"));
+            ~enhi && grid.renameKey(steps, enhi);
+            chord = new HexChord([ ...grid ][0], app.getGridScope().hexGrid.getHexFromSteps(steps));
+            chord.start();
+            chord.getHexes().forEach(hex => grid.scheduled.add(hex));
+            grid.colour();
+          },
+          pointerup (e) {
+            $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
+            const { hexGrid: grid } = app.getGridScope();
+            chord.stop();
+            chord.getHexes().forEach(hex => grid.scheduled.delete(hex));
+            grid.colour();
+            this.releasePointerCapture(e.pointerId);
+          }
+        }))()
+      })
     },
 
     "set-colour" (harm, colour, isBlackKeys) {
@@ -1547,7 +1676,7 @@ $.queries({
     app.emit("change-keyboard-lattice");
     const selEl = $("#orientation > select");
     if (selEl.children.length) {
-      app.emit("resize");
+      app.emit("resize", true);
       app.getGridScope().hexGrid.redraw(true);
       selEl.showPicker();
     }
@@ -1555,14 +1684,14 @@ $.queries({
   "#orientation > select": { change () {
     const { hexGrid } = app.getGridScope();
     hexGrid.setOrientation(...JSON.parse(`[${this.value}]`));
-    app.emit("resize");
+    app.emit("resize", true);
     hexGrid.redraw(true);
     this.focus()
   } },
   "#unit > input": { change () {
     const { hexGrid } = app.getGridScope();
     hexGrid.unit = this.valueAsNumber;
-    app.emit("resize");
+    app.emit("resize", true);
     hexGrid.redraw(true)
   } },
   ":is(#limit, #maxerror) > input": { change () { app.emit("update-mapping") } },
