@@ -103,6 +103,7 @@ body {
       align-items: center }
       #breadcrumb-text { font-size: small }
       #breadcrumb-text::before { content: "// " }
+      #breadcrumb-text > :nth-last-child(n+2)::after { content: " ⮞ " }
         #menu-actions > :nth-last-child(n+2) { margin-right: .5em }
     form {
       display: flex;
@@ -142,6 +143,14 @@ body {
             background-color: #ddd;
             color: #222 }
           .choice > label:has(input[type="radio"]:checked) { border-bottom: 1px solid }
+          #interval-view {
+            display: flex;
+            flex-flow: row;
+            justify-content: stretch;
+            width: 100% }
+            #interval-view > div {
+              flex: 1;
+              text-align: right }
           .interval-display { display: none }
           .choice:has(label#diamond-choice > input[type="radio"]:checked) ~ #diamond-wrapper,
           .choice:has(label#table-choice > input[type="radio"]:checked) ~ #ivtable-wrapper { display: block }
@@ -192,6 +201,11 @@ body {
                 background-color: #222;
                 width: calc(100% - .25em);
                 padding: .25em }
+        #commas { display: flex }
+          #loading-commas {
+            display: none;
+            order: 9999 }
+          #loading-commas.activeLoading { display: block }
         #track-file {
           display: flex;
           flex-flow: row;
@@ -318,12 +332,16 @@ body {
         </fieldset>
         <fieldset>
           <legend>Harmonic mapping</legend>
-          <label id="limit">Harmonic limit: <input type="number" value="9" min="3" max="51" step="2"></label>
+          <label id="limit">Harmonic limit: <input type="number" value="9" min="3" step="2"></label>
           <label id="maxerror">Maximum error: <input type="number" value="30" min="0" max="100"> ¢</label>
           <div id="mapping"></div>
           <div id="interval-view" class="choice">
             <label id="diamond-choice"><input type="radio" name="interval-view" checked>Tonality diamond</label>
             <label id="table-choice"><input type="radio" name="interval-view">Interval table</label>
+            <div>
+              <span>Temperament</span>
+              <button id="generate-temperaments" type="button">💡</button>
+            </div>
           </div>
           <div id="diamond-wrapper" class="interval-display"><div id="diamond"></div></div>
           <div id="ivtable-wrapper" class="interval-display"><div id="interval-table"></div></div>
@@ -343,6 +361,19 @@ body {
             </select>
             <button type="button">Choose</button>
           </label>
+        </fieldset>
+      </form>
+    </li>
+    <li id="temperaments">
+      <form>
+        <fieldset>
+          <legend>Temperament</legend>
+          <div id="commas">
+            <div id="loading-commas">⌛</div>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Chords</legend>
         </fieldset>
       </form>
     </li>
@@ -376,6 +407,9 @@ body {
       <button type="button" data-action="Delete">Delete</button>
     </form>
   </dialog>
+  <template id="breadcrumb-level">
+    <span></span>
+  </template>
   <template id="menu-action">
     <button type="button"></button>
   </template>
@@ -403,6 +437,11 @@ body {
   <template id="interval-td">
     <div class="interval-td"> </div>
   </template>
+  <template id="comma">
+    <div class="comma">
+      <span class="ratio"></span> = 1 (<span class="factorisation"></span>), size <span class="size"></span>
+    </div>
+  </template>
   <script src="js/machine.js"></script>
   <script>
 
@@ -417,10 +456,11 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
       between = (min, max, val) => val <= max && val >= min,
       mod = (n, m) => ((n % m) + m) % m,
       gcd = (a, b) => !b ? a : gcd(b, a % b),
+      gcd_ = (...ar) => ar.reduce((acc, n) => gcd(acc, n)),
       non2 = h => h / (h & (~(h - 1))),
 
       group = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) => {
-        const i = a.findIndex(vs => cmp(vs[0], v));
+        const i = a.findIndex(vs => cmp(vs[0], v));  // quadratic in cmp
         return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
       }, []),
       decomp = (...iv) => iv.map(r => {
@@ -452,7 +492,7 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
       },
       scaleVolume = value => value && 10 ** (2 * (value / 100 - 1)),
 
-      noteFromFactors = (() => {
+      noteFromFactors = (() => {  // Any way to generalise? Use u/e26c and u/e26d ?
         const pythag = "FCGDAEB".split("").reduce((acc, key, i) => ({ ...acc, [i - 1]: key }), {}),
               hejiRatios = {
                 5: [[[3, 4]], [[5, 1]]],
@@ -545,7 +585,7 @@ const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
 // Keyboard grid
 
 class HexButton {
-  #g; #h; #grid; #osc; #volume; #noteClass; #label; isGhost
+  #g; #h; #grid; #key; #osc; #volume; #noteClass; isGhost
 
   constructor (g, h, grid, isGhost = false) {
     this.#g = g;
@@ -592,7 +632,7 @@ class HexButton {
   getNoteClass () { return this.#noteClass }
 
   setNoteClass (noteClass) { this.#noteClass = noteClass }
-  setNoteLabel (label) { this.#label = label }
+  setKey (key) { this.#key = key }
 
   note () {
     const n = this.#g * this.#grid.gstep + this.#h * this.#grid.hstep, { edo } = this.#grid;
@@ -635,9 +675,10 @@ class HexButton {
     } else drawHex(bgColour = noteColours.default);
     ctx.font = (isGhost ? "bold  " : "") + (.5 * this.#grid.r) + "px HEJI2, ArbutusSlab";
     const [ x, y ] = this.centre(),
-          { width } = ctx.measureText(this.#label);
+          { label } = this.#key.getLabel(),
+          { width } = ctx.measureText(label);
     ctx.fillStyle = isGhost ? bgColour : contrast(bgColour);
-    ctx.fillText(this.#label ?? this.note()[1], x - width / 2, y)
+    ctx.fillText(label ?? this.note()[1], x - width / 2, y)
   }
 
   start () {
@@ -815,7 +856,9 @@ class HexGrid {
     } else return [ Math.floor((a - band + 1) / 2), band ]
   }
 
-  classifyKeys (force) {  // BUG?: will not work when first harmonic is 15, 21, 35 or 45
+  // TODO for each basis interval in order, primes then nonprimes, until no keys left,
+  //   place *all intervals* up/down one basis interval onto new keys until idempotent
+  classifyKeys (force) {
     if (this.#keys && !force) return;
     const { edo, hmap } = this,
           [p0, prad] = hmap.length ? decomp(hmap[0][0])[0][0] : [], pstep = hmap[0]?.[1];
@@ -845,10 +888,8 @@ class HexGrid {
     result.forEach(ivs => ivs?.forEach(iv => iv?.forEach(fs => fs.sort(([a], [b]) => a > b))));
     for (let hex of this) {
       const key = hex.note()[1], labels = [];
-      if (result[key] === undefined) {
-        hex.setNoteClass("default");
-        hex.setNoteLabel(key)
-      } else for (let i = 0, ivs = result[key]; i < ivs.length; i++) {
+      if (result[key] === undefined) hex.setNoteClass("default");
+      else for (let i = 0, ivs = result[key]; i < ivs.length; i++) {
         const { accid, string: label } = noteFromFactors(ivs[i]);
         let noteClass = between(6, 10, mod(accid[3], 12)) ? "black" : "white";
         const ot = ivs[i][0].findLast(([p]) => p !== 3);
@@ -857,8 +898,7 @@ class HexGrid {
         if (ut) noteClass += ut[0] + "u";
         labels.push({ label, noteClass, interval: ivs[i] })
         if (i) continue;
-        hex.setNoteClass(noteClass);
-        hex.setNoteLabel(label)
+        hex.setNoteClass(noteClass)
       }
       this.#keys.has(key) ? this.#keys.get(key).addNote(hex) :
         this.#keys.set(key, new HexKey(hex, labels));
@@ -905,19 +945,334 @@ class HexChord {
 }
 
 class HexKey {
-  #labels; #notes
+  #labels; #notes; #labelIndex = 0
   constructor (note, labels) {
     this.#notes = new Set([note]);
+    note.setKey(this);
     this.#labels = labels
   }
-  addNote (note) { this.#notes.add(note) }
+  addNote (note) {
+    this.#notes.add(note);
+    note.setKey(this)
+  }
   getNotes () { return [ ...this.#notes ] }
   getLabels () { return this.#labels.slice() }
+  getLabel () { return this.#labels[this.#labelIndex] }
   setLabel (i) { this.#notes.forEach(note => {
+    if (i >= this.#labels.length) return false;
+    this.#labelIndex = i;
     const { label, noteClass } = this.#labels[i];
-    note.setNoteClass(noteClass);
-    note.setNoteLabel(label)
+    note.setNoteClass(noteClass)
   }) }
+}
+
+
+
+// Harmonic mapping
+
+class Common {
+  static #allPrimes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ]
+  
+  static between = (min, max, val) => val <= max && val >= min
+  static non2 = h => h / (h & (~(h - 1)))
+  static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
+  static group = (ar, groupBy = x => x) => ar.reduce((a, v) => {
+    const k = groupBy(v);
+    a[k] = (a[k] ?? []).concat([v]);
+    return a
+  }, {})
+  static decomp = (...iv) => iv.map(r => { // use 2s?
+    let ivh = this.non2(r), raw = [], res = new Map(), i = 1;
+    while (ivh !== 1) {
+      const p = this.#allPrimes[i];
+      if (this.gcd(ivh, p) === 1) i++;
+      else { raw.push(p); ivh /= p }
+    }
+    for (let [ k, v ] of Object.entries(this.group(raw))) res.set(parseInt(k), v.length)
+    return res
+  })
+}
+
+class HarmonicMapping {
+
+  // Static
+  static #isPrime (pdec) {
+    let sum = 0;
+    for (let [, rad] of pdec) sum += rad;
+    return sum === 1
+  }
+  static #transp = mat => Array(mat[0].length).fill()
+    .reduce((row, _, i) => row.concat([mat.reduce((cols, row) =>
+      cols.concat([row[i]]), [])]), [])
+
+  static #invDet (mat, decs, ps) { // TDOD: use leading value
+    const
+      rows = mat.length, cols = mat[0].length,
+      aug = mat.map((row, i) => row.concat(Array(rows).fill(0).with(i, 1)));
+    if (mat.length === 0) return null;
+    let det = 1, lcm = 1;
+    for (let i = 0; i < rows; i++) {
+      if (aug[i][i] === 0) {
+        let m = 0;
+        for (m = i + 1; m < rows; m++) if (aug[m][i] !== 0) {
+          ([ aug[m], aug[i], decs[m], decs[i] ] = [ aug[i], aug[m], decs[i], decs[m] ]);
+          for (let j = 0; j < rows; j++)
+            ([ aug[j][cols + m], aug[j][cols + i] ] = [ aug[j][cols + i], aug[j][cols + m] ]);
+          det = -det;
+          break
+        }
+        if (m === rows) return {}
+      }
+      const val0 = aug[i][i];
+      lcm = val0 / Common.gcd(lcm, val0);
+      for (let j = 0; j < rows; j++) if (i !== j) {
+        const val1 = aug[j][i], c = Common.gcd(val0, val1);
+        if (i < ps.length) det *= val0 / c;
+        for (let k = 0; k < rows + cols; k++)
+          aug[j][k] = (val0 * aug[j][k] - val1 * aug[i][k]) / c;
+      }
+    }
+    mat = this.#transp(aug);
+    det = mat.slice(0, ps.length).reduce((acc, row, i) => acc * row[i], 1) / det
+    const degen = aug.findIndex(row => !row.slice(0, cols).some(x => x));
+    if (~degen) aug.splice(degen);
+    // console.log("==>", JSON.stringify(decs.map(([h]) => h)), aug.map(JSON.stringify));
+    return {
+      det, lcm,
+      mods: aug.slice(0, ps.length).map((row, i) => [ ps[i], lcm / row[i] ]),
+      inv: mat.slice(cols, cols + ps.length).map((row, i) => [ decs[i][0], row ]),
+      verify: mat.slice(aug.length, cols).map((vec, i) => [ ps[aug.length + i], vec ])
+    }
+  }
+
+  static * #subsets (args, { minlength = 1, maxlength = args.length } = {}) {
+    for (let n = minlength; n <= maxlength; n++) {
+      let max = -1, counter = [];
+      while (max + n <= args.length) {
+        if (~max) yield counter.map(k => args[k]);
+        const i = counter.findLastIndex((j, k) => j < max + k);
+        if (~i) counter[i]++;
+        else counter = Array(n).fill().map((_, j) => j).with(-1, n + max++);
+      }
+    }
+  }
+
+  // Instance
+  maxHarmonic = Infinity//app.maxHarmonic; // Where to put primes?
+  edo; rawHarmonicList; harmonicList = new Map()
+  nonHarmonics = new Set() // Cached blacklist
+  #primes; #basisPrimes; params; index; verify; stepsBasis
+  #properIntervalSet = new IntervalSet(this); intervalSet = new IntervalSet(this)
+  ready = false
+  mask // TODO: for temperings
+
+  constructor (rawHarmonicList, edo) { // [ odd ], number
+    if (edo < 0 || edo % 1 || rawHarmonicList.some(h => !Common.between(3, this.maxHarmonic, h) || h % 2 !== 1))
+      throw new Error("Bad mapping");
+    this.edo = edo;
+    this.rawHarmonicList = rawHarmonicList;//.sort((a, b) => a > b);
+
+    const
+      { true: primeDecs = [], false: compositeDecs = [] } = Common.group(
+        Common.decomp(...rawHarmonicList).map((pdec, i) => [ rawHarmonicList[i], pdec ]),
+        ([, a]) => HarmonicMapping.#isPrime(a)),
+      decs = primeDecs.concat(compositeDecs), ds = decs.map(([h]) => h),
+      ps = [ ...decs.reduce((acc, [, pdec]) => {
+        for (let [p] of pdec) acc.add(p);
+        return acc
+      }, new Set()).values() ].sort((a, b) => a > b);
+    if (compositeDecs.length) {
+      let system, best = 0, dims = -1;
+      const cols = ps.length;
+      for (let hs of HarmonicMapping.#subsets(decs)) { // TODO: memoise?
+        const mat = [], rows = hs.length;
+        for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
+        if (rows < cols) mat.splice(Infinity, Infinity, ...Array(cols - rows).fill().map(() => mat.at(-1).slice()));
+        if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
+          Array(rows - cols).fill(0).with(i - cols, -1))));
+        // console.log("<==", mat.map(JSON.stringify));
+        const { mods, inv, det, lcm, verify } = HarmonicMapping.#invDet(mat, hs, ps);
+        if (det === undefined) continue;
+        // console.log(JSON.stringify(hs.map(([h]) => h)), det, Math.abs(det) === 1 ? "is basis" : "is not basis", inv.map(JSON.stringify), mods.map(JSON.stringify),
+        //   verify.map(JSON.stringify), JSON.stringify(ps))
+        if ((best !== 0 && Math.abs(det) < Math.abs(best)) || (best === 0 && (det !== 0 || inv.length > dims)))
+          ([system, best, dims] = [hs, det, inv.length]);
+        if (Math.abs(det) === 1) break;
+      }
+      const
+        hs = system.reduce((acc, [h], i) => {
+          const j = acc.findIndex(([p]) => p === h);
+          ([ acc[i], acc[j] ] = [ acc[j], acc[i] ]);
+          return acc
+        }, decs),
+        rows = hs.length, mat = [];
+      for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
+      if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
+        Array(rows - cols).fill(0).with(i - cols, -1))));
+
+      // Can I use det to exclude harmonics before running the counting function?
+      const { mods, inv, det, lcm, verify } = HarmonicMapping.#invDet(mat, hs, ps);
+      // console.log(JSON.stringify(hs.map(([h]) => h)), best, inv.map(JSON.stringify), lcm, mods.map(JSON.stringify), verify.map(JSON.stringify), JSON.stringify(ps));
+
+      this.index = system.map(([h]) => h);
+      this.params = ds.filter(d => !~system.findIndex(([h]) => h === d));
+      this.#primes = ps;
+      this.#basisPrimes = primeDecs.map(([h]) => h).filter(p => !~ps.findIndex(h => h === p));
+      // console.log(this.#primes, this.#basisPrimes)
+
+      // if underdetermined, the params must be provided
+      // if overdetermined, these components must be verified
+      this.verify = (...primeVec) => {
+        const
+          dps = primeVec.slice(0, decs.length),
+          vps = primeVec.slice(decs.length);
+        return verify.every(([p, vec], i) => dps.reduce((a, x, j) => a + x * vec[j] * (mods[j]?.[1] ?? 1), 0) === vps[i])
+      };
+
+      inv.forEach(([h, vec]) => this.harmonicList.set(h, new Harmonic(this, h,
+        (...params) => {
+          const rawNum = hs.reduce((a, _, i) => a + (params[i] ?? 0) * vec[i] * (mods[i]?.[1] ?? 1), 0);
+          return rawNum % lcm ? null : rawNum / lcm // Null means failure
+        }), true));
+      decs.filter(([d]) => !~inv.findIndex(([h]) => h === d))
+        .forEach(([h]) => this.harmonicList.set(h, new Harmonic(this, h, this.countingFn(h), true)));
+
+      // Generate all intervals
+      const withUnison = [1].concat(ds);
+      for (let n of withUnison) for (let d of withUnison) {
+        const params = Array(this.params.length).fill(0);
+        // params[this.params.findIndex(h => h === n)] = 1;
+        // params[this.params.findIndex(h => h === d)] = -1;
+        const iv = new Interval(this, n, d, params, true);
+        this.#properIntervalSet.add(iv);
+        this.intervalSet.add(iv)
+      }
+    } else {}
+    this.ready = true
+  }
+  countingFn (n, d) { //Null is failure
+    const pdec = Common.decomp(n)[0];
+    if (d) {
+      for (let [p, rad] of Common.decomp(d)[0]) if (pdec.has(p)) { // TODO move to Interval
+        const nrad = pdec.get(p);
+        if (nrad === rad) pdec.delete(p);
+        else pdec.set(p, nrad - rad)
+      } else pdec.set(p, -rad)
+    }
+    const
+      { params, index, harmonicList, verify } = this,
+      primes = this.#primes, basisPrimes = this.#basisPrimes,
+      countingFns = new Map();
+    for (let p of basisPrimes) {
+      if (!pdec.has(p)) continue;
+      else countingFns.set(p, () => pdec.get(p));
+      pdec.delete(p)
+    }
+    const primeVec = primes.map(p => pdec.get(p) ?? 0);
+    for (let [p] of pdec) if (!~primes.findIndex(q => q === p)) return null;
+    if (!verify(...primeVec)) return null;
+    return basisPrimes.concat(index).reduce((fn, h) => (...params) => {
+      const acc = fn(...params);
+      if (acc === null) return null;
+      const res = harmonicList.get(h).countingFn(...primeVec, ...params);
+      return res === null ? null : acc.concat([res])
+    }, () => [])
+  }
+  getProperIntervals () { return [ ...this.#properIntervalSet ] }
+  addInterval (interval) { intervalSet.add(interval) }
+  setSteps (stepsMap) {  // Map([[ harmonic, steps ]])
+    const { index } = this;
+    if (index.some(h => {
+      const s = stepsMap.get(h);
+      return s === undefined || s < 0 || s % 1
+    })) throw new Error("Could not set steps for mapping");
+    this.stepsBasis = stepsMap
+  }
+}
+
+class Harmonic {
+  #mapping; h; isBasis; countingFn
+  constructor (mapping, h, countingFn, isInitial = false) {
+    const existing = mapping.harmonicList.get(h);
+    if (existing) return existing;
+    this.#mapping = mapping;
+    this.h = h;
+    // Unison
+    if (h === 1) {
+      this.isBasis = false;
+      this.countingFn = () => Array(mapping.index.length).fill(0)
+    } else {
+      const
+        { harmonicList, nonHarmonics, index, ready } = mapping,
+        doErr = () => { throw new Error("Harmonic not in mapping") };
+      if (ready) {
+        countingFn = mapping.countingFn(h);
+        if (nonHarmonics.has(h) || countingFn === null) doErr();
+        this.isBasis = false;
+      } else this.isBasis = Boolean(~index.findIndex(v => v === h));
+      this.countingFn = countingFn
+    }
+
+  }
+}
+
+class Interval { // Check to add noteFromFactors
+  #mapping; n; d; params; octave; fraction; decomp; noteSpelling; isProper
+  octaveAdjust
+  constructor (mapping, n, d, params, isProper) {
+    const c = Common.gcd(n, d);
+    n = n / c;
+    d = d / c;
+    if (mapping.intervalSet.hasRatio(n, d)) return mapping.intervalSet.getRatio(n, d);
+    this.n = Common.non2(n);
+    this.d = Common.non2(d);
+    const octave = this.octave = Math.floor(Math.log2(n) - Math.log2(d));
+    this.octaveAdjust = octave;
+    this.#mapping = mapping;
+    this.params = params;
+    this.isProper = isProper;
+    this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
+    this.decomp = mapping.countingFn(n, d)(...params);
+    // this.noteSpelling = noteFromFactors([ n.primeDecomp, d.primeDecomp ])
+  }
+  withOctave (n) {
+    this.octaveAdjust = n;
+    return this
+  }
+  steps () {
+    const { index, stepsBasis, edo } = this.#mapping;
+    return this.decomp.reduce((acc, rad, i) => acc + stepsBasis.get(index[i]) * rad, 0) + this.octaveAdjust * edo
+  }
+}
+
+class IntervalSet {
+  #mapping; #rawMap // Map([[ number, Map([ number, interval ]) ]])
+  constructor (mapping, intervalList = []) {
+    this.#mapping = mapping;
+    this.#rawMap = new Map();
+    for (let interval of intervalList) this.add(interval)
+  }
+  add (interval) {
+    const { harmonicList } = this.#mapping,
+          { n, d } = interval, c = Common.gcd(n, d),
+          nMap = this.#rawMap.get(n / c) ?? this.#rawMap.set(n / c, new Map()).get(n / c);
+    if (!nMap.has(d / c)) nMap.set(d / c, interval)
+  }
+  has (interval) {
+    const { n, d } = interval;
+    return Boolean(this.#rawMap.get(n)?.has(d))
+  }
+  hasRatio (n, d) { return Boolean(this.#rawMap.get(Common.non2(n))?.has(Common.non2(d))) }
+  get (interval) {
+    const { n, d } = interval;
+    return this.#rawMap.get(n)?.get(d)
+  }
+  getRatio (n, d) {
+    const iv = this.#rawMap.get(Common.non2(n))?.get(Common.non2(d));
+    if (iv === undefined) return iv;
+    return iv.withOctave(Math.log2(n * iv.d / d / iv.n))
+  }
+  * [ Symbol.iterator ] () { for (let [g, s] of this.#rawMap) for (let [h, iv] of s) yield iv }
 }
 
 
@@ -969,12 +1324,13 @@ var app = new $.Machine({
       canvas: null,
       gridctx: null,
       hexGrid: null,
-      getGridScope: () => app.menuState[0] === "keyboard-settings" ? app.menuState[1] : app,
+      getGridScope: () => app.menuState.at(-2) === "keyboard-settings" ? app.menuState[1] : app,
       mousedown: false,
       audioctx: null,
       masterVolume: null,
 
       // Harmony
+      maxHarmonic: 51,
       temperings: null,
       intervals: null,
 
@@ -995,7 +1351,7 @@ $.targets({
 
   resize () {
     app.emit("resize", true);
-    app.getGridScope().hexGrid.redraw()
+    app.getGridScope().hexGrid.redraw(true)
   },
 
   contextmenu (e) { e.preventDefault() },
@@ -1007,8 +1363,8 @@ $.targets({
     if (e.target === canvas) 
       for (let { clientX, clientY, identifier } of e.changedTouches) {
         const x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop,
-              { hexGrid } = app.getGridScope()
-        if ((app.getGridScope().hexGrid.touches.has(identifier) || e.type === "touchstart") &&
+              { hexGrid } = app.getGridScope();
+        if (hexGrid && (hexGrid.touches.has(identifier) || e.type === "touchstart") &&
           (hexGrid.hasHex(...hexGrid.getCoord(x, y)) || e.type === "touchend"))
           app.emit("press", e.type.slice(5), x, y, identifier)
       }
@@ -1035,6 +1391,11 @@ $.targets({
     }
   },
 
+  document: { fonts: { loadingdone () {
+    app.emit("resize", true);
+    app.getGridScope().hexGrid.redraw(true)
+  } } },
+
   app: {
 
     init () {
@@ -1042,7 +1403,7 @@ $.targets({
       this.gridctx = this.canvas.getContext("2d");
       new ResizeObserver(() => {
         this.emit("resize", true);
-        this.getGridScope().hexGrid.redraw()
+        this.getGridScope().hexGrid.redraw(true)
       }).observe($("main"));
       const ivTable = $("#interval-table");
       new ResizeObserver(() => {
@@ -1054,6 +1415,7 @@ $.targets({
             masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
       masterVolume.gain.value = scaleVolume($("#volume > input").valueAsNumber);
+      $("#limit").max = this.maxHarmonic;
       this.octaves = $("#octaves > input").valueAsNumber;
       $("#track-select > select").selectedIndex = 0;
       this.emit("load-presets")
@@ -1418,8 +1780,8 @@ $.targets({
       }
       for (let steps = 0; steps < edo; steps++) hexGrid.getLabelsFromSteps(steps)
         .forEach(({ interval: iv, label, noteClass }) => {
-          const [ n, d ] = iv.map(side => side.reduce(([b, l], [n, d]) =>
-                  [b * BigInt(n) ** BigInt(d), l + Math.log2(n) * d], [1n, 0]))
+          const [ n, d ] = iv.map(side => side.reduce(([big, log], [p, rad]) =>
+                  [big * BigInt(p) ** BigInt(rad), log + Math.log2(p) * rad], [1n, 0]))
                   .reduce(([bn, ln], [bd, ld]) => {
                     const oct = BigInt(Math.floor(ln - ld));
                     return [oct < 0 ? bn << -oct : bn, oct > 0 ? bd << oct : bd]
@@ -1496,6 +1858,14 @@ $.targets({
       else this.noteColours[harm] = colour;
       localStorage.setItem("noteColours", JSON.stringify(this.noteColours));
       this.getGridScope().hexGrid.redraw()
+    },
+
+
+
+    // Temperaments
+
+    "generate-temperaments" () {
+
     },
 
 
@@ -1583,15 +1953,29 @@ $.targets({
     // Menu
 
     "menu-select" (which, ...data) {
+      const breadcrumbText = {
+              "keyboard-settings": "Keyboard ⚙️",
+              "temperaments": "Temperament 💡",
+              "track-editor": "Track ✎"
+            };
       this.emit("menu-cancel");
-      this.menuState = [which];
+      this.menuState = which.concat([null]);
+      const menuLeaf = which.at(-1);
       $("body").classList.add("menuActive");
       $("menu > .activeMenu")?.classList.remove("activeMenu");
-      $("#" + which).classList.add("activeMenu");
+      $("#" + menuLeaf).classList.add("activeMenu");
+      $.all("#breadcrumb-text > *").forEach(el => el.remove());
+      which.forEach((level, i) => {
+        const levelEl = $.load("breadcrumb-level", "#breadcrumb-text")[0][0];
+        levelEl.innerText = breadcrumbText[level];
+        if (i < which.length - 1) levelEl.dataset.menu = which.toSpliced(i + 1)
+      });
+      $.queries({ "#breadcrumbs > :nth-last-child(n+2)": { click () {
+        app.emit("menu-select", this.dataset.menu.split(","))
+      } } });
       let cancelEl, applyEl;
-      switch (which) {
+      switch (menuLeaf) {
         case "keyboard-settings":
-          $("#breadcrumb-text").innerText = "Keyboard ⚙️";
           cancelEl = $.load("menu-action", "#menu-actions")[0][0];
           Object.assign(cancelEl, { innerText: "Cancel", id: "keyboard-settings-cancel" });
           applyEl = $.load("menu-action", "#menu-actions")[0][0];
@@ -1608,8 +1992,10 @@ $.targets({
           this.emit("fill-keyboard-settings", this.hexGrid);
           this.emit("update-mapping");
           break;
+        case "temperaments":
+          this.emit("generate-temperaments")
+          break;
         case "track-editor":
-          $("#breadcrumb-text").innerText = "Track ✎";
           $("#track-controls").classList.add("activeControls");
           $("#track-select > select").namedItem(data[0] ?? "New").selected = true;
           closeEl = $.load("menu-action", "#menu-actions")[0][0];
@@ -1662,13 +2048,13 @@ $.queries({
 
   "#keyboard-settings-button": { click () {
     if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
-    else app.emit("menu-select", "keyboard-settings")
+    else app.emit("menu-select", [ "keyboard-settings" ])
   } },
   "#keyboard-settings > form": { change (e) { $("#keyboard-select > select").value = "Custom" } },
   "#keyboard-select > select": { change () { app.emit("load-keyboard") } },
   "#edo > input": { change () {
     app.emit("change-keyboard-edo");
-    app.emit("resize");
+    app.emit("resize", true);
     app.getGridScope().hexGrid.redraw(true);
     this.focus()
   } },
@@ -1695,10 +2081,11 @@ $.queries({
     hexGrid.redraw(true)
   } },
   ":is(#limit, #maxerror) > input": { change () { app.emit("update-mapping") } },
+  "#generate-temperaments": { click () { app.emit("menu-select", [ "keyboard-settings", "temperaments" ]) } }, 
 
   "#track-select > select": { change () {
     if (this.value === "None") app.emit("menu-cancel");
-    else app.emit("menu-select", "track-editor", ...(this.value === "New" ? [] : [ this.value ]))
+    else app.emit("menu-select", [ "track-editor" ], ...(this.value === "New" ? [] : [ this.value ]))
   } },
   "#track-name-text": { click () {
     $("#track-name").classList.add("editingTrackName");
