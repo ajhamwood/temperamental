@@ -10,8 +10,7 @@
   <style>
 @font-face {
   font-family: HEJI2;
-  src: url('fonts/HEJI2Text.woff2') format('woff2'),
-       url('fonts/HEJI2Text.woff') format('woff');
+  src: url('fonts/HEJI2Text.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -20,9 +19,16 @@
   ascent-override: 0%;
   descent-override: 0% }
 @font-face {
+  font-family: Netto;
+  src: url('fonts/NettoIcons.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 0%;
+  descent-override: 0% }
+@font-face {
   font-family: ArbutusSlab;
-  src: url('fonts/ArbutusSlab-Regular.woff2') format('woff2'),
-       url('fonts/ArbutusSlab-Regular.woff') format('woff');
+  src: url('fonts/ArbutusSlab-Regular.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap }
@@ -33,48 +39,59 @@
   #track-editor > form > textarea {
     width: 20em;
     min-width: 10em }
-  .interval-display, #mapping { max-width: calc(50dvw - 3.5em - 2px) } }
+  .interval-display, #mapping { max-width: calc(50dvw - 3.5em - 4px) } }
 @media (max-aspect-ratio: 1) {
   body.menuActive { grid: "nav" auto "menu" min-content "main" auto / 100dvw }
   menu { max-height: calc(50dvh - 4.9em) }
   #track-editor > form > textarea {
     width: 100% !important;
     resize: vertical }
-  .interval-display, #mapping { max-width: calc(100dvw - 3.5em - 2px) } }
+  .interval-display, #mapping { max-width: calc(100dvw - 3.5em - 4px) } }
 
-html, body { height: 100dvh }
-body, button, select, input, textarea { font-family: HEJI2, ArbutusSlab }
+html, body {
+  height: 100dvh }
+body, button, select, input, textarea { font: min(16px, 2.7dvw) HEJI2, ArbutusSlab, Netto }
 body {
   margin: 0;
   background-color: #222;
   color: #ddd;
   display: grid;
   grid: "nav" auto "main" 1fr / 100dvw;
-  overflow: hidden;
-  touch-action: none }
+  overflow: hidden }
   nav {
+    background-color: #222;
     grid-area: nav;
     display: flex;
-    flex-flow: column }
+    flex-flow: column;
+    user-select: none }
     nav > * {
       padding: .5em;
       flex-flow: row;
       justify-content: space-between;
       align-items: center }
-    #controls { display: flex }
-      #controls > :nth-child(3) {
-        flex: 1;
-        text-align: center }
-        #controls > :nth-last-child(n+2),
-        #track-controls > * { margin-right: .5em }
+    #controls {
+      display: grid;
+      grid-template-columns: auto auto 1fr repeat(3, auto);
+      grid-gap: 0 .5em }
+      #controls > * { flex: max-content 0 }
+      #controls > :nth-last-child(n+2),
       #volume > * { vertical-align: middle }
-      #track-controls { display: none }
+      #volume > input { max-width: 20dvw }
+      #info {
+        width: 100%;
+        min-width: max-content;
+        text-align: center }
+        #edo-info::after { content: "EDO" }
+        #limit-info::after { content: "-limit" }
+      #fullscreen.active::before { content: "🗕" }
+      #fullscreen:not(.active)::before { content: "🗖" }
+    #controls:has(.activeControls) { grid-template-columns: auto auto 1fr repeat(4, auto) }
+    #track-controls { display: none }
+      #track-controls > * { margin-right: .5em }
       #track-controls.activeControls { display: flex }
-        #track-play:not(.trackPlaying)::before { content: "Play ▶" }
+        #track-play:not(.trackPlaying)::before { content: "Play ⏵" }
         #track-play.trackPlaying::before { content: "Pause ⏸" }
-      #edo-info::after { content: "EDO" }
-      #limit-info::after { content: "-limit" }
-    nav:focus-within:not(:has(:is(#refresh, #panic, #volume > input):focus)) > #dropdown,
+    nav:focus-within:not(:has(:is(#refresh, #panic, #fullscreen, #volume > input):focus)) > #dropdown,
     body.menuActive #dropdown { display: flex }
     #dropdown {
       display: none;
@@ -83,6 +100,7 @@ body {
         #dropdown > * > * { vertical-align: middle }
       #track-select { flex: 1 }
   menu {
+    background-color: #222;
     padding: 0;
     margin: 0;
     min-height: 0;
@@ -91,7 +109,7 @@ body {
     menu > li { padding: .5em }
     menu > li:not(#breadcrumbs) {
       overflow-y: scroll;
-      height: calc(100% - 3.4em);
+      height: calc(100% - 3.6em);
       display: none }
     menu > li.activeMenu { display: list-item !important }
     #breadcrumbs {
@@ -101,9 +119,9 @@ body {
       flex-flow: row;
       justify-content: space-between;
       align-items: center }
-      #breadcrumb-text { font-size: small }
+      #breadcrumb-text { font-size: .8em }
       #breadcrumb-text::before { content: "// " }
-      #breadcrumb-text > :nth-last-child(n+2)::after { content: " ⮞ " }
+      #breadcrumb-text > :nth-last-child(n+2)::after { content: " › " }
         #menu-actions > :nth-last-child(n+2) { margin-right: .5em }
     form {
       display: flex;
@@ -113,23 +131,28 @@ body {
       fieldset {
         display: flex;
         flex-flow: column;
-        align-items: start;
         flex: auto }
         fieldset > * { padding: .3em }
-          input[type="number"] { width: 3.5em }
           :is(#scale, #mapping) > * {
             display: block;
             margin-left: 1em }
             :is(.harmonic, .interval-cell) > button { cursor: pointer }
-          #mapping { display: grid }
+          #mapping {
+            display: grid;
+            gap: .3em;
+            width: fit-content }
             .harmonic {
               grid-template-columns: subgrid;
               display: grid !important;
               grid-column: span 9;
-              gap: .3em }
+              gap: .3em;
+              align-items: center }
               .harmonic > :not(input) { text-align: end }
-              .harmonic:not(.prime) > input, .harmonic.prime > span.steps,
-              .harmonic.prime.power > input.hcolour  { display: none }
+              .harmonic:not(.basis) > input, .harmonic.basis > span.steps,
+              .harmonic.prime.power:not(.basis) > input.hcolour  { display: none }
+              .hcolour {
+                max-height: 6dvw;
+                height: 100% }
               #error::after { content: "¢" }
           .choice {
             display: flex;
@@ -144,13 +167,10 @@ body {
             color: #222 }
           .choice > label:has(input[type="radio"]:checked) { border-bottom: 1px solid }
           #interval-view {
-            display: flex;
-            flex-flow: row;
-            justify-content: stretch;
+            display: grid;
+            grid: auto / auto auto 1fr;
             width: 100% }
-            #interval-view > div {
-              flex: 1;
-              text-align: right }
+            #interval-view > div { text-align: right }
           .interval-display { display: none }
           .choice:has(label#diamond-choice > input[type="radio"]:checked) ~ #diamond-wrapper,
           .choice:has(label#table-choice > input[type="radio"]:checked) ~ #ivtable-wrapper { display: block }
@@ -176,7 +196,7 @@ body {
               place-items: center }
               .table-border {
                 position: absolute;
-                z-index: -1 }
+                pointer-events: none }
               .column-head > span::after { content: "-limit" }
               .column-head > .table-border {
                 border-left: 1px solid #ddd8;
@@ -187,7 +207,8 @@ body {
                 border-top: 1px solid #ddd8;
                 height: calc(100% + .5em);
                 justify-self: start;
-                width: var(--table-width) }
+                width: var(--table-width);
+                z-index: 2 }
             .interval-td {
               display: flex;
               flex-flow: column;
@@ -197,10 +218,11 @@ body {
             .interval { width: max-content }
               #table-unison {
                 text-align: center;
-                margin: calc(1px - .25em) 0 calc(1px - .25em) 0;
+                margin: -.25em -1px -.25em 0;
                 background-color: #222;
                 width: calc(100% - .25em);
-                padding: .25em }
+                padding: .25em;
+                z-index: 1 }
         #commas { display: flex }
           #loading-commas {
             display: none;
@@ -250,6 +272,7 @@ body {
             border-radius: .5em;
             cursor: pointer }
   main {
+    touch-action: none;
     background-color: #000;
     overflow: hidden }
     main.hover { cursor: pointer }
@@ -258,7 +281,8 @@ body {
       transform-origin: 0 0;
       /* mix-blend-mode: lighten; */
       background-size: cover;
-      background-position-y: center }
+      background-position-y: center;
+      pointer-events: none }
   dialog { padding: 1em 0 }
     #dialog-prompt { padding: 0 1em }
     dialog > form { justify-content: space-evenly }
@@ -270,7 +294,7 @@ body {
       <div id="keyboard-select">
         <span>Keyboard</span>
         <select></select>
-        <button id="keyboard-settings-button" type="button">⚙️</button>
+        <button id="keyboard-settings-button" type="button">⛭</button>
       </div>
       <div id="track-select">
         <span>Track</span>
@@ -280,7 +304,7 @@ body {
           <option name="New">New</option>
         </select>
       </div>
-      <button class="info" type="button">ⓘ</button>
+      <button class="info" type="button">ℹ</button>
     </div>
     <div id="controls">
       <div id="volume">
@@ -289,7 +313,7 @@ body {
       </div>
       <div id="octaves">
         <span>Octaves</span>
-        <input type="number" value="2" min="1" max="5" steps="1">
+        <input type="number" value="2" min="1" max="5" steps="1" size="2">
       </div>
       <div id="info">
         <span id="edo-info"></span>
@@ -301,6 +325,7 @@ body {
       </div>
       <button id="refresh" type="button">Refresh</button>
       <button id="panic" type="button">Panic</button>
+      <button id="fullscreen" type="button"></button>
     </div>
   </nav>
   <menu>
@@ -312,34 +337,34 @@ body {
       <form>
         <fieldset>
           <legend>Shape</legend>
-          <label id="gstep">Horizontal steps: <input type="number" min="0" step="1"></label>
-          <label id="hstep">Diagonal steps: <input type="number" min="0" step="1"></label>
+          <label id="gstep">Horizontal steps: <input type="number" min="1" step="1" size="4"></label>
+          <label id="hstep">Diagonal steps: <input type="number" min="1" step="1" size="4"></label>
           <label id="orientation">Orientation:
             <select>
               <option value="">Choose</option>
             </select>
           </label>
-          <label id="unit">Key size: <input type="number" min="5" step="1"> px</label>
+          <label id="unit">Key size: <input type="number" min="5" step="1" size="5"> px</label>
         </fieldset>
         <fieldset>
           <legend>Note</legend>
-          <label id="refNote">Tuning root note: <input type="number" min="0" step="1"></label>
-          <label id="freqBasis">Tuning root frequency: <input type="number" min="10" max="40000"> Hz</label>
+          <label id="refNote">Tuning root note: <input type="number" min="0" step="1" size="4"></label>
+          <label id="freqBasis">Tuning root frequency: <input type="number" min="10" max="40000" size="6"> Hz</label>
           <div id="scale">Scale:
-            <label id="edo">Divisions of octave: <input type="number" min="1" step="1" max="270"></label>
+            <label id="edo">Divisions of octave: <input type="number" min="1" step="1" max="270" size="4"></label>
             <output></output>
           </div>
         </fieldset>
         <fieldset>
           <legend>Harmonic mapping</legend>
-          <label id="limit">Harmonic limit: <input type="number" value="9" min="3" step="2"></label>
-          <label id="maxerror">Maximum error: <input type="number" value="30" min="0" max="100"> ¢</label>
+          <label id="limit">Harmonic limit: <input type="number" value="9" min="3" step="2" size="3"></label>
+          <label id="maxError">Maximum error: <input type="number" value="30" min="0" max="100" size="4"> ¢</label>
           <div id="mapping"></div>
           <div id="interval-view" class="choice">
             <label id="diamond-choice"><input type="radio" name="interval-view" checked>Tonality diamond</label>
             <label id="table-choice"><input type="radio" name="interval-view">Interval table</label>
             <div>
-              <span>Temperament</span>
+              <span>Temper&shy;ament</span>
               <button id="generate-temperaments" type="button">💡</button>
             </div>
           </div>
@@ -386,8 +411,8 @@ body {
           </div>
           <span id="track-savestate"></span>
           <button id="toggle-accidentals" type="button"></button>
-          <button class="info" type="button">ⓘ</button>
-          <button id="track-delete" type="button">✖</button>
+          <button class="info" type="button">ℹ</button>
+          <button id="track-delete" type="button">✗</button>
         </div>
         <textarea id="track-edit"></textarea>
         <div id="insert-accidental">
@@ -418,7 +443,7 @@ body {
   </template>
   <template id="harmonic">
     <label class="harmonic">
-      <span id="nth-harmonic"></span> harmonic: <input class="steps" type="number" step="1"><span class="steps"></span> steps, <span id="error"></span> error
+      <span id="nth-harmonic"></span> harmonic: <input class="steps" type="number" step="1" size="4"><span class="steps"></span> steps, <span id="error"></span> error
       <button type="button">▶</button>
       <input class="hcolour" type="color">
     </label>
@@ -449,281 +474,529 @@ body {
 
 //Utils
 
-const primes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ],
+const
+  group = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) => {
+    const i = a.findIndex(vs => cmp(vs[0], v));  // quadratic in cmp
+    return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
+  }, []),
+  comp = (...iv) => iv.map(ar => ar.reduce((n, [p, rad]) => n * p ** rad, 1));
 
-      clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined,
-      lerp = (a, b, t) => a * (1 - t) + b * t,
-      between = (min, max, val) => val <= max && val >= min,
-      mod = (n, m) => ((n % m) + m) % m,
-      gcd = (a, b) => !b ? a : gcd(b, a % b),
-      gcd_ = (...ar) => ar.reduce((acc, n) => gcd(acc, n)),
-      non2 = h => h / (h & (~(h - 1))),
 
-      group = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) => {
-        const i = a.findIndex(vs => cmp(vs[0], v));  // quadratic in cmp
-        return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
-      }, []),
-      decomp = (...iv) => iv.map(r => {
-        let ivh = non2(r), res = [], i = 1;
-        while (ivh !== 1) {
-          const p = primes[i];
-          if (gcd(ivh, p) === 1) i++;
-          else { res.push(p); ivh /= p }
-        }
-        return group(res).map(ar => [ar[0], ar.length])
-      }),
-      comp = (...iv) => iv.map(ar => ar.reduce((n, [p, rad]) => n * p ** rad, 1)),
 
-      ordinal = (() => {
-        const rule = new Intl.PluralRules("en-AU", { type: "ordinal" }),
-              suf = new Map([ ["one", "st"], ["two", "nd"], ["few", "rd"], ["other", "th"] ]);
-        return n => `${n}${suf.get(rule.select(n))}`
-      })(),
-      contrast = hc => {
-        if (!hc.match(/\p{Hex_Digit}{6}/ug)) return null;
-        const [r, g, b] = hc.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
-        return r * .299 + g * .587 + b * .114 >= 128 ? "#222222" : "#dddddd"
-      },
-      colourMix = (hc1, hc2, t) => {
-        if (![hc1, hc2].every(hc => hc.match(/\p{Hex_Digit}{6}/ug))) return null;
-        const [r1, g1, b1] = hc1.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
-        const [r2, g2, b2] = hc2.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
-        return "#" + [[r1, r2], [g1, g2], [b1, b2]].reduce((a, [l, r]) => a + Math.round(lerp(l, r, t)).toString(16), "")
-      },
-      scaleVolume = value => value && 10 ** (2 * (value / 100 - 1)),
+// Utilities
 
-      noteFromFactors = (() => {  // Any way to generalise? Use u/e26c and u/e26d ?
-        const pythag = "FCGDAEB".split("").reduce((acc, key, i) => ({ ...acc, [i - 1]: key }), {}),
-              hejiRatios = {
-                5: [[[3, 4]], [[5, 1]]],
-                7: [[], [[3, 2], [7, 1]]],
-                11: [[[3, 1], [11, 1]], []],
-                13: [[[3, 3]], [[13, 1]]],
-                17: [[[3, 7]], [[17, 1]]],
-                19: [[[3, 3], [19, 1]], []],
-                23: [[[23, 1]], [[3, 6]]],
-                29: [[[3, 2], [29, 1]], []],
-                31: [[], [[31, 1]]],
-                37: [[[37, 1]], [[3, 2]]],
-                41: [[[41, 1]], [[3, 4]]],
-                43: [[[3, 1], [43, 1]], []],
-                47: [[47, 1], [[3, 6]]]
-              };
-        return factors => {
-          let accid = {};
-          factors = structuredClone(factors);
+class Common {
+  static #allPrimes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ]
+  static #allPrimesBig = this.#allPrimes.map(BigInt)
+  
+  static versionCmp = (a, b) => {
+    if (![a, b].every(s => s.match(/^\d+(?:\.\d+)*$/))) throw new Error("Version error: malformed version string");
+    return [a, b].sort()[0] === a ? a === b ? 0 : -1 : 1
+  }
+  static between = (min, max, val) => val <= max && val >= min
+  static clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined
+  static lerp = (a, b, t) => a * (1 - t) + b * t
+  static non2 = h => h / (h & (~--h))
+  static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
+  static group = (ar, groupBy = x => x, mapBy = x => x) => ar.reduce((a, v) => {
+    const k = groupBy(v);
+    a[k] = (a[k] ?? []).concat([mapBy(v)]);
+    return a
+  }, {})
+  static decomp = (...iv) => iv.map(r => { // use 2s?
+    let ivh = this.non2(r), raw = [], res = new Map(), i = 1;
+    while (ivh !== 1) {
+      const p = this.#allPrimes[i];
+      if (this.gcd(ivh, p) === 1) i++;
+      else { raw.push(p); ivh /= p }
+    }
+    for (let [ k, v ] of Object.entries(this.group(raw))) res.set(parseInt(k), v.length)
+    return res
+  })
+  static decompBig = (...iv) => iv.map(r => { // use 2s?
+    let ivh = this.non2(r), raw = [], res = new Map(), i = 1;
+    while (ivh !== 1n) {
+      const p = this.#allPrimesBig[i];
+      if (this.gcd(ivh, p) === 1n) i++;
+      else { raw.push(p); ivh /= p }
+    }
+    for (let [ k, v ] of Object.entries(this.group(raw))) res.set(parseInt(k), v.length)
+    return res
+  })
 
-          // Factorise out commas
-          structuredClone(factors).forEach((d, i) => {
-            d.forEach(([p, rad]) => {
-              if (p === 3) return;
-              const tone = hejiRatios[p].findIndex(side => ~side.findIndex(([q]) => p === q));
-              accid[p] = (1 - 2 * (i ^ tone)) * rad;
-              hejiRatios[p].forEach((side, j) => side.forEach(([q, qrad]) => {
-                const targetSide = i ^ j ^ !tone, k = factors[targetSide].findIndex(([r]) => q === r);
-                ~k ? (factors[targetSide][k][1] += qrad * rad) : factors[targetSide].push([q, qrad * rad])
-              }))
-            })
-          });
+  static scaleVolume = value => value && 10 ** (2 * (value / 100 - 1))
+  static ordinal = (() => {
+    const rule = new Intl.PluralRules("en-AU", { type: "ordinal" }),
+          suf = new Map([ ["one", "st"], ["two", "nd"], ["few", "rd"], ["other", "th"] ]);
+    return n => `${n}${suf.get(rule.select(n))}`
+  })()
 
-          // Normalise to Pythagorean key
-          factors[1].forEach(([p, rad], i, dc1) => {
-            const j = factors[0].findIndex(([q]) => p === q);
-            if (!~j) return;
-            const qrad = factors[0][j][1];
-            if (rad > qrad) factors[1][i][1] -= qrad;
-            else factors[1][i] = [];
-            if (rad < qrad) factors[0][j][1] -= rad;
-            else factors[0].splice(j, 1);
-          });
-          factors[1] = factors[1].filter(ar => ar.length);
-
-          // Build string
-          const tone = factors.findIndex(d => d.length),
-                fifths = (1 - 2 * tone) * (~tone ? factors[tone][0][1] : 0),
-                sharps = Math.floor((fifths + 1) / 7);
-          let acstring = "", pref5 = () => "", prefNo5 = "";
-          if (sharps < -2) {
-            pref5 = n => ["", String.fromCodePoint(0xe2c1 + n), String.fromCodePoint(0xe2c0 + n)][(sharps === -3) - sharps % 3];
-            prefNo5 = ["", String.fromCodePoint(0xe260), String.fromCodePoint(0xe264)][-sharps % 3];
-            acstring = sharps === -3 && (5 in accid) ? String.fromCodePoint(0xe264) : String.fromCodePoint(0xe266).repeat(Math.floor(-sharps / 3))
-          } else if (sharps > 2) {
-            pref5 = n => sharps % 2 ? String.fromCodePoint(0xe2c3 + n) : String.fromCodePoint(0xe2c4 + n);
-            prefNo5 = sharps % 2 ? String.fromCodePoint(0xe265) : String.fromCodePoint(0xe263).repeat(2);
-            acstring = String.fromCodePoint(0xe263).repeat(Math.floor((sharps - 1) / 2) - !(5 in accid))
-          } else {
-            pref5 = n => String.fromCodePoint(0xe2c0 + n + (sharps + 2) % 5);
-            prefNo5 = sharps === 0 ? "" : String.fromCodePoint(0xe260 + (sharps + 6) % 5)
-          }
-          if (5 in accid) {
-            const arr = accid[5];
-            if (Math.abs(arr) <= 3) {
-              const arrowsOffset = 5 * (arr > 0 ? 2 * arr - 1 : -2 - 2 * arr);
-              acstring += pref5(arrowsOffset);
-            } else {
-              const arrowsOffset = 5 * (arr > 0 ? 2 * (arr % 3) - 1 : 2 * (-arr % 3) - 2);
-              acstring += (arrowsOffset < 0 ? "" : pref5(arrowsOffset)) + String.fromCodePoint(0xe2d6 + 5 * (arr > 0)).repeat(Math.floor(Math.abs(arr) / 3))
-            }
-          } else acstring = prefNo5 + acstring;
-          if (7 in accid) {
-            const sep = accid[7];
-            acstring += String.fromCodePoint(0xe2e0 + (sep > 0)).repeat(Math.floor((Math.abs(sep) - 1) / 2)) + 
-              String.fromCodePoint(0xe2de + (sep > 0) + 2 * Math.abs((sep + 1) % 2));
-          }
-          Object.keys(hejiRatios).slice(2).forEach((p, i) => acstring += accid[p] > 0 ?
-            String.fromCodePoint((i < 7 ? 0xe2e3 : 0xee41) + 2 * i).repeat(accid[p]) :
-            String.fromCodePoint((i < 7 ? 0xe2e2 : 0xee40) + 2 * i).repeat(-accid[p]));
-          return {
-            accid: { "3": fifths, ...accid },
-            string: pythag[(((fifths + 1) % 7 + 7) % 7) - 1] + acstring
+  static noteFromFactors = (() => {  // Any way to generalise? Use u/e26c and u/e26d ?
+    const pythag = "FCGDAEB".split("").reduce((acc, key, i) => ({ ...acc, [i - 1]: key }), {}),
+          hejiRatios = {
+            5: [[[3, 4]], [[5, 1]]],
+            7: [[], [[3, 2], [7, 1]]],
+            11: [[[3, 1], [11, 1]], []],
+            13: [[[3, 3]], [[13, 1]]],
+            17: [[[3, 7]], [[17, 1]]],
+            19: [[[3, 3], [19, 1]], []],
+            23: [[[23, 1]], [[3, 6]]],
+            29: [[[3, 2], [29, 1]], []],
+            31: [[], [[31, 1]]],
+            37: [[[37, 1]], [[3, 2]]],
+            41: [[[41, 1]], [[3, 4]]],
+            43: [[[3, 1], [43, 1]], []],
+            47: [[47, 1], [[3, 6]]]
           };
+    return factors => {
+      let accid = {};
+      factors = structuredClone(factors);
+
+      // Factorise out commas
+      structuredClone(factors).forEach((d, i) => {
+        d.forEach(([p, rad]) => {
+          if (p === 3) return;
+          const tone = hejiRatios[p].findIndex(side => ~side.findIndex(([q]) => p === q));
+          accid[p] = (1 - 2 * (i ^ tone)) * rad;
+          hejiRatios[p].forEach((side, j) => side.forEach(([q, qrad]) => {
+            const targetSide = i ^ j ^ !tone, k = factors[targetSide].findIndex(([r]) => q === r);
+            ~k ? (factors[targetSide][k][1] += qrad * rad) : factors[targetSide].push([q, qrad * rad])
+          }))
+        })
+      });
+
+      // Normalise to Pythagorean key
+      factors[1].forEach(([p, rad], i, dc1) => {
+        const j = factors[0].findIndex(([q]) => p === q);
+        if (!~j) return;
+        const qrad = factors[0][j][1];
+        if (rad > qrad) factors[1][i][1] -= qrad;
+        else factors[1][i] = [];
+        if (rad < qrad) factors[0][j][1] -= rad;
+        else factors[0].splice(j, 1);
+      });
+      factors[1] = factors[1].filter(ar => ar.length);
+
+      // Build string
+      const tone = factors.findIndex(d => d.length),
+            fifths = (1 - 2 * tone) * (~tone ? factors[tone][0][1] : 0),
+            sharps = Math.floor((fifths + 1) / 7);
+      let acstring = "", pref5 = () => "", prefNo5 = "";
+      if (sharps < -2) {
+        pref5 = n => ["", String.fromCodePoint(0xe2c1 + n), String.fromCodePoint(0xe2c0 + n)][(sharps === -3) - sharps % 3];
+        prefNo5 = ["", String.fromCodePoint(0xe260), String.fromCodePoint(0xe264)][-sharps % 3];
+        acstring = sharps === -3 && (5 in accid) ? String.fromCodePoint(0xe264) : String.fromCodePoint(0xe266).repeat(Math.floor(-sharps / 3))
+      } else if (sharps > 2) {
+        pref5 = n => sharps % 2 ? String.fromCodePoint(0xe2c3 + n) : String.fromCodePoint(0xe2c4 + n);
+        prefNo5 = sharps % 2 ? String.fromCodePoint(0xe265) : String.fromCodePoint(0xe263).repeat(2);
+        acstring = String.fromCodePoint(0xe263).repeat(Math.floor((sharps - 1) / 2) - !(5 in accid))
+      } else {
+        pref5 = n => String.fromCodePoint(0xe2c0 + n + (sharps + 2) % 5);
+        prefNo5 = sharps === 0 ? "" : String.fromCodePoint(0xe260 + (sharps + 6) % 5)
+      }
+      if (5 in accid) {
+        const arr = accid[5];
+        if (Math.abs(arr) <= 3) {
+          const arrowsOffset = 5 * (arr > 0 ? 2 * arr - 1 : -2 - 2 * arr);
+          acstring += pref5(arrowsOffset);
+        } else {
+          const arrowsOffset = 5 * (arr > 0 ? 2 * (arr % 3) - 1 : 2 * (-arr % 3) - 2);
+          acstring += (arrowsOffset < 0 ? "" : pref5(arrowsOffset)) + String.fromCodePoint(0xe2d6 + 5 * (arr > 0)).repeat(Math.floor(Math.abs(arr) / 3))
         }
-      })();
+      } else acstring = prefNo5 + acstring;
+      if (7 in accid) {
+        const sep = accid[7];
+        acstring += String.fromCodePoint(0xe2e0 + (sep > 0)).repeat(Math.floor((Math.abs(sep) - 1) / 2)) + 
+          String.fromCodePoint(0xe2de + (sep > 0) + 2 * Math.abs((sep + 1) % 2));
+      }
+      Object.keys(hejiRatios).slice(2).forEach((p, i) => acstring += accid[p] > 0 ?
+        String.fromCodePoint((i < 7 ? 0xe2e3 : 0xee41) + 2 * i).repeat(accid[p]) :
+        String.fromCodePoint((i < 7 ? 0xe2e2 : 0xee40) + 2 * i).repeat(-accid[p]));
+      return {
+        accid: { "3": fifths, ...accid },
+        string: pythag[(((fifths + 1) % 7 + 7) % 7) - 1] + acstring
+      };
+    }
+  })()
+}
+
+
+
+// Harmonic mapping
+
+class HarmonicMapping {
+
+  // Static
+  static #isPrime (pdec) {
+    let sum = 0;
+    for (let [, rad] of pdec) sum += rad;
+    return sum === 1
+  }
+  static #transp = mat => Array(mat[0].length).fill()
+    .reduce((row, _, i) => row.concat([mat.reduce((cols, row) =>
+      cols.concat([row[i]]), [])]), [])
+
+  static #invDet (mat, decs, ps) { // TODO: use leading value
+    const
+      rows = mat.length, cols = mat[0].length,
+      aug = mat.map((row, i) => row.concat(Array(rows).fill(0).with(i, 1)));
+    if (mat.length === 0) return null;
+    let det = 1, lcm = 1;
+    for (let i = 0; i < rows; i++) {
+      if (aug[i][i] === 0) {
+        let m = 0;
+        for (m = i + 1; m < rows; m++) if (aug[m][i] !== 0) {
+          ([ aug[m], aug[i], decs[m], decs[i] ] = [ aug[i], aug[m], decs[i], decs[m] ]);
+          for (let j = 0; j < rows; j++)
+            ([ aug[j][cols + m], aug[j][cols + i] ] = [ aug[j][cols + i], aug[j][cols + m] ]);
+          det = -det;
+          break
+        }
+        if (m === rows) return {}
+      }
+      const val0 = aug[i][i];
+      lcm = val0 / Common.gcd(lcm, val0);
+      for (let j = 0; j < rows; j++) if (i !== j) {
+        const val1 = aug[j][i], c = Common.gcd(val0, val1);
+        if (i < ps.length) det *= val0 / c;
+        for (let k = 0; k < rows + cols; k++)
+          aug[j][k] = (val0 * aug[j][k] - val1 * aug[i][k]) / c;
+      }
+    }
+    mat = this.#transp(aug);
+    det = mat.slice(0, ps.length).reduce((acc, row, i) => acc * row[i], 1) / det
+    const degen = aug.findIndex(row => !row.slice(0, cols).some(x => x));
+    if (~degen) aug.splice(degen);
+    return {
+      det, lcm,
+      mods: aug.slice(0, ps.length).map((row, i) => [ ps[i], lcm / row[i] ]),
+      inv: mat.slice(cols, cols + ps.length).map((row, i) => [ decs[i][0], row ]),
+      verify: mat.slice(aug.length, cols).map((vec, i) => [ ps[aug.length + i], vec ])
+    }
+  }
+
+  static * #subsets (args, { minlength = 1, maxlength = args.length } = {}) {
+    for (let n = minlength; n <= maxlength; n++) {
+      let max = -1, counter = [];
+      while (max + n <= args.length) {
+        if (~max) yield counter.map(k => args[k]);
+        const i = counter.findLastIndex((j, k) => j < max + k);
+        if (~i) counter[i]++;
+        else counter = Array(n).fill().map((_, j) => j).with(-1, n + max++);
+      }
+    }
+  }
+
+  // Instance
+  #keyboard; #scale
+  rawHarmonicList; harmonicList = new Map()
+  nonHarmonics = new Set() // TODO: Cached blacklist
+  indexPrimes = []; primes = []; params = []; index = []; verify = () => true; stepsBasis
+  #properIntervalSet = new IntervalSet(this); intervalSet = new IntervalSet(this)
+  ready = false
+  mask // TODO: for temperings
+
+  constructor ({ keyboard, scale, hmap }) { // Map([ odd, number ])
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Mapping error: must provide Keyboard object");
+    this.#keyboard = keyboard;
+    if (!(Scale.prototype.isPrototypeOf(scale))) throw new Error("Mapping error: must provide Scale object");
+    this.#scale = scale;
+    const { edo } = keyboard, { maxError } = scale;
+    if (!Map.prototype.isPrototypeOf(hmap) || [ ...hmap ].some(v => v.some(u => typeof u !== "number") ||
+      v.some(u => u % 1) || v[0] < 3 || v[0] > app.maxHarmonic || v[0] % 2 !== 1 || v[1] < 0 || v[1] > edo)) throw new Error("Mapping error: bad interval-step mapping");
+    const harr = [ ...hmap ];
+
+    const
+      decs = Common.decomp(...harr.map(([h]) => h)).map((pdec, i) => [ harr[i][0], pdec ]),
+      { true: primeDecs = [], false: compositeDecs = [] } = Common.group(
+        decs, ([, a]) => HarmonicMapping.#isPrime(a)),
+      { true: simpleDecs = [], false: residueDecs = [] } = Common.group(
+        compositeDecs.map(([ h, pdec ]) => [ h, [...pdec].filter(([p]) => !~primeDecs.findIndex(([q]) => q === p)) ]),
+        ([ , pp ]) => pp.length === 0, ([p]) => compositeDecs.find(([q]) => q === p)),
+      ps = [ ...residueDecs.reduce((acc, [, pdec]) => {
+        for (let [p] of pdec) acc.add(p);
+        return acc
+      }, new Set()).values() ].sort((a, b) => a > b),
+      { true: residuePrimeDecs = [], false: simplePrimeDecs = [] } = Common.group(
+        primeDecs, ([p]) => ps.includes(p)),
+      residue = residuePrimeDecs.concat(residueDecs);
+      
+    this.indexPrimes = ps;
+    this.primes = simplePrimeDecs.map(([h]) => h);
+
+    simplePrimeDecs.forEach(([h]) => this.harmonicList.set(h, new Harmonic(this, h,
+      (...params) => params[ simplePrimeDecs.findIndex(([p]) => p === h) ]), true));
+    simpleDecs.forEach(([h, hdec]) => {
+      const
+        just = Math.log2(h) % 1,
+        steps = [ ...hdec ].reduce((acc, [p, rad]) => acc + hmap.get(p) * rad, 0) % edo,
+        error = (steps / edo - just) * 1200;
+      if (Math.abs(error) >= maxError || steps + edo * maxError / 1200 < 1 ||
+        steps - edo * maxError / 1200 > edo - 1) hmap.delete(i);
+      else this.harmonicList.set(h, new Harmonic(this, h, {}, true))
+    });
+
+    if (residue.length) {
+      let system, best = 0, dims = -1;
+      const cols = ps.length;
+      for (let hs of HarmonicMapping.#subsets(residue)) { // TODO: memoise?
+        const mat = [], rows = hs.length;
+        for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
+        if (rows < cols) mat.splice(Infinity, Infinity, ...Array(cols - rows).fill().map(() => mat.at(-1).slice()));
+        if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
+          Array(rows - cols).fill(0).with(i - cols, -1))));
+        const { inv, det } = HarmonicMapping.#invDet(mat, hs, ps);
+        if (det === undefined) continue;
+        if ((best !== 0 && Math.abs(det) < Math.abs(best)) || (best === 0 && (det !== 0 || inv.length > dims)))
+          ([system, best, dims] = [hs, det, inv.length]);
+        if (Math.abs(det) === 1) break;
+      }
+      const
+        hs = system.reduce((acc, [h], i) => { // TODO: nicer ordering
+          const j = acc.findIndex(([p]) => p === h);
+          ([ acc[i], acc[j] ] = [ acc[j], acc[i] ]);
+          return acc
+        }, residue),
+        rows = hs.length, mat = [];
+      for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
+      if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
+        Array(rows - cols).fill(0).with(i - cols, -1))));
+
+      // TODO: Can I use det to exclude harmonics before running the counting function?
+      const { mods, inv, det, lcm, verify } = HarmonicMapping.#invDet(mat, hs, ps);
+
+      this.index = system.map(([h]) => h);
+      this.params = residue.filter(([d]) => !~system.findIndex(([h]) => h === d));
+
+      // if underdetermined, the params must be provided
+      // if overdetermined, these components must be verified
+      this.verify = (...primeVec) => {
+        const
+          dps = primeVec.slice(0, residue.length),
+          vps = primeVec.slice(residue.length);
+        return verify.every(([p, vec], i) => dps.reduce((a, x, j) => a + x * vec[j] * (mods[j]?.[1] ?? 1), 0) === vps[i])
+      };
+
+      inv.forEach(([h, vec]) => this.harmonicList.set(h, new Harmonic(this, h,
+        (...params) => {
+          const rawNum = hs.reduce((a, _, i) => a + (params[i] ?? 0) * vec[i] * (mods[i]?.[1] ?? 1), 0);
+          return rawNum % lcm ? null : rawNum / lcm // Null means failure
+        }), true));
+      residue.filter(([d]) => !~inv.findIndex(([h]) => h === d))
+        .forEach(([h, dec]) => {
+          if (~residueDecs.findIndex(([p]) => p === h)) {
+            const
+              just = Math.log2(h) % 1,
+              primeVec = this.indexPrimes.map(p => dec.get(p) ?? 0),
+              steps = this.index.reduce(
+                (count, h) => count + hmap.get(h) * this.harmonicList.get(h).countingFn(...primeVec),
+                this.primes.reduce((count, p) => count + hmap.get(p) * (dec.get(p) ?? 0), 0)) % edo,
+              error = (steps / edo - just) * 1200;
+            if (Math.abs(error) >= maxError || steps + edo * maxError / 1200 < 1 ||
+              steps - edo * maxError / 1200 > edo - 1) {
+              hmap.delete(i);
+              return
+            }
+          }
+          this.harmonicList.set(h, new Harmonic(this, h, {}, true))
+      });
+    }
+    this.rawHarmonicList = hmap;
+
+    // Generate all intervals
+    const withUnison = [1].concat(decs.map(([h]) => h));
+    for (let n of withUnison) for (let d of withUnison) {
+      const
+        params = Array(this.params.length).fill(0),
+        iv = new Interval({ keyboard: this.#keyboard, mapping: this, n, d, params, isProper: true });
+      this.#properIntervalSet.add(iv);
+      this.intervalSet.add(iv)
+    }
+    this.setSteps(new Map(hmap));
+    this.ready = true
+  }
+
+  decomp (n, d) { //Null is failure
+    const pdec = Common.decomp(n)[0], dec = [];
+    if (d) {
+      for (let [p, rad] of Common.decomp(d)[0]) if (pdec.has(p)) {
+        const nrad = pdec.get(p);
+        if (nrad === rad) pdec.delete(p);
+        else pdec.set(p, nrad - rad)
+      } else pdec.set(p, -rad)
+    }
+    const { params, index, indexPrimes, primes, harmonicList, verify } = this;
+    for (let p of primes) {
+      if (!pdec.has(p)) continue;
+      else dec.push([ p, pdec.get(p) ]);
+      pdec.delete(p)
+    }
+    const primeVec = indexPrimes.map(p => pdec.get(p) ?? 0);
+    for (let [p] of pdec) if (!indexPrimes.includes(p)) return null;
+    if (!verify(...primeVec)) return null;
+    return index.reduce((fn, h) => (...params) => {
+      const acc = fn(...params);
+      if (acc === null) return null;
+      const res = harmonicList.get(h).countingFn(...primeVec, ...params);
+      return res === null ? null : res === 0 ? acc : acc.concat([[ h, res ]])
+    }, () => dec)
+  }
+
+  getProperIntervals () { return [ ...this.#properIntervalSet ] }
+  addInterval (interval) { intervalSet.add(interval) }
+
+  setSteps (stepsMap) {  // Map([ harmonic, steps ])
+    const { index } = this, { edo } = this.#keyboard, stepsBasis = new Map(stepsMap);
+    if (index.some(h => {
+      const s = stepsMap.get(h);
+      return s === undefined || s < 0 || s % 1
+    })) throw new Error("Could not set steps for mapping");
+    for (let [h, steps] of stepsMap) stepsBasis.set(h, steps + edo * Math.floor(Math.log2(h)));
+    this.stepsBasis = stepsBasis
+  }
+
+}
+
+class Harmonic {
+  #mapping; h; isBasis; countingFn = null; decomp; primeDecomp
+  constructor (mapping, h, countingFn, isInitial = false) {
+    const existing = mapping.harmonicList.get(h);
+    if (existing) return existing;
+    this.#mapping = mapping;
+    this.h = h;
+    this.primeDecomp = [ ...Common.decomp(h)[0] ];
+    if (h === 1) { // Unison
+      this.isBasis = false;
+      this.decomp = () => []
+    } else {
+      const
+        { harmonicList, nonHarmonics, index, primes, ready } = mapping,
+        doErr = () => { throw new Error("Harmonic not in mapping") };
+      if (ready) {
+        decomp = mapping.decomp(h);
+        if (nonHarmonics.has(h) || decomp === null) doErr();
+        this.isBasis = false;
+        this.decomp = decomp
+      } else {
+        if (this.isBasis = primes.concat(index).includes(h)) this.countingFn = countingFn;
+        else this.decomp = mapping.decomp(h)()
+      }
+    }
+
+  }
+}
+
+class Interval {
+  #keyboard; #mapping; n; d; params; octave; fraction; decomp; noteSpelling; isProper
+  octaveAdjust; splitDecomp
+  constructor ({ keyboard, mapping, n, d, params = [], isProper = false }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Interval error: must provide Keyboard object");
+    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Interval error: must provide HarmonicMapping object");
+    const c = Common.gcd(n, d);
+    n = n / c;
+    d = d / c;
+    if (mapping.intervalSet.hasRatio(n, d)) return mapping.intervalSet.getRatio(n, d); // TODO withOctave
+    this.#keyboard = keyboard;
+    this.#mapping = mapping;
+    this.n = Common.non2(n);
+    this.d = Common.non2(d);
+    const octave = this.octave = Math.floor(Math.log2(n) - Math.log2(d));
+    this.octaveAdjust = octave;
+    this.params = params;
+    this.isProper = isProper;
+    this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
+    this.decomp = mapping.decomp(n, d)(...params);
+
+    const pdec = Common.decomp(n).concat([ new Map() ]);
+    if (d) {
+      for (let [p, rad] of Common.decomp(d)[0]) if (pdec[0].has(p)) {
+        const nrad = pdec[0].get(p);
+        if (nrad <= rad) pdec[0].delete(p);
+        if (nrad > rad) pdec[0].set(p, nrad - rad);
+        else if (nrad < rad) pdec[1].set(p, rad - nrad);
+      } else pdec[1].set(p, rad)
+    }
+    this.splitDecomp = pdec.map(m => [ ...m ].sort(([a], [b]) => a > b));
+    this.noteSpelling = Common.noteFromFactors(this.splitDecomp)
+  }
+  withOctave (n) {
+    this.octaveAdjust = n;
+    // TODO: set fraction?
+    return this
+  }
+  steps () {
+    const { stepsBasis } = this.#mapping, { edo } = this.#keyboard;
+    return this.decomp.reduce((acc, [p, rad]) => acc + stepsBasis.get(p) * rad, 0) - this.octaveAdjust * edo
+  }
+}
+
+class IntervalSet {
+  #mapping; #rawMap // Map([ denominator, Map([ numerator, interval ]) ])
+  constructor (mapping, intervalList = []) {
+    this.#mapping = mapping;
+    this.#rawMap = new Map();
+    for (let interval of intervalList) this.add(interval)
+  }
+  add (interval) {
+    const
+      { harmonicList } = this.#mapping, { n, d } = interval,
+      dMap = this.#rawMap.get(d) ?? this.#rawMap.set(d, new Map()).get(d);
+    if (!dMap.has(n)) dMap.set(n, interval)
+  }
+  has (interval) {
+    const { n, d } = interval;
+    return Boolean(this.#rawMap.get(d)?.has(n))
+  }
+  hasRatio (n, d) {
+    const c = Common.gcd(n, d);
+    return Boolean(this.#rawMap.get(Common.non2(d / c))?.has(Common.non2(n / c)))
+  }
+  get (interval) {
+    const { n, d } = interval;
+    return this.#rawMap.get(d)?.get(n)
+  }
+  getRatio (n, d) {
+    const c = Common.gcd(n, d), iv = this.#rawMap.get(Common.non2(d / c))?.get(Common.non2(n / c));
+    if (iv === undefined) return iv;
+    return iv.withOctave(-Math.log2(d * iv.n / n / iv.d))
+  }
+  * [ Symbol.iterator ] () { for (let [g, s] of this.#rawMap) for (let [h, iv] of s) yield iv }
+}
 
 
 
 // Keyboard grid
 
-class HexButton {
-  #g; #h; #grid; #key; #osc; #volume; #noteClass; isGhost
+class HexGrid { // TODO: set w, h, theta within HexGrid
+  static mod = (n, m) => ((n % m) + m) % m
 
-  constructor (g, h, grid, isGhost = false) {
-    this.#g = g;
-    this.#h = h;
-    this.#grid = grid;
-    this.isGhost = isGhost
-  }
-
-  static vertices (g, h, grid) {
-    const { r, w, h: ht, c } = grid, x = w / 2, y = ht / 2, k = .5 * Math.sqrt(3),
-          origin = [
-            [ x, y - r ], [ x - r * k, y - r / 2 ], [ x - r * k, y + r / 2 ],
-            [ x, y + r ], [ x + r * k, y + r / 2 ], [ x + r * k, y - r / 2 ]
-          ];
-    return origin.map(([ a, b ]) => {
-      const [ rx, ry ] = grid.rotate(
-              Math.floor(a + r * k * (h + 2 * g)),
-              Math.floor(b + 1.5 * r * h)
-            );
-      return [ rx - c, ry ]
-    })
-  }
-  static centre (g, h, grid) {
-    const { r, w: width, h: height, c } = grid, k = .5 * Math.sqrt(3),
-          [ rx, ry ] = grid.rotate(
-            Math.floor(width / 2 + r * k * (h + 2 * g)),
-            Math.floor(height / 2 + 1.5 * r * h)
-          );
-    return [ rx - c, ry ]
-  }
-
-  vertices () { return HexButton.vertices(this.#g, this.#h, this.#grid) }
-  centre () { return HexButton.centre(this.#g, this.#h, this.#grid) }
-
-  neighbours () {
-    const g = this.#g, h = this.#h;
-    return [
-      [ g - 1, h ], [ g, h - 1 ], [ g + 1, h - 1 ],
-      [ g + 1, h ], [ g, h + 1 ], [ g - 1, h + 1 ]
-    ]
-  }
-
-  getCoord () { return [ this.#g, this.#h ] }
-  getNoteClass () { return this.#noteClass }
-
-  setNoteClass (noteClass) { this.#noteClass = noteClass }
-  setKey (key) { this.#key = key }
-
-  note () {
-    const n = this.#g * this.#grid.gstep + this.#h * this.#grid.hstep, { edo } = this.#grid;
-    return [ Math.floor(n / edo), (n % edo + edo) % edo ]
-  }
-
-  colour ({ bgColour, ctx } = {}) {
-    ctx ??= app.state().gridctx;
-    const { noteColours } = app.state(),
-          [ colourBase, oharm, uharm ] = this.#noteClass?.match(/(black|white)(?:(\d{1,2})o)?(?:(\d{1,2})u)?/)?.slice(1) ?? [],
-          vertices = this.vertices(), { isGhost } = this,
-          drawHex = c => {
-            ctx.beginPath();
-            ctx.moveTo(...vertices[5]);
-            for (let [ x, y ] of vertices) ctx.lineTo(x, y);
-            ctx.strokeStyle = isGhost ? c : "#dddddd";
-            ctx.fillStyle = isGhost ? "#00000000" : c;
-            ctx.lineWidth = isGhost ? 6 : 1;
-            ctx.fill();
-            ctx.stroke();
-          }
-    ctx.globalCompositeOperation = isGhost ? "lighten" : "source-over";
-    if (bgColour) drawHex(bgColour);
-    else if (colourBase) {
-      const bc = noteColours[isGhost ? colourBase === "white" ? "black" : "white" : colourBase],
-            oc = oharm ? colourMix(bc, noteColours[oharm], .1) : null,
-            uc = uharm ? colourMix(bc, noteColours[uharm], .1) : null;
-      if (oc && uc) {
-        bgColour = colourMix(oc, uc, .5);
-        drawHex(colourMix(oc, noteColours.white, .1));
-        const [cx, cy] = this.centre();
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, this.#grid.r, 0, Math.PI);
-        ctx.closePath();
-        ctx.clip();
-        drawHex(colourMix(uc, noteColours.black, .1));
-        ctx.restore();
-      } else drawHex(bgColour = (oc ? colourMix(oc, noteColours.white, .1) : uc ? colourMix(uc, noteColours.black, .1) : bc))
-    } else drawHex(bgColour = noteColours.default);
-    ctx.font = (isGhost ? "bold  " : "") + (.5 * this.#grid.r) + "px HEJI2, ArbutusSlab";
-    const [ x, y ] = this.centre(),
-          { label } = this.#key.getLabel(),
-          { width } = ctx.measureText(label);
-    ctx.fillStyle = isGhost ? bgColour : contrast(bgColour);
-    ctx.fillText(label ?? this.note()[1], x - width / 2, y)
-  }
-
-  start () {
-    const { audioctx, masterVolume, noteColours } = app.state(),
-          { edo, freqBasis, refNote } = this.#grid, [ octave, steps ] = this.note(),
-          osc = this.#osc = audioctx.createOscillator(),
-          volume = this.#volume = audioctx.createGain();
-    osc.type = "triangle";
-    osc.frequency.value = freqBasis * 2 ** (octave + ((refNote + steps) / edo));
-    osc.connect(volume);
-    volume.connect(masterVolume);
-    volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime)
-    volume.gain.linearRampToValueAtTime(1, audioctx.currentTime + .05)
-    osc.start(audioctx.currentTime)
-  }
-
-  stop () {
-    const { audioctx } = app.state(),
-          osc = this.#osc, volume = this.#volume;
-    volume.gain.linearRampToValueAtTime(1, audioctx.currentTime);
-    volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .05);
-    osc.stop(audioctx.currentTime + .05);
-    this.#osc = null;
-    this.#volume = null
-  }
-
-}
-
-class HexGrid {
-  w = 0; h = 0; c; unit = 50; r = this.unit * 2; octLen
-  edo = 5; gstep = 2; hstep = 1; orientations = []; theta = 0
-  #hexes = new Map(); #edges; #notes; #keys
-  active = new Map(); touches = new Map(); scheduled = new Set()
-  freqBasis; refNote; orientation
-  limit; maxerror
+  #keyboard
+  w = 0; h = 0; c; unit; r; octLen
+  gstep; hstep; orientations; theta = 0
+  orientation
+  #hexes = new Map(); #edges; #notes
+  #active = new Map() // Map([hex, Set(id)])
   #bgImgCache
 
-  constructor (opts = {}) {
-    Object.assign(this, opts);
-    if ("orientation" in opts) this.setOrientation(...opts.orientation)
+  constructor ({ keyboard, gstep, hstep, unit, orientation }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("HexGrid error: must provide Keyboard object");
+    this.#keyboard = keyboard;
+    if (typeof gstep !== "number" || gstep < 1 || gstep > app.maxEdo || gstep % 1 ||
+      typeof hstep !== "number" || hstep < 1 || hstep > app.maxEdo || hstep % 1) throw new Error("Keyboard error: bad grid steps");
+    if (typeof unit !== "number" || unit < 5 || unit > 1e4) throw new Error("Keyboard error: bad button size");
+    if (!("length" in orientation) || orientation.length !== 2 || orientation.some(v => v < 0 || v > app.maxEdo || v % 1) ||
+      orientation[0] * gstep + orientation[1] * hstep !== keyboard.edo) throw new Error("Keyboard error: bad orientation");
+    this.gstep = gstep;
+    this.hstep = hstep;
+    this.genOrientations();
+    this.setOrientation(...orientation);
+    this.unit = unit;
+    this.r = this.unit * 2
   }
 
   #newHex (g, h, isGhost) {
     const row = this.#hexes.get(g) ?? this.#hexes.set(g, new Map()).get(g),
-          hex = new HexButton(g, h, this, isGhost);
+          hex = new HexButton({ keyboard: this.#keyboard, hexGrid: this, g, h, isGhost });
     row.set(h, hex);
     return hex
   }
@@ -733,8 +1006,19 @@ class HexGrid {
 
   * [Symbol.iterator] () { for (let [ , row ] of this.#hexes) for (let [ , hex ] of row) yield hex }
 
+  addToActive (hex, id) {
+    const active = this.#active;
+    active.set(hex, (active.get(hex) ?? new Set()).add(id))
+  }
+  removeFromActive (hex, id) {
+    const active = this.#active, ids = active.get(hex);
+    if (!ids) return;
+    ids.delete(id);
+    if (ids.size === 0) active.delete(hex)
+  }
+
   genOrientations () {
-    const { gstep, hstep, edo } = this, res = [];
+    const { gstep, hstep } = this, { edo } = this.#keyboard, res = [];
     for (let y = 0; y <= edo / hstep; y++) {
       const x = (edo - hstep * y) / gstep;
       if (x === Math.floor(x)) res.push ([ x, y ])
@@ -746,10 +1030,22 @@ class HexGrid {
     const { unit, w } = this, x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5;
     this.theta = Math.atan(y / x)
   }
+  setLattice ({ gstep, hstep }) {
+    Object.assign(this, { gstep, hstep });
+    this.genOrientations();
+    const
+      { orientations } = this,
+      orientation = orientations.find(([g, h]) => g + h === 7) || orientations[0];
+    if (!orientation) return false;
+    this.setOrientation(...orientation)
+    return true
+  }
 
   updateGrid (force) {
     if (this.#notes && !force) return;
-    const { gstep, hstep, edo, c, w, octLen } = this, [ g, h ] = this.orientation;
+    const
+      { gstep, hstep, c, w, octLen, orientation: [ g, h ] } = this,
+      { edo } = this.#keyboard;
 
     // Central line
     this.#hexes = new Map();
@@ -767,10 +1063,10 @@ class HexGrid {
     }
 
     // One octave
-    const rank = (g, h) => mod(g * gstep + h * hstep, edo),
+    const rank = (g, h) => HexGrid.mod(g * gstep + h * hstep, edo),
           dev = coord => Math.abs(this.h / 2 - HexButton.centre(...coord, this)[1]);
     this.fillGrid({
-      candidate: (g0, h0) => between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
+      candidate: (g0, h0) => Common.between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
         !this.#notes.has(rank(g0, h0)),
       filter: hexes => group(hexes, ([a, b], [c, d]) => rank(a - c, b - d) === 0)
         .map(enhs => enhs.sort((a, b) => dev(a) > dev(b))[0]),
@@ -780,7 +1076,7 @@ class HexGrid {
     // Two octaves
     this.#notes = new Set();
     this.fillGrid({
-      candidate: (g0, h0) => between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
+      candidate: (g0, h0) => Common.between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
         !this.#notes.has(rank(g0, h0)),
       filter: hexes => group(hexes, ([a, b], [c, d]) => rank(a - c, b - d) === 0)
         .filter(([[g0, h0]]) => !this.#notes.has(rank(g0, h0)))
@@ -803,7 +1099,15 @@ class HexGrid {
         const [ baseG, baseH ] = hex.getCoord();
         return (baseG - g0) * h === (baseH - h0) * g
       }).isGhost
-    })
+    });
+
+    // Notes
+    for (let hex of this) if (!hex.isGhost) {
+      const
+        [ octave, rank ] = hex.note(),
+        note = this.#keyboard.scale.addNote({ octave, rank });
+      if (octave === 0) note.getKey().setHome(hex)
+    }
   }
 
   async fillGrid ({ candidate, filter = x => x, isGhost }) {
@@ -817,7 +1121,7 @@ class HexGrid {
           if (thisHex) { if (viewEdges.has(thisHex)) removeViewEdges.add(thisHex) }
           else if (candidate(g, h)) {
             newViewEdges.get(g)?.add(h) ?? newViewEdges.set(g, new Set([h]));
-            newNotes.add(mod(g * this.gstep + h * this.hstep, this.edo));
+            newNotes.add(HexGrid.mod(g * this.gstep + h * this.hstep, this.#keyboard.edo));
           } else remove = false;
         }
         removeViewEdges.add(hex)
@@ -856,63 +1160,66 @@ class HexGrid {
     } else return [ Math.floor((a - band + 1) / 2), band ]
   }
 
-  // TODO for each basis interval in order, primes then nonprimes, until no keys left,
-  //   place *all intervals* up/down one basis interval onto new keys until idempotent
+  // TODO urgent: needs BigInt Interval
   classifyKeys (force) {
-    if (this.#keys && !force) return;
-    const { edo, hmap } = this,
-          [p0, prad] = hmap.length ? decomp(hmap[0][0])[0][0] : [], pstep = hmap[0]?.[1];
-    this.#keys = new Map();
-    let i = edo - 1, prev, k = 0, result = Array(edo).fill(), prevResult,
-        intervals = app.intervals.map(([iv, step]) => [decomp(...iv), step]);
+    if (this.#notes && !force) return;
+    const 
+      { scale, edo } = this.#keyboard, { mapping } = scale,
+      { primes, indexPrimes, index, intervalSet, harmonicList, rawHarmonicList } = mapping,
+      bases = primes.map(p => [ p, p ])
+        .concat(indexPrimes.map(p => [ p, index.find(h => harmonicList.get(h).primeDecomp.some(([q]) => q === p)) ]))
+        .sort(([a], [b]) => a > b).map(([ , h ]) => intervalSet.getRatio(h, 1));
+    let i = edo - 1, full, prev, k = 0, result = Array(edo).fill(), prevResult,
+        ivset = new IntervalSet(mapping, mapping.getProperIntervals()), prevIvset;
     result[0] = [[[], []]];
-    while (i > 0 && (i !== prev || i === edo - 1) && hmap.length) {
-      prev = i;
-      prevResult = structuredClone(result);
-      for (let [[n, d], step] of intervals) {
-        let s = mod(step + k / prad * pstep, edo),
-            ni = n.findIndex(([p]) => p === p0), nrad = n[ni]?.[1],
-            di = d.findIndex(([p]) => p === p0), drad = d[di]?.[1];
-        if (prevResult[s] === undefined) (result[s] ??= (i--, [])).push(~di ?
-          drad > k ? [n.slice(), d.with(di, [p0, drad - k])] :
-            [ drad < k ? [[p0, k - drad]].concat(n) : n.slice(), d.toSpliced(di, 1) ] :
-          [ ~ni ? n.with(ni, [p0, nrad + k]) : k ? [[p0, k]].concat(n) : n.slice(), d.slice() ]);
-        s = mod(step - k / prad * pstep, edo);
-        if (k > 0 && prevResult[s] === undefined) (result[s] ??= (i--, [])).push(~ni ?
-          nrad > k ? [n.with(ni, [p0, nrad - k]), d.slice()] :
-            [ n.toSpliced(ni, 1), nrad < k ? [[p0, k - nrad]].concat(d) : d.slice() ] :
-          [ n.slice(), ~di ? d.with(di, [p0, drad + k]) : k ? [[p0, k]].concat(d) : d.slice() ])
+    for (let basis of bases) {
+      const [ pn, pd ] = basis.fraction.map(Common.non2), pstep = basis.steps();
+      prevIvset = new IntervalSet(mapping, ivset);
+      full = i;
+      prev = null;
+      while (i > 0 && (i !== prev || i === full) && rawHarmonicList.size) {
+        full = null;
+        prev = i;
+        prevResult = structuredClone(result);
+        for (let iv of prevIvset) {
+          const [ n, d ] = iv.fraction.map(Common.non2), step = iv.steps();
+          let s = HexGrid.mod(step + k * pstep, edo);
+          if (prevResult[s] === undefined && mapping.decomp(n * pn ** k, d * pd ** k)()) {
+            const newIv = new Interval({ keyboard: this.#keyboard, mapping, n: n * pn ** k, d: d * pd ** k });
+            (result[s] ??= (i--, [])).push(newIv.splitDecomp);
+            ivset.add(newIv)
+          }
+          s = HexGrid.mod(step - k * pstep, edo);
+          if (k > 0 && prevResult[s] === undefined && mapping.decomp(n * pd ** k, d * pn ** k)()) {
+            const newIv = new Interval({ keyboard: this.#keyboard, mapping, n: n * pd ** k, d: d * pn ** k });
+            (result[s] ??= (i--, [])).push(newIv.splitDecomp);
+            ivset.add(newIv)
+          }
+        }
+        k++
       }
-      k += prad
+      if (i <= 0) break;
+      k = 1
     }
-    result.forEach(ivs => ivs?.forEach(iv => iv?.forEach(fs => fs.sort(([a], [b]) => a > b))));
+    for (let iv of ivset) mapping.intervalSet.add(iv);
     for (let hex of this) {
-      const key = hex.note()[1], labels = [];
-      if (result[key] === undefined) hex.setNoteClass("default");
-      else for (let i = 0, ivs = result[key]; i < ivs.length; i++) {
-        const { accid, string: label } = noteFromFactors(ivs[i]);
-        let noteClass = between(6, 10, mod(accid[3], 12)) ? "black" : "white";
+      const
+        [ octave, rank ] = hex.note(), labels = [],
+        scaleKey = scale.getKey(rank),
+        note = scaleKey.addNote(octave);
+      hex.setNote(note);
+      if (result[rank]) for (let i = 0, ivs = result[rank]; i < ivs.length; i++) {
+        const { accid, string: label } = Common.noteFromFactors(ivs[i]);
+        let keyClass = Common.between(6, 10, HexGrid.mod(accid[3], 12)) ? "black" : "white";
         const ot = ivs[i][0].findLast(([p]) => p !== 3);
-        if (ot) noteClass += ot[0] + "o";
+        if (ot) keyClass += ot[0] + "o";
         const ut = ivs[i][1].findLast(([p]) => p !== 3);
-        if (ut) noteClass += ut[0] + "u";
-        labels.push({ label, noteClass, interval: ivs[i] })
-        if (i) continue;
-        hex.setNoteClass(noteClass)
+        if (ut) keyClass += ut[0] + "u";
+        labels.push({ label, keyClass, interval: ivs[i] })
       }
-      this.#keys.has(key) ? this.#keys.get(key).addNote(hex) :
-        this.#keys.set(key, new HexKey(hex, labels));
-      }
+      if (!scaleKey.getLabels().length) scaleKey.setLabels(labels)
+    }
   }
-
-  getEnharmonics (key) { return this.#keys.get(key).getLabels() }
-
-  renameKey (key, i) {
-    this.#keys.get(key).setLabel(i);
-    this.redraw()
-  }
-  getLabelsFromSteps (steps) { return this.#keys.get(steps).getLabels() }
-  getHexFromSteps (steps) { return this.#keys.get(steps).getNotes().find(hex => !hex.isGhost && hex.note()[0] === 0) }
 
   redraw (force) {
     const { gridctx, canvas } = app.state(), { width, height } = canvas;
@@ -931,408 +1238,536 @@ class HexGrid {
   colour () {
     const { gridctx, canvas } = app.state(), { width, height } = canvas;
     gridctx.clearRect(0, 0, width, height);
-    for (let [hex] of this.active) hex.colour({ bgColour: app.noteColours.active });
-    for (let hex of this.scheduled) hex.colour({ bgColour: app.noteColours.active });
+    for (let [hex] of this.#active) hex.colour({ bgColour: Keyboard.noteColours.active })
   }
 }
 
-class HexChord {
-  #hexes
-  constructor (...hexes) { this.#hexes = hexes }
-  start () { this.#hexes.forEach(hex => hex.start()) }
-  stop () { this.#hexes.forEach(hex => hex.stop()) }
-  getHexes () { return this.#hexes }
-}
-
-class HexKey {
-  #labels; #notes; #labelIndex = 0
-  constructor (note, labels) {
-    this.#notes = new Set([note]);
-    note.setKey(this);
-    this.#labels = labels
+class HexButton {
+  static #colourMix = (hc1, hc2, t) => {
+    if (![hc1, hc2].every(hc => hc.match(/#\p{Hex_Digit}{6}/ug))) return null;
+    const [r1, g1, b1] = hc1.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+    const [r2, g2, b2] = hc2.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+    return "#" + [[r1, r2], [g1, g2], [b1, b2]].reduce((a, [l, r]) => a + Math.round(Common.lerp(l, r, t)).toString(16).padStart(2, "0"), "")
   }
-  addNote (note) {
-    this.#notes.add(note);
-    note.setKey(this)
+  static #contrast = hc => {
+    if (!hc.match(/#\p{Hex_Digit}{6}/ug)) return null;
+    const [r, g, b] = hc.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+    return r * .299 + g * .587 + b * .114 >= 128 ? "#222222" : "#dddddd"
   }
-  getNotes () { return [ ...this.#notes ] }
-  getLabels () { return this.#labels.slice() }
-  getLabel () { return this.#labels[this.#labelIndex] }
-  setLabel (i) { this.#notes.forEach(note => {
-    if (i >= this.#labels.length) return false;
-    this.#labelIndex = i;
-    const { label, noteClass } = this.#labels[i];
-    note.setNoteClass(noteClass)
-  }) }
+
+  static vertices (g, h, grid) {
+    const { r, w, h: ht, c } = grid, x = w / 2, y = ht / 2, k = .5 * Math.sqrt(3),
+          origin = [
+            [ x, y - r ], [ x - r * k, y - r / 2 ], [ x - r * k, y + r / 2 ],
+            [ x, y + r ], [ x + r * k, y + r / 2 ], [ x + r * k, y - r / 2 ]
+          ];
+    return origin.map(([ a, b ]) => {
+      const [ rx, ry ] = grid.rotate(
+              Math.floor(a + r * k * (h + 2 * g)),
+              Math.floor(b + 1.5 * r * h)
+            );
+      return [ rx - c, ry ]
+    })
+  }
+  static centre (g, h, grid) {
+    const { r, w: width, h: height, c } = grid, k = .5 * Math.sqrt(3),
+          [ rx, ry ] = grid.rotate(
+            Math.floor(width / 2 + r * k * (h + 2 * g)),
+            Math.floor(height / 2 + 1.5 * r * h)
+          );
+    return [ rx - c, ry ]
+  }
+
+  #keyboard; #hexGrid; #g; #h; #note; isGhost
+  constructor ({ keyboard, hexGrid, g, h, isGhost = false }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("HexButton error: must provide Keyboard object");
+    this.#keyboard = keyboard;
+    if (!(HexGrid.prototype.isPrototypeOf(hexGrid))) throw new Error("HexButton error: must provide HexGrid object");
+    this.#hexGrid = hexGrid;
+    this.#g = g;
+    this.#h = h;
+    this.isGhost = isGhost
+  }
+  vertices () { return HexButton.vertices(this.#g, this.#h, this.#hexGrid) }
+  centre () { return HexButton.centre(this.#g, this.#h, this.#hexGrid) }
+
+  neighbours () {
+    const g = this.#g, h = this.#h;
+    return [
+      [ g - 1, h ], [ g, h - 1 ], [ g + 1, h - 1 ],
+      [ g + 1, h ], [ g, h + 1 ], [ g - 1, h + 1 ]
+    ]
+  }
+
+  getCoord () { return [ this.#g, this.#h ] }
+
+  note () { // TODO: rename
+    const n = this.#g * this.#hexGrid.gstep + this.#h * this.#hexGrid.hstep, { edo } = this.#keyboard;
+    return [ Math.floor(n / edo), (n % edo + edo) % edo ]
+  }
+  setNote (note) { this.#note = note }
+
+  colour ({ bgColour, ctx } = {}) {
+    ctx ??= app.state().gridctx;
+    const
+      { noteColours } = Keyboard,
+      [ colourBase, oharm, uharm ] = this.#note.getKey().getLabel().keyClass
+        ?.match(/(black|white)(?:(\d{1,2})o)?(?:(\d{1,2})u)?/)?.slice(1) ?? [],
+      vertices = this.vertices(), { isGhost } = this,
+      drawHex = c => {
+        ctx.beginPath();
+        ctx.moveTo(...vertices[5]);
+        for (let [ x, y ] of vertices) ctx.lineTo(x, y);
+        ctx.strokeStyle = isGhost ? c : "#dddddd";
+        ctx.fillStyle = isGhost ? "#00000000" : c;
+        ctx.lineWidth = isGhost ? 6 : 1;
+        ctx.fill();
+        ctx.stroke();
+      }
+    ctx.globalCompositeOperation = isGhost ? "lighten" : "source-over";
+    if (bgColour) drawHex(bgColour);
+    else if (colourBase) {
+      const
+        bc = noteColours[isGhost ? colourBase === "white" ? "black" : "white" : colourBase],
+        oc = oharm ? HexButton.#colourMix(bc, noteColours[oharm] ?? noteColours.default, .1) : null,
+        uc = uharm ? HexButton.#colourMix(bc, noteColours[uharm] ?? noteColours.default, .1) : null;
+      if (oc && uc) {
+        bgColour = HexButton.#colourMix(oc, uc, .5);
+        drawHex(HexButton.#colourMix(oc, noteColours.white, .1));
+        const [cx, cy] = this.centre();
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.#hexGrid.r, 0, Math.PI);
+        ctx.closePath();
+        ctx.clip();
+        drawHex(HexButton.#colourMix(uc, noteColours.black, .1));
+        ctx.restore();
+      } else drawHex(bgColour = (oc ? HexButton.#colourMix(oc, noteColours.white, .1) : uc ?
+        HexButton.#colourMix(uc, noteColours.black, .1) : bc))
+    } else drawHex(bgColour = noteColours.default);
+    ctx.font = (isGhost ? "bold  " : "") + (.5 * this.#hexGrid.r) + "px HEJI2, ArbutusSlab";
+    const [ x, y ] = this.centre(),
+          { label } = this.#note.getKey().getLabel(),
+          { width } = ctx.measureText(label);
+    ctx.fillStyle = isGhost ? bgColour : HexButton.#contrast(bgColour);
+    ctx.fillText(label ?? this.note()[1], x - width / 2, y)
+  }
+
+  turnOn (id) { this.#hexGrid.addToActive(this, id) }
+  turnOff (id) { this.#hexGrid.removeFromActive(this, id) }
+
 }
 
 
 
-// Harmonic mapping
+// Keyboard
 
-class Common {
-  static #allPrimes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ]
-  
-  static between = (min, max, val) => val <= max && val >= min
-  static non2 = h => h / (h & (~(h - 1)))
-  static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
-  static group = (ar, groupBy = x => x) => ar.reduce((a, v) => {
-    const k = groupBy(v);
-    a[k] = (a[k] ?? []).concat([v]);
-    return a
-  }, {})
-  static decomp = (...iv) => iv.map(r => { // use 2s?
-    let ivh = this.non2(r), raw = [], res = new Map(), i = 1;
-    while (ivh !== 1) {
-      const p = this.#allPrimes[i];
-      if (this.gcd(ivh, p) === 1) i++;
-      else { raw.push(p); ivh /= p }
-    }
-    for (let [ k, v ] of Object.entries(this.group(raw))) res.set(parseInt(k), v.length)
-    return res
-  })
-}
-
-class HarmonicMapping {
+class Keyboard {
 
   // Static
-  static #isPrime (pdec) {
-    let sum = 0;
-    for (let [, rad] of pdec) sum += rad;
-    return sum === 1
-  }
-  static #transp = mat => Array(mat[0].length).fill()
-    .reduce((row, _, i) => row.concat([mat.reduce((cols, row) =>
-      cols.concat([row[i]]), [])]), [])
-
-  static #invDet (mat, decs, ps) { // TDOD: use leading value
-    const
-      rows = mat.length, cols = mat[0].length,
-      aug = mat.map((row, i) => row.concat(Array(rows).fill(0).with(i, 1)));
-    if (mat.length === 0) return null;
-    let det = 1, lcm = 1;
-    for (let i = 0; i < rows; i++) {
-      if (aug[i][i] === 0) {
-        let m = 0;
-        for (m = i + 1; m < rows; m++) if (aug[m][i] !== 0) {
-          ([ aug[m], aug[i], decs[m], decs[i] ] = [ aug[i], aug[m], decs[i], decs[m] ]);
-          for (let j = 0; j < rows; j++)
-            ([ aug[j][cols + m], aug[j][cols + i] ] = [ aug[j][cols + i], aug[j][cols + m] ]);
-          det = -det;
-          break
-        }
-        if (m === rows) return {}
-      }
-      const val0 = aug[i][i];
-      lcm = val0 / Common.gcd(lcm, val0);
-      for (let j = 0; j < rows; j++) if (i !== j) {
-        const val1 = aug[j][i], c = Common.gcd(val0, val1);
-        if (i < ps.length) det *= val0 / c;
-        for (let k = 0; k < rows + cols; k++)
-          aug[j][k] = (val0 * aug[j][k] - val1 * aug[i][k]) / c;
-      }
-    }
-    mat = this.#transp(aug);
-    det = mat.slice(0, ps.length).reduce((acc, row, i) => acc * row[i], 1) / det
-    const degen = aug.findIndex(row => !row.slice(0, cols).some(x => x));
-    if (~degen) aug.splice(degen);
-    // console.log("==>", JSON.stringify(decs.map(([h]) => h)), aug.map(JSON.stringify));
-    return {
-      det, lcm,
-      mods: aug.slice(0, ps.length).map((row, i) => [ ps[i], lcm / row[i] ]),
-      inv: mat.slice(cols, cols + ps.length).map((row, i) => [ decs[i][0], row ]),
-      verify: mat.slice(aug.length, cols).map((vec, i) => [ ps[aug.length + i], vec ])
-    }
+  static presets = {
+    "12edo": {
+      gstep: 2, hstep: 1, orientation: [5, 2], unit: 45, refNote: 9, freqBasis: 220,
+      edo: 12, limit: 9, maxError: 33, hmap: [[3, 7], [5, 4], [7, 10], [9, 2]], instrument: "triangle"
+    },
+    "19edo": {
+      gstep: 3, hstep: 2, orientation: [5, 2], unit: 45, refNote: 14, freqBasis: 220,
+      edo: 19, limit: 9, maxError: 22, hmap: [[3, 11], [5, 6], [7, 15], [9, 3]], instrument: "triangle"
+    },
+    "22edo": {
+      gstep: 4, hstep: 1, orientation: [5, 2], unit: 45, refNote: 16, freqBasis: 220,
+      edo: 22, limit: 11, maxError: 18, hmap: [[3, 13], [5, 7], [7, 18], [9, 4], [11, 10]], instrument: "triangle"
+    },
+    "31edo": {
+      gstep: 5, hstep: 3, orientation: [5, 2], unit: 45, refNote: 23, freqBasis: 220,
+      edo: 31, limit: 11, maxError: 12, hmap: [[3, 18], [5, 10], [7, 25], [9, 5], [11, 14]], instrument: "triangle"
+    },
+    "41edo": {
+      gstep: 7, hstep: 3, orientation: [5, 2], unit: 45, refNote: 30, freqBasis: 220,
+      edo: 41, limit: 15, maxError: 9, hmap: [[3, 24], [5, 13], [7, 33], [9, 7], [11, 19], [13, 29], [15, 37]], instrument: "triangle"
+    },
+    "53edo": {
+      gstep: 5, hstep: 4, orientation: [5, 7], unit: 45, refNote: 39, freqBasis: 220,
+      edo: 53, limit: 15, maxError: 8, hmap: [[3, 31], [5, 17], [7, 43], [9, 9], [11, 24], [13, 37], [15, 48]], instrument: "triangle"
+    },
+    "94edo": {
+      gstep: 9, hstep: 7, orientation: [5, 7], unit: 45, refNote: 69, freqBasis: 220,
+      edo: 94, limit: 17, maxError: 4, hmap: [[3, 55], [5, 30], [7, 76], [9, 16], [11, 43], [13, 66], [15, 85], [17, 8]], instrument: "triangle"
+    },
   }
 
-  static * #subsets (args, { minlength = 1, maxlength = args.length } = {}) {
-    for (let n = minlength; n <= maxlength; n++) {
-      let max = -1, counter = [];
-      while (max + n <= args.length) {
-        if (~max) yield counter.map(k => args[k]);
-        const i = counter.findLastIndex((j, k) => j < max + k);
-        if (~i) counter[i]++;
-        else counter = Array(n).fill().map((_, j) => j).with(-1, n + max++);
-      }
-    }
+  static noteColours = {
+    default: "#333333", active: "#ffff00",
+    white: "#222222", black: "#777777",
+    5: "#ff0000", 7: "#0000ff", 11: "#00ff00", 13: "#ff00ff"
   }
+
+  static selectEl; static edoInfoEl; static limitInfoEl
+  static gstepEl; static hstepEl; static orientationSelectEl; static unitEl
+  static refNoteEl; static freqBasisEl; static edoEl; static limitEl; static maxErrorEl
+  static scaleOutputEl
+  static attach ({
+    selectEl, edoInfoEl, limitInfoEl,
+    gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
+    edoEl, limitEl, maxErrorEl, scaleOutputEl
+  }) { Object.assign(this, {
+    selectEl, edoInfoEl, limitInfoEl,
+    gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
+    edoEl, limitEl, maxErrorEl, scaleOutputEl
+  }) }
+
+  static load ({ keyboards }) {
+    let storedKeyboards = localStorage.getItem("keyboards");
+    storedKeyboards ?
+      Object.assign(keyboards ??= {}, JSON.parse(storedKeyboards)) :
+      localStorage.setItem("keyboards", JSON.stringify(keyboards = Keyboard.presets));
+    Object.keys(keyboards).forEach(name => {
+      const el = $.load("option", "", Keyboard.selectEl)[0][0]
+      el.innerText = name;
+      el.setAttribute("name", name)
+    });
+    const customKeybOptEl = $.load("option", "", Keyboard.selectEl)[0][0]
+    customKeybOptEl.innerText = "Custom";
+    customKeybOptEl.setAttribute("name", "Custom");
+    customKeybOptEl.disabled = true;
+
+    let storedKeyboardSelection = localStorage.getItem("keyboardSelection"), keyboardSelection;
+    storedKeyboardSelection ?
+      (keyboardSelection = Keyboard.selectEl.value = storedKeyboardSelection) :
+      localStorage.setItem("keyboardSelection", keyboardSelection = Object.keys(keyboards)[0]);
+
+    let keyboard = keyboardSelection === "Custom" ? JSON.parse(localStorage.getItem("keyboard")) : keyboards[keyboardSelection];
+    Keyboard.edoInfoEl.innerText = keyboard.edo;
+    Keyboard.limitInfoEl.innerText = keyboard.limit;
+
+    let noteColours = localStorage.getItem("noteColours");
+    if (noteColours) Keyboard.noteColours = JSON.parse(noteColours);
+    else localStorage.setItem("noteColours", JSON.stringify(Keyboard.noteColours));
+
+    return { keyboard: new Keyboard({ name: keyboardSelection, ...keyboard }), keyboards }
+  }
+
+  static setColour (harm, colour, isBlackKeys) {
+    if (harm === 3) Keyboard.noteColours[isBlackKeys ? "black" : "white"] = colour;
+    else Keyboard.noteColours[harm] = colour;
+    localStorage.setItem("noteColours", JSON.stringify(Keyboard.noteColours));
+    this.getScope().keyboard.hexGrid.redraw()
+  }
+
+  static ready = false
+  static getScope () { return app.menuState.at(-2) === "keyboard-settings" ? app.menuState[1] : app }
 
   // Instance
-  maxHarmonic = Infinity//app.maxHarmonic; // Where to put primes?
-  edo; rawHarmonicList; harmonicList = new Map()
-  nonHarmonics = new Set() // Cached blacklist
-  #primes; #basisPrimes; params; index; verify; stepsBasis
-  #properIntervalSet = new IntervalSet(this); intervalSet = new IntervalSet(this)
-  ready = false
-  mask // TODO: for temperings
-
-  constructor (rawHarmonicList, edo) { // [ odd ], number
-    if (edo < 0 || edo % 1 || rawHarmonicList.some(h => !Common.between(3, this.maxHarmonic, h) || h % 2 !== 1))
-      throw new Error("Bad mapping");
+  name; edo; hexGrid; scale; instrument = "triangle"
+  touches = new Map(); mousedown = false
+  constructor ({
+    name, edo,
+    gstep, hstep, unit, orientation,
+    limit, refNote, freqBasis, maxError,
+      hmap,
+    // instrument
+  }) {
+    // TODO: validation helper?
+    if (typeof name !== "string" || name === "" || name.length > app.maxKeyboardNameLength) throw new Error("Keyboard error: bad name");
+    if (typeof edo !== "number" || edo < 0 || edo > app.maxEdo || edo % 1) throw new Error("Keyboard error: bad EDO");
+    this.name = name;
     this.edo = edo;
-    this.rawHarmonicList = rawHarmonicList;//.sort((a, b) => a > b);
-
-    const
-      { true: primeDecs = [], false: compositeDecs = [] } = Common.group(
-        Common.decomp(...rawHarmonicList).map((pdec, i) => [ rawHarmonicList[i], pdec ]),
-        ([, a]) => HarmonicMapping.#isPrime(a)),
-      decs = primeDecs.concat(compositeDecs), ds = decs.map(([h]) => h),
-      ps = [ ...decs.reduce((acc, [, pdec]) => {
-        for (let [p] of pdec) acc.add(p);
-        return acc
-      }, new Set()).values() ].sort((a, b) => a > b);
-    if (compositeDecs.length) {
-      let system, best = 0, dims = -1;
-      const cols = ps.length;
-      for (let hs of HarmonicMapping.#subsets(decs)) { // TODO: memoise?
-        const mat = [], rows = hs.length;
-        for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
-        if (rows < cols) mat.splice(Infinity, Infinity, ...Array(cols - rows).fill().map(() => mat.at(-1).slice()));
-        if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
-          Array(rows - cols).fill(0).with(i - cols, -1))));
-        // console.log("<==", mat.map(JSON.stringify));
-        const { mods, inv, det, lcm, verify } = HarmonicMapping.#invDet(mat, hs, ps);
-        if (det === undefined) continue;
-        // console.log(JSON.stringify(hs.map(([h]) => h)), det, Math.abs(det) === 1 ? "is basis" : "is not basis", inv.map(JSON.stringify), mods.map(JSON.stringify),
-        //   verify.map(JSON.stringify), JSON.stringify(ps))
-        if ((best !== 0 && Math.abs(det) < Math.abs(best)) || (best === 0 && (det !== 0 || inv.length > dims)))
-          ([system, best, dims] = [hs, det, inv.length]);
-        if (Math.abs(det) === 1) break;
-      }
-      const
-        hs = system.reduce((acc, [h], i) => {
-          const j = acc.findIndex(([p]) => p === h);
-          ([ acc[i], acc[j] ] = [ acc[j], acc[i] ]);
-          return acc
-        }, decs),
-        rows = hs.length, mat = [];
-      for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
-      if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
-        Array(rows - cols).fill(0).with(i - cols, -1))));
-
-      // Can I use det to exclude harmonics before running the counting function?
-      const { mods, inv, det, lcm, verify } = HarmonicMapping.#invDet(mat, hs, ps);
-      // console.log(JSON.stringify(hs.map(([h]) => h)), best, inv.map(JSON.stringify), lcm, mods.map(JSON.stringify), verify.map(JSON.stringify), JSON.stringify(ps));
-
-      this.index = system.map(([h]) => h);
-      this.params = ds.filter(d => !~system.findIndex(([h]) => h === d));
-      this.#primes = ps;
-      this.#basisPrimes = primeDecs.map(([h]) => h).filter(p => !~ps.findIndex(h => h === p));
-      // console.log(this.#primes, this.#basisPrimes)
-
-      // if underdetermined, the params must be provided
-      // if overdetermined, these components must be verified
-      this.verify = (...primeVec) => {
-        const
-          dps = primeVec.slice(0, decs.length),
-          vps = primeVec.slice(decs.length);
-        return verify.every(([p, vec], i) => dps.reduce((a, x, j) => a + x * vec[j] * (mods[j]?.[1] ?? 1), 0) === vps[i])
-      };
-
-      inv.forEach(([h, vec]) => this.harmonicList.set(h, new Harmonic(this, h,
-        (...params) => {
-          const rawNum = hs.reduce((a, _, i) => a + (params[i] ?? 0) * vec[i] * (mods[i]?.[1] ?? 1), 0);
-          return rawNum % lcm ? null : rawNum / lcm // Null means failure
-        }), true));
-      decs.filter(([d]) => !~inv.findIndex(([h]) => h === d))
-        .forEach(([h]) => this.harmonicList.set(h, new Harmonic(this, h, this.countingFn(h), true)));
-
-      // Generate all intervals
-      const withUnison = [1].concat(ds);
-      for (let n of withUnison) for (let d of withUnison) {
-        const params = Array(this.params.length).fill(0);
-        // params[this.params.findIndex(h => h === n)] = 1;
-        // params[this.params.findIndex(h => h === d)] = -1;
-        const iv = new Interval(this, n, d, params, true);
-        this.#properIntervalSet.add(iv);
-        this.intervalSet.add(iv)
-      }
-    } else {}
-    this.ready = true
+    this.hexGrid = new HexGrid({ keyboard: this, gstep, hstep, unit, orientation });
+    this.scale = new Scale({ keyboard: this, limit, refNote, freqBasis, maxError })
   }
-  countingFn (n, d) { //Null is failure
-    const pdec = Common.decomp(n)[0];
-    if (d) {
-      for (let [p, rad] of Common.decomp(d)[0]) if (pdec.has(p)) { // TODO move to Interval
-        const nrad = pdec.get(p);
-        if (nrad === rad) pdec.delete(p);
-        else pdec.set(p, nrad - rad)
-      } else pdec.set(p, -rad)
-    }
-    const
-      { params, index, harmonicList, verify } = this,
-      primes = this.#primes, basisPrimes = this.#basisPrimes,
-      countingFns = new Map();
-    for (let p of basisPrimes) {
-      if (!pdec.has(p)) continue;
-      else countingFns.set(p, () => pdec.get(p));
-      pdec.delete(p)
-    }
-    const primeVec = primes.map(p => pdec.get(p) ?? 0);
-    for (let [p] of pdec) if (!~primes.findIndex(q => q === p)) return null;
-    if (!verify(...primeVec)) return null;
-    return basisPrimes.concat(index).reduce((fn, h) => (...params) => {
-      const acc = fn(...params);
-      if (acc === null) return null;
-      const res = harmonicList.get(h).countingFn(...primeVec, ...params);
-      return res === null ? null : acc.concat([res])
-    }, () => [])
-  }
-  getProperIntervals () { return [ ...this.#properIntervalSet ] }
-  addInterval (interval) { intervalSet.add(interval) }
-  setSteps (stepsMap) {  // Map([[ harmonic, steps ]])
-    const { index } = this;
-    if (index.some(h => {
-      const s = stepsMap.get(h);
-      return s === undefined || s < 0 || s % 1
-    })) throw new Error("Could not set steps for mapping");
-    this.stepsBasis = stepsMap
-  }
-}
 
-class Harmonic {
-  #mapping; h; isBasis; countingFn
-  constructor (mapping, h, countingFn, isInitial = false) {
-    const existing = mapping.harmonicList.get(h);
-    if (existing) return existing;
-    this.#mapping = mapping;
-    this.h = h;
-    // Unison
-    if (h === 1) {
-      this.isBasis = false;
-      this.countingFn = () => Array(mapping.index.length).fill(0)
+  load () {
+    const { selectEl, edoInfoEl, limitInfoEl } = Keyboard, keyboardSelection = selectEl.value, keyboard = {};
+    localStorage.setItem("keyboardSelection", keyboardSelection);
+    if (keyboardSelection === "Custom") {
+      Object.assign(keyboard, {
+        name: "Custom",
+        orientation: Keyboard.orientationSelectEl.value.split(",").map(v => parseInt(v)),
+        hmap: $.all(".harmonic.prime > input.steps")
+          .map(el => [parseInt(el.parentElement.dataset.harm), el.valueAsNumber])
+      });
+      [ "gstep", "hstep", "unit", "refNote", "freqBasis", "edo", "limit", "maxError" ]
+        .forEach(dataname => keyboard[dataname] = Keyboard[dataname + "El"].valueAsNumber);
+      Keyboard.getScope().keyboard = new Keyboard(keyboard);
+      localStorage.setItem("keyboard", JSON.stringify(keyboard))
     } else {
-      const
-        { harmonicList, nonHarmonics, index, ready } = mapping,
-        doErr = () => { throw new Error("Harmonic not in mapping") };
-      if (ready) {
-        countingFn = mapping.countingFn(h);
-        if (nonHarmonics.has(h) || countingFn === null) doErr();
-        this.isBasis = false;
-      } else this.isBasis = Boolean(~index.findIndex(v => v === h));
-      this.countingFn = countingFn
+      selectEl.namedItem("Custom").disabled = true;
+      Object.assign(keyboard, app.keyboards[keyboardSelection], { name: keyboardSelection });
+      localStorage.removeItem("keyboard");
+      (Keyboard.getScope().keyboard = new Keyboard(keyboard)).fillSettings()
     }
-
+    edoInfoEl.innerText = keyboard.edo;
+    limitInfoEl.innerText = keyboard.limit;
+    app.emit("generate-keyboard");
+    return { keyboardSelection }
   }
+
+  save () {
+    const
+      { name, edo, hexGrid, scale } = this,
+      { gstep, hstep, unit, orientation } = hexGrid,
+      { limit, refNote, freqBasis, maxError, mapping } = scale,
+      { hmap } = mapping,
+      storeObj = {
+        edo, gstep, hstep, unit, orientation,
+        limit, refNote, freqBasis, maxError, hmap
+      },
+      keyboardsObj = JSON.parse(localStorage.getItem("keyboards"));
+    localStorage.setItem("keyboards", JSON.stringify(Object.assign(keyboardsObj, { [name]: storeObj })))
+  }
+
+  fillSettings () {
+    const
+      { gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
+        edoEl, limitEl, maxErrorEl, scaleOutputEl } = Keyboard,
+      { edo, hexGrid, scale } = this,
+      { gstep, hstep, unit, orientation, orientations } = hexGrid,
+      { limit, refNote, freqBasis, maxError } = scale;
+    gstepEl.value = gstep;
+    hstepEl.value = hstep;
+    $.all(":scope > *", orientationSelectEl).forEach(el => el.remove());
+    orientations.forEach(coord => {
+      const el = $.load("option", "", orientationSelectEl)[0][0];
+      el.innerText = coord;
+      el.setAttribute("name", coord)
+    });
+    orientationSelectEl.options.namedItem(orientation.join(",")).selected = true;
+    unitEl.value = unit;
+    refNoteEl.value = refNote;
+    freqBasisEl.value = freqBasis;
+    edoEl.value = edo;
+    limitEl.value = limit;
+    maxErrorEl.value = maxError
+    scaleOutputEl.value = `One step of ${edo}EDO = ${(1200 / edo).toFixed(2)}¢`;
+  }
+
+  update () {
+    const
+      { orientationSelectEl, gstepEl, hstepEl, edoEl } = Keyboard,
+      { keyboard } = Keyboard.getScope(), { hexGrid } = keyboard,
+      gstep = gstepEl.valueAsNumber,
+      hstep = hstepEl.valueAsNumber,
+      edo = edoEl.valueAsNumber,
+      applyButton = $("#keyboard-settings-apply");
+    $.all(":scope > *", orientationSelectEl).forEach(el => el.remove());
+    if (Common.gcd(gstep, hstep) !== 1) return applyButton.disabled = true;
+    this.edo = edo;
+    applyButton.disabled = false;
+    if (!hexGrid.setLattice({ gstep, hstep })) return applyButton.disabled = true;
+    hexGrid.orientations.forEach(coord => {
+      const el = $.load("option", "", orientationSelectEl)[0][0];
+      el.innerText = coord;
+      el.setAttribute("name", coord)
+    })
+    orientationSelectEl.namedItem(hexGrid.orientation).selected = true
+  }
+
+  play (g, h, id) {
+    const { hexGrid, scale, touches } = this;
+    let hex = hexGrid.getHex(g, h),
+        [ octave, rank ] = hex.note(),
+        note = scale.getNote({ octave, rank });
+    hex.turnOn(id);
+    hexGrid.colour();
+    note.turnOn(id);
+    touches.set(id, { hex, note });
+  }
+
+  stop (id) {
+    const { hexGrid, scale, touches } = this;
+    let { hex, note } = touches.get(id);
+    hex.turnOff(id)
+    hexGrid.colour()
+    note.turnOff(id);
+    touches.delete(id);
+  }
+
+  refresh () {
+    this.touches = new Map();
+    this.scale.refresh();
+    this.hexGrid.redraw(true)
+  }
+
 }
 
-class Interval { // Check to add noteFromFactors
-  #mapping; n; d; params; octave; fraction; decomp; noteSpelling; isProper
-  octaveAdjust
-  constructor (mapping, n, d, params, isProper) {
-    const c = Common.gcd(n, d);
-    n = n / c;
-    d = d / c;
-    if (mapping.intervalSet.hasRatio(n, d)) return mapping.intervalSet.getRatio(n, d);
-    this.n = Common.non2(n);
-    this.d = Common.non2(d);
-    const octave = this.octave = Math.floor(Math.log2(n) - Math.log2(d));
-    this.octaveAdjust = octave;
-    this.#mapping = mapping;
-    this.params = params;
-    this.isProper = isProper;
-    this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
-    this.decomp = mapping.countingFn(n, d)(...params);
-    // this.noteSpelling = noteFromFactors([ n.primeDecomp, d.primeDecomp ])
+// Musical aspect of keyboard
+class Scale {
+  #keyboard; limit
+  mapping; refNote; freqBasis; maxError
+  #keys = new Map() // Map([ rank, key ])
+  #active = new Map() // Map([ note, Set(id) ])
+  constructor ({ keyboard, limit, hmap, refNote, freqBasis, maxError }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Scale error: must provide Keyboard object");
+    this.#keyboard = keyboard;
+    const { edo } = keyboard;
+    if (typeof limit !== "number" || limit < 3 || limit > app.maxHarmonic || limit % 2 !== 1) throw new Error("Scale error: bad harmonic limit");
+    if (typeof refNote !== "number" || refNote < 0 || refNote >= edo || refNote % 1) throw new Error("Scale error: bad reference note");
+    if (typeof freqBasis !== "number" || freqBasis < 10 || freqBasis > 4e4) throw new Error("Scale error: bad reference frequency");
+    if (typeof maxError !== "number" || freqBasis < 0 || freqBasis > 1200) throw new Error("Scale error: bad max pitch variation");
+    this.limit = limit;
+    this.maxError = maxError;
+    this.refNote = refNote;
+    this.mapping = new HarmonicMapping({ keyboard, scale: this, hmap: this.#genRawHMap({ edo, limit, maxError }) });
+    this.freqBasis = freqBasis;
+
+    for (let i = 0; i < edo; i++) this.#keys.set(i, new Key({ keyboard, scale: this, rank: i }))
   }
-  withOctave (n) {
-    this.octaveAdjust = n;
-    return this
+
+  #genRawHMap ({ edo, limit, maxError }) {
+    let hmap = new Map();
+    for (let i = 3; i <= limit; i += 2) {
+      const
+        just = Math.log2(i) % 1,
+        maybeSteps = Math.round(just * edo),
+        error = (maybeSteps / edo - just) * 1200;
+      if (Math.abs(error) < maxError && maybeSteps + edo * maxError / 1200 >= 1 &&
+        maybeSteps - edo * maxError / 1200 < edo) hmap.set(i, maybeSteps)
+    }
+    return hmap
   }
-  steps () {
-    const { index, stepsBasis, edo } = this.#mapping;
-    return this.decomp.reduce((acc, rad, i) => acc + stepsBasis.get(index[i]) * rad, 0) + this.octaveAdjust * edo
+
+  getKey (rank) { return this.#keys.get(rank) }
+  addNote ({ rank, octave }) { return this.#keys.get(rank).addNote(octave) }
+  getNote ({ rank, octave }) { return this.#keys.get(rank)?.getNote(octave) }
+  play (note, id) {
+    const active = this.#active, ids = active.get(note);
+    if (ids) ids.add(id);
+    else {
+      active.set(note, new Set([id]))
+      note.start();
+    } 
   }
+  stop (note, id) {
+    const active = this.#active, ids = active.get(note);
+    if (!ids) return;
+    ids.delete(id);
+    if (ids.size === 0) {
+      note.stop();
+      active.delete(note)
+    }
+  }
+  refresh () { this.#active = new Map() }
 }
 
-class IntervalSet {
-  #mapping; #rawMap // Map([[ number, Map([ number, interval ]) ]])
-  constructor (mapping, intervalList = []) {
-    this.#mapping = mapping;
-    this.#rawMap = new Map();
-    for (let interval of intervalList) this.add(interval)
+class Key {
+  #keyboard; #scale; #notes = new Map(); #labels = []; #labelIndex = 0; #home; rank
+  constructor ({ keyboard, scale, rank }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Key error: must provide Keyboard object");
+    this.#keyboard = keyboard;
+    if (!(Scale.prototype.isPrototypeOf(scale))) throw new Error("Key error: must provide Scale object");
+    this.#scale = scale;
+    this.rank = rank
   }
-  add (interval) {
-    const { harmonicList } = this.#mapping,
-          { n, d } = interval, c = Common.gcd(n, d),
-          nMap = this.#rawMap.get(n / c) ?? this.#rawMap.set(n / c, new Map()).get(n / c);
-    if (!nMap.has(d / c)) nMap.set(d / c, interval)
+  addNote (octave) {
+    const note = new Note({ keyboard: this.#keyboard, scale: this.#scale, rank: this.rank, octave });
+    this.#notes.set(octave, note);
+    return note
   }
-  has (interval) {
-    const { n, d } = interval;
-    return Boolean(this.#rawMap.get(n)?.has(d))
-  }
-  hasRatio (n, d) { return Boolean(this.#rawMap.get(Common.non2(n))?.has(Common.non2(d))) }
-  get (interval) {
-    const { n, d } = interval;
-    return this.#rawMap.get(n)?.get(d)
-  }
-  getRatio (n, d) {
-    const iv = this.#rawMap.get(Common.non2(n))?.get(Common.non2(d));
-    if (iv === undefined) return iv;
-    return iv.withOctave(Math.log2(n * iv.d / d / iv.n))
-  }
-  * [ Symbol.iterator ] () { for (let [g, s] of this.#rawMap) for (let [h, iv] of s) yield iv }
+  getNote (octave) { return this.#notes.get(octave) }
+  getNotes () { return [ ...this.#notes ] }
+  getLabels () { return this.#labels.slice() }
+  getLabel () { return this.#labels[this.#labelIndex] ?? { label: this.rank } }
+  setLabels (labels) { this.#labels = labels }
+  setLabel (i) { this.#notes.forEach(note => {
+    if (!Common.between(0, this.#labels.length - 1, i)) return false;
+    this.#labelIndex = i;
+    const { label, keyClass } = this.#labels[i]
+  }) }
+  setHome (hex) { this.#home = hex }
+  getHome () { return this.#home }
 }
+
+class Note {
+  #keyboard; #scale; #osc; #volume; rank; octave
+  constructor ({ keyboard, scale, rank, octave }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("HexGrid error: must provide Keyboard object");
+    if (!Scale.prototype.isPrototypeOf(scale)) throw new Error("Note error: must provide Scale object");
+    const existing = scale.getNote({ rank, octave })
+    if (existing) return existing;
+    this.#keyboard = keyboard;
+    this.#scale = scale;
+    this.rank = rank;
+    this.octave = octave
+  }
+  getKey () { return this.#scale.getKey(this.rank) }
+  start () {
+    const
+      { audioctx, masterVolume } = app.state(),
+      { rank, octave } = this, { freqBasis, refNote } = this.#scale, { edo } = this.#keyboard,
+      osc = this.#osc = audioctx.createOscillator(),
+      volume = this.#volume = audioctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freqBasis * 2 ** (octave + ((refNote + rank) / edo));
+    osc.connect(volume);
+    volume.connect(masterVolume);
+    volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime)
+    volume.gain.linearRampToValueAtTime(1, audioctx.currentTime + .05)
+    osc.start(audioctx.currentTime)
+  }
+  stop () {
+    const
+      { audioctx } = app.state(),
+      osc = this.#osc, volume = this.#volume;
+    volume.gain.linearRampToValueAtTime(1, audioctx.currentTime);
+    volume.gain.linearRampToValueAtTime(.0001, audioctx.currentTime + .05);
+    osc.stop(audioctx.currentTime + .05);
+    this.#osc = null;
+    this.#volume = null
+  }
+
+  turnOn (id) { this.#scale.play(this, id) }
+  turnOff (id) { this.#scale.stop(this, id) }
+}
+
+class Chord {
+  #keyboard; #coordss
+  constructor (keyboard, ...coordss) {
+    this.#keyboard = keyboard;
+    this.#coordss = coordss
+  }
+  start (id) { this.#coordss.forEach(([g, h], i) => this.#keyboard.play(g, h, id + "-" + i)) }
+  stop (id) { this.#coordss.forEach((_, i) => this.#keyboard.stop(id + "-" + i)) }
+}
+
+
+
+// Track
+
+class Track {}
+
+
+
+// Menu state
+
+class MenuState {}
 
 
 
 // Page state
 
+// TODO: add freeze property feature to machine.js
 var app = new $.Machine({
+    // Version
+      version: "0.0.1",
+
     // Navigation
       menuState: [],
-      keyboards: {
-        "12edo": {
-          gstep: 2, hstep: 1, orientations: [[6,0],[5,2],[4,4],[3,6],[2,8],[1,10],[0,12]], orientation: [5, 2], unit: 45,
-          refNote: 9, freqBasis: 220, edo: 12, limit: 9, maxerror: 33, hmap: [[3, 7], [5, 4], [7, 10]], instrument: "triangle"
-        },
-        "19edo": {
-          gstep: 3, hstep: 2, orientations: [[5,2],[3,5],[1,8]], orientation: [5, 2], unit: 45,
-          refNote: 14, freqBasis: 220, edo: 19, limit: 9, maxerror: 21, hmap: [[3, 11], [5, 6]], instrument: "triangle"
-        },
-        "22edo": {
-          gstep: 4, hstep: 1, orientations: [[5,2],[4,6],[3,10],[2,14],[1,18],[0,22]], orientation: [5, 2], unit: 45,
-          refNote: 16, freqBasis: 220, edo: 22, limit: 9, maxerror: 18, hmap: [[3, 13], [5, 7], [7, 18]], instrument: "triangle"
-        },
-        "31edo": {
-          gstep: 5, hstep: 3, orientations: [[5,2],[2,7]], orientation: [5, 2], unit: 45,
-          refNote: 23, freqBasis: 220, edo: 31, limit: 9, maxerror: 12, hmap: [[3, 18], [5, 10], [7, 25]], instrument: "triangle"
-        },
-        "41edo": {
-          gstep: 7, hstep: 3, orientations: [[5,2],[2,9]], orientation: [5, 2], unit: 45,
-          refNote: 30, freqBasis: 220, edo: 41, limit: 9, maxerror: 9, hmap: [[3, 24], [5, 13], [7, 33]], instrument: "triangle"
-        },
-        "53edo": {
-          gstep: 5, hstep: 4, orientations: [[9,2],[5,7],[1,12]], orientation: [5, 7], unit: 45,
-          refNote: 39, freqBasis: 220, edo: 53, limit: 9, maxerror: 7, hmap: [[3, 31], [5, 17], [7, 43]], instrument: "triangle"
-        },
-        "94edo": {
-          gstep: 9, hstep: 7, orientations: [[5,7]], orientation: [5, 7], unit: 45,
-          refNote: 69, freqBasis: 220, edo: 94, limit: 9, maxerror: 4, hmap: [[3, 55], [5, 30], [7, 76]], instrument: "triangle"
-        },
-      },
 
       // Keyboard
+      maxEdo: 270,
+      maxKeyboardNameLength: 255,
       octaves: null,
-      noteColours: {
-        default: "#333333", active: "#ffff00",
-        white: "#222222", black: "#777777",
-        5: "#ff0000", 7: "#0000ff", 11: "#00ff00", 13: "#ff00ff"
-      },
+      keyboard: null,
+      keyboards: null,
       keyboardSelection: null,
       canvas: null,
       gridctx: null,
-      hexGrid: null,
-      getGridScope: () => app.menuState.at(-2) === "keyboard-settings" ? app.menuState[1] : app,
-      mousedown: false,
       audioctx: null,
       masterVolume: null,
 
       // Harmony
       maxHarmonic: 51,
       temperings: null,
-      intervals: null,
 
       // Track
       tracks: {},
@@ -1350,60 +1785,71 @@ $.targets({
   keydown (e) { if (e.key === "Escape") document.activeElement.blur() },
 
   resize () {
+    if (!Keyboard.ready) return;
     app.emit("resize", true);
-    app.getGridScope().hexGrid.redraw(true)
+    Keyboard.getScope().keyboard.hexGrid.redraw(true)
   },
 
   contextmenu (e) { e.preventDefault() },
 
   "touchstart touchend touchmove" (e) {
+    if (!Keyboard.ready) return;
     const nav = $("nav");
     if (e.type === "touchstart" && document.activeElement === nav && !e.composedPath().includes(nav)) $(nav).blur();
     const canvas = $("canvas");
-    if (e.target === canvas) 
-      for (let { clientX, clientY, identifier } of e.changedTouches) {
-        const x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop,
-              { hexGrid } = app.getGridScope();
-        if (hexGrid && (hexGrid.touches.has(identifier) || e.type === "touchstart") &&
-          (hexGrid.hasHex(...hexGrid.getCoord(x, y)) || e.type === "touchend"))
-          app.emit("press", e.type.slice(5), x, y, identifier)
-      }
+    if (e.target === $("main")) for (let { clientX, clientY, identifier } of e.changedTouches) {
+      const
+        x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop,
+        { keyboard } = Keyboard.getScope(), { hexGrid } = keyboard;
+      if (keyboard && (keyboard.touches.has("touch-" + identifier) || e.type === "touchstart") &&
+        (hexGrid.hasHex(...hexGrid.getCoord(x, y)) || e.type === "touchend"))
+        app.emit("press", x, y, "touch", e.type.slice(5), identifier)
+    }
   },
 
   mousedown (e) {
-    const { hexGrid } = app.getGridScope();
-    if (e.target === $("canvas") && hexGrid.hasHex(...hexGrid.getCoord(e.layerX / 2, e.layerY / 2))) {
-      app.mousedown = true;
-      app.emit("press", "start", e.layerX / 2, e.layerY / 2)
+    if (!Keyboard.ready) return;
+    const { keyboard } = Keyboard.getScope(), { hexGrid } = keyboard;
+    if (e.target === $("main") && hexGrid.hasHex(...hexGrid.getCoord(e.layerX, e.layerY))) {
+      keyboard.mousedown = true;
+      app.emit("press", e.layerX, e.layerY, "mouse", "start")
     }
   },
   mousemove (e) {
-    const { hexGrid } = app.getGridScope(),
-          hover = hexGrid.hasHex(...hexGrid.getCoord(e.layerX / 2, e.layerY / 2));
+    if (!Keyboard.ready) return;
+    const { hexGrid, mousedown } = Keyboard.getScope().keyboard,
+          hover = hexGrid.hasHex(...hexGrid.getCoord(e.layerX, e.layerY));
     $("main").classList.toggle("hover", hover);
-    if (app.mousedown && hover)
-      app.emit("press", "move", e.layerX / 2, e.layerY / 2)
+    if (mousedown && hover) app.emit("press", e.layerX, e.layerY, "mouse", "move")
   },
   "mouseup mouseout" (e) {
-    if (app.mousedown && e.type !== "mouseout") {
-      app.mousedown = false;
-      app.emit("press", "end", e.layerX / 2, e.layerY / 2)
+    if (!Keyboard.ready) return;
+    const { keyboard } = Keyboard.getScope();
+    if (keyboard.mousedown && e.type !== "mouseout") {
+      keyboard.mousedown = false;
+      app.emit("press", e.layerX, e.layerY, "mouse", "end")
     }
   },
 
   document: { fonts: { loadingdone () {
+    if (!Keyboard.ready) return;
     app.emit("resize", true);
-    app.getGridScope().hexGrid.redraw(true)
+    Keyboard.getScope().keyboard.hexGrid.redraw(true)
   } } },
 
   app: {
 
     init () {
+      const { version } = this;
+      if (Common.versionCmp(version, localStorage.getItem("version") ?? "0") > 0) {
+        localStorage.clear();
+        localStorage.setItem("version", version)
+      }
       this.canvas = $("#hex");
       this.gridctx = this.canvas.getContext("2d");
       new ResizeObserver(() => {
         this.emit("resize", true);
-        this.getGridScope().hexGrid.redraw(true)
+        Keyboard.getScope().keyboard.hexGrid.redraw(true)
       }).observe($("main"));
       const ivTable = $("#interval-table");
       new ResizeObserver(() => {
@@ -1411,61 +1857,45 @@ $.targets({
         ivTable.style.setProperty("--table-width", Math.round(width) + "px");
         ivTable.style.setProperty("--table-height", Math.round(height) + "px")
       }).observe(ivTable);
-      const audioctx = this.audioctx = new AudioContext(),
-            masterVolume = this.masterVolume = audioctx.createGain();
+      const
+        audioctx = this.audioctx = new AudioContext(),
+        masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
-      masterVolume.gain.value = scaleVolume($("#volume > input").valueAsNumber);
-      $("#limit").max = this.maxHarmonic;
+      masterVolume.gain.value = Common.scaleVolume($("#volume > input").valueAsNumber);
       this.octaves = $("#octaves > input").valueAsNumber;
       $("#track-select > select").selectedIndex = 0;
+
+      Keyboard.attach({
+        // Keyboard selection
+        selectEl: $("#keyboard-select > select"),
+        edoInfoEl: $("#edo-info"),
+        limitInfoEl: $("#limit-info"),
+
+        // Keyboard settings
+        gstepEl: $("#gstep > input"),
+        hstepEl: $("#hstep > input"),
+        orientationSelectEl: $("#orientation > select"),
+        unitEl: $("#unit > input"),
+        refNoteEl: $("#refNote > input"),
+        freqBasisEl: $("#freqBasis > input"),
+        edoEl: $("#edo > input"),
+        limitEl: $("#limit > input"),
+        maxErrorEl: $("#maxError > input"),
+        scaleOutputEl: $("#scale > output")
+      });
+      Keyboard.limitEl.max = this.maxHarmonic;
       this.emit("load-presets")
     },
 
     "clear-storage" () { localStorage.clear() },
 
     "load-presets" () {
+      const { keyboard, keyboards } = Keyboard.load({ keyboards: this.keyboards, keyboardSelection: this.keyboardSelection });
+      Object.assign(this, { keyboard, keyboards, keyboardSelection: keyboard.name });
 
-      // Keyboards
-      let keyboards = localStorage.getItem("keyboards");
-      if (!keyboards) {
-        keyboards = this.keyboards;
-        localStorage.setItem("keyboards", JSON.stringify(keyboards))
-      } else localStorage.setItem("keyboards", JSON.stringify(keyboards = Object.assign(this.keyboards, JSON.parse(keyboards))));
-      Object.keys(keyboards).forEach(name => {
-        const el = $.load("option", "#keyboard-select > select")[0][0]
-        el.innerText = name;
-        el.setAttribute("name", name)
-      });
-      const customKeybOptEl = $.load("option", "#keyboard-select > select")[0][0]
-      customKeybOptEl.innerText = "Custom";
-      customKeybOptEl.setAttribute("name", "Custom");
-      customKeybOptEl.disabled = true;
-
-      let keyboardSelection = localStorage.getItem("keyboardSelection");
-      if (!keyboardSelection) {
-        keyboardSelection = Object.keys(app.keyboards)[0];
-        localStorage.setItem("keyboardSelection", keyboardSelection)
-      } else keyboardSelection = this.keyboardSelection = $("#keyboard-select > select").value = keyboardSelection;
-      
-      let keyboard = keyboardSelection === "Custom" ? JSON.parse(localStorage.getItem("keyboard")) : keyboards[keyboardSelection];
-      $("#edo-info").innerText = keyboard.edo;
-      $("#limit-info").innerText = keyboard.limit;
-
-      let hmap = new Map(keyboard.hmap.map(([k, v]) => [parseInt(k), v])),
-          hs = Array((keyboard.limit + 1) / 2).fill().map((_, i) => [ 2 * i + 1, decomp(2 * i + 1)[0].reduce((s, [p, rad]) => s + hmap.get(p) * rad, 0) % keyboard.edo ]);
-      this.intervals = group(hs.reduce((acc, [n, i]) => acc.concat(hs.map(([d, j]) => {
-        const oct = Math.floor(Math.log2(n) - Math.log2(d)), c = gcd(n, d);
-        return [oct > 0 ? [n / c, (d / c) << oct] : oct < 0 ? [(n / c) << -oct, d / c] : [n / c, d / c], (i - j + keyboard.edo) % keyboard.edo]
-      })), []), ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v);
-
-      this.emit("fill-keyboard-settings", keyboard);
-      app.getGridScope().hexGrid = new HexGrid(keyboard);
-
-      let noteColours = localStorage.getItem("noteColours");
-      if (!noteColours) {
-        noteColours = this.noteColours;
-        localStorage.setItem("noteColours", JSON.stringify(noteColours))
-      } else localStorage.setItem("noteColours", JSON.stringify(this.noteColours = JSON.parse(noteColours)));      
+      keyboard.fillSettings();
+      this.keyboard = keyboard;
+      Keyboard.ready = true;
 
       // Tracks
       let tracks = localStorage.getItem("tracks");
@@ -1484,11 +1914,12 @@ $.targets({
     },
 
     resize (reset) {
-      const { hexGrid } = this.getGridScope(),
-            { canvas, octaves } = this, { unit, orientation: [g, h], theta } = hexGrid,
-            x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
-            { width, height } = $("main").getBoundingClientRect(),
-            r = hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) * octaves + 2) * 2);
+      const
+        { hexGrid } = Keyboard.getScope().keyboard,
+        { canvas, octaves } = this, { unit, orientation: [g, h], theta } = hexGrid,
+        x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
+        { width, height } = $("main").getBoundingClientRect(),
+        r = hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) * octaves + 2) * 2);
       if (reset) {
         hexGrid.w = canvas.width = Math.ceil(width) * 2,
         hexGrid.h = canvas.height = Math.ceil(height) * 2;
@@ -1500,273 +1931,153 @@ $.targets({
       canvas.style.setProperty("height", Math.ceil(height));
     },
 
-    press (type, x, y, id) {
-      const { hexGrid } = this.getGridScope(),
-            { active, touches } = hexGrid,
-            coord = hexGrid.getCoord(x, y), [g, h] = coord;
-      let hex, ids;
-      switch (type) {
-        case "start":
-          hex = hexGrid.getHex(...coord);
-          if (!active.has(hex)) hex.start();
-          active.set(hex, (active.get(hex) ?? new Set()).add(id));
-          touches.set(id, hex);
-          hexGrid.colour();
-          break;
+    press (x, y, type, action, id) {
+      id = type + "-" + id;
+      const
+        { keyboard } = Keyboard.getScope(),
+        coord = keyboard.hexGrid.getCoord(x, y), [g, h] = coord;
+      let hex, note;
+      switch (action) {
+        case "start": keyboard.play(g, h, id); break;
         case "move":
-          hex = touches.get(id);
-          ids = active.get(hex);
-          if (hex.getCoord().some((v, i) => v !== coord[i])) {
-            ids.delete(id);
-            if (ids.size === 0) {
-              hex.stop();
-              active.delete(hex)
-            }
-            hex = hexGrid.getHex(...coord);
-            if (!active.has(hex)) hex.start();
-            active.set(hex, (active.get(hex) ?? new Set()).add(id));
-            touches.set(id, hex);
-            hexGrid.colour()
+          if (keyboard.touches.get(id).hex.getCoord().some((v, i) => v !== coord[i])) {
+            keyboard.stop(id);
+            keyboard.play(g, h, id)
           }
           break;
-        case "end":
-          hex = touches.get(id);
-          ids = active.get(hex);
-          ids.delete(id);
-          if (ids.size === 0) {
-            hex.stop();
-            active.delete(hex)
-          }
-          touches.delete(id)
-          hexGrid.colour()
+        case "end": keyboard.stop(id)
       }
     },
 
     panic () {
       this.audioctx.close();
-      const audioctx = this.audioctx = new AudioContext(),
-            masterVolume = this.masterVolume = audioctx.createGain();
+      const
+        audioctx = this.audioctx = new AudioContext(),
+        masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
       masterVolume.gain.value = $("#volume > input").valueAsNumber / 100;
     },
+
+    fullscreen (state) { state ? $("body").requestFullscreen() : document.exitFullscreen() },
 
 
 
     // Keyboard
 
-    "fill-keyboard-settings" ({
-      unit, edo, gstep, hstep, freqBasis, refNote,
-      orientation, orientations, limit, maxerror, hmap }) {
-      $("#gstep > input").value = gstep;
-      $("#hstep > input").value = hstep;
-      $.all("#orientation > select > *").forEach(el => el.remove());
-      orientations.forEach(coord => {
-        const el = $.load("option", "#orientation > select")[0][0];
-        el.innerText = coord;
-        el.setAttribute("name", coord)
-      });
-      $("#orientation > select").options.namedItem(orientation.join(",")).selected = true;
-      $("#unit > input").value = unit;
-      $("#refNote > input").value = refNote;
-      $("#freqBasis > input").value = freqBasis;
-      $("#edo > input").value = edo;
-      $("#scale > output").value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
-      $("#limit > input").value = limit;
-      $("#maxerror > input").value = maxerror
-    },
-
-    "load-keyboard" () {
-      keyboardSelection = this.keyboardSelection = $("#keyboard-select > select").value;
-      let keyboard = {};
-      localStorage.setItem("keyboardSelection", keyboardSelection);
-      if (keyboardSelection === "Custom") {
-        [ "unit", "edo", "gstep", "hstep", "refNote", "freqBasis", "limit", "maxerror" ]
-          .forEach(dataname => keyboard[dataname] = $(`#${dataname} > input`).valueAsNumber);
-        keyboard.orientation = $("#orientation > select").value.split(",").map(v => parseInt(v));
-        keyboard.hmap = $.all(".harmonic.prime > input.steps").map(el => [parseInt(el.parentElement.dataset.harm), el.valueAsNumber]);
-        const hexGrid = this.getGridScope().hexGrid = new HexGrid(keyboard);
-        hexGrid.genOrientations();
-        keyboard.orientations = hexGrid.orientations;
-      
-        localStorage.setItem("keyboard", JSON.stringify(keyboard))
-      } else {
-        $("#keyboard-select > select").namedItem("Custom").disabled = true
-        keyboard = this.keyboards[keyboardSelection];
-        localStorage.removeItem("keyboard");
-        
-        const hexGrid = this.getGridScope().hexGrid = new HexGrid(keyboard);
-        hexGrid.setOrientation(...keyboard.orientation);
-        this.emit("fill-keyboard-settings", hexGrid);
-      }
-      $("#edo-info").innerText = keyboard.edo;
-      $("#limit-info").innerText = keyboard.limit;
-      this.emit("update-mapping")
-    },
-
-    "change-keyboard-edo" () {
-      const edo = $("#edo > input").valueAsNumber;
-      $("#refNote > input").value = Math.round(Math.log2(5 / 3) * edo);
-      $("#scale > output").value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
-      $("#maxerror > input").value = Math.floor(400 / edo);
-      this.emit("change-keyboard-lattice");
-      this.emit("update-mapping")
-    },
-
-    "change-keyboard-lattice" () {
-      const { hexGrid } = this.getGridScope(),
-            gstep = $("#gstep > input").valueAsNumber,
-            hstep = $("#hstep > input").valueAsNumber,
-            edo = $("#edo > input").valueAsNumber;
-      $.all("#orientation > select > *").forEach(el => el.remove());
-      if (gcd(gstep, hstep) !== 1) {
-        $("#keyboard-settings-apply").disabled = true;
-        return
-      }
-      $("#keyboard-settings-apply").disabled = false;
-      Object.assign(hexGrid, { gstep, hstep, edo });
-      hexGrid.genOrientations();
-      const orientation = hexGrid.orientations.find(([g, h]) => g + h === 7) || hexGrid.orientations[0];
-      if (!orientation) {
-        $("#keyboard-settings-apply").disabled = true;
-        return
-      }
-      hexGrid.setOrientation(...orientation);
-      hexGrid.orientations.forEach(coord => {
-        const el = $.load("option", "#orientation > select")[0][0];
-        el.innerText = coord;
-        el.setAttribute("name", coord)
-      })
-      $("#orientation > select").namedItem(orientation).selected = true
-    },
-
-
-
-    // Harmonic mapping
-
-    "update-mapping" () {
-      const limit = $("#limit > input").valueAsNumber,
-            maxerror = $("#maxerror > input").valueAsNumber,
-            edo = $("#edo > input").valueAsNumber,
-            { hexGrid } = this.getGridScope();
+    "generate-keyboard" () {
+      const
+        { limitEl, maxErrorEl, edoEl, refNoteEl, freqBasisEl } = Keyboard,
+        limit = limitEl.valueAsNumber,
+        maxError = maxErrorEl.valueAsNumber,
+        edo = edoEl.valueAsNumber,
+        refNote = refNoteEl.valueAsNumber,
+        freqBasis = freqBasisEl.valueAsNumber,
+        { keyboard } = Keyboard.getScope();
       $.all(".harmonic").forEach(el => el.remove());
-      let hmap = new Map();
+      
+      const
+        scale = new Scale({ keyboard, limit, maxError, refNote, freqBasis }),
+        { rawHarmonicList, harmonicList, primes, indexPrimes, index, intervalSet } = scale.mapping;
 
-      // Harmonics
-      for (let i = 3; i <= limit; i += 2) {
-        const just = Math.log2(i) % 1,
-              isComp = decomp(i)[0].reduce((s, [p, r]) => s + r * hmap.has(p), 0) > 1,
-              steps = isComp ?
-                decomp(i)[0].reduce((acc, [p, rad]) => {
-                  const [pp, pr] = Array(rad).fill().map((_,i) => [p ** (i + 1), i + 1]).find(([pp]) => hmap.get(pp))
-                  return acc + hmap.get(pp) * (rad / pr)
-                }, 0) % edo :
-                clamp(Math.ceil((just - maxerror / 1200) * edo), Math.floor((just + maxerror / 1200) * edo), hmap.get(i)) ?? Math.round(just * edo),
-              error = (steps / edo - just) * 1200;
-        if (!isComp) hmap.set(i, steps);
-        if (Math.abs(error) >= maxerror || steps + edo * maxerror / 1200 < 1 || steps - edo * maxerror / 1200 > edo - 1) {
-          hmap.delete(i);
-          continue;
-        }
-        const labelEl = $.load("harmonic", "#mapping")[0][0],
-              inputEl = $("input.steps", labelEl),
-              compositeEl = $("span.steps", labelEl),
-              errorEl = $("#error", labelEl),
-              colourEl = $("input.hcolour", labelEl);
-        labelEl.dataset.harm = i;
-        $("#nth-harmonic", labelEl).innerText = ordinal(i);
+      for (let [ harmonic, steps ] of rawHarmonicList) {
+        const
+          dec = Common.decomp(harmonic)[0],
+          primeHarmonic = [ ...dec ][0][0],
+          isPrime = primes.concat(indexPrimes).includes(harmonic),
+          harmObj = harmonicList.get(harmonic),
+          just = Math.log2(harmonic) % 1,
+          labelEl = $.load("harmonic", "#mapping")[0][0],
+          [ , inputEl, compositeEl, errorEl, , colourEl ] = [ ...labelEl.children ];
+        labelEl.dataset.harm = harmonic;
+        $("#nth-harmonic", labelEl).innerText = Common.ordinal(harmonic);
         inputEl.setAttribute("value", steps);
-        inputEl.setAttribute("min", Math.max(1, Math.ceil((just - maxerror / 1200) * edo)));
-        inputEl.setAttribute("max", Math.min(edo - 1, Math.floor((just + maxerror / 1200) * edo)));
-        if (isComp) compositeEl.innerText = steps;
+        inputEl.setAttribute("min", Math.max(1, Math.ceil((just - maxError / 1200) * edo)));
+        inputEl.setAttribute("max", Math.min(edo - 1, Math.floor((just + maxError / 1200) * edo)));
+        // TODO eg hcolour when 15 in but 3, 5 out
+        if (harmObj.isBasis) labelEl.classList.add("basis");
+        if (isPrime) labelEl.classList.add("prime");
         else {
-          labelEl.classList.add("prime");
-          if (decomp(i)[0][0][1] > 1) labelEl.classList.add("power");
+          compositeEl.innerText = steps;
+          if (dec.size === 1 && [ ...dec ][0][1] > 1) labelEl.classList.add("prime", "power"); // Not correct
         }
-        errorEl.innerText = error.toFixed(2);
-        if (i === 3) {
-          colourEl.value = this.noteColours.white;
-          labelEl.appendChild(colourEl.cloneNode()).value = this.noteColours.black;
-        } else colourEl.value = this.noteColours[i] ??= this.noteColours.default;
+        errorEl.innerText = ((steps / edo - just) * 1200).toFixed(2);
+        if (harmObj.isBasis && primeHarmonic === 3) { // Not correct!
+          colourEl.value = Keyboard.noteColours.white;
+          labelEl.appendChild(colourEl.cloneNode()).value = Keyboard.noteColours.black;
+        } else if (isPrime) colourEl.value = Keyboard.noteColours[harmonic] ??= Keyboard.noteColours.default;
         $.queries({
-          "input.steps": { change () { app.emit("update-mapping") } },
-          "input.hcolour": { change () { app.emit("set-colour", i, this.value, this === $.all("input.hcolour")[1]) } },
+          "input.steps": { change () { app.emit("generate-keyboard") } },
+          "input.hcolour": { change () { Keyboard.setColour(primeHarmonic, this.value, this === $.all("input.hcolour", labelEl)[1]) } },
           button: (chord => ({
             pointerdown (e) {
-              const { hexGrid: grid } = app.getGridScope();
-              let enhi = grid.getEnharmonics(steps).findIndex(({ interval }) => comp(interval[0])[0] === i && interval[1].length === 0);
-              ~enhi && grid.renameKey(steps, enhi);
-              chord = new HexChord([ ...grid ][0], grid.getHexFromSteps(steps));
-              this.setPointerCapture(e.pointerId); chord.start();
-              chord.getHexes().forEach(hex => grid.scheduled.add(hex));
-              grid.colour();
+              this.setPointerCapture(e.pointerId);
+              const
+                { keyboard } = Keyboard.getScope(),
+                key = keyboard.scale.getKey(steps),
+                enhi = key.getLabels().findIndex(({ interval: iv }) => comp(iv[0])[0] === harmonic && iv[1].length === 0);
+              ~enhi && key.setLabel(enhi);
+              keyboard.hexGrid.redraw();
+              chord = new Chord(keyboard, [0, 0], keyboard.scale.getKey(steps).getHome().getCoord());
+              chord.start("pointer-" + e.pointerId)
             },
             pointerup (e) {
-              const { hexGrid: grid } = app.getGridScope();
-              chord.getHexes().forEach(hex => grid.scheduled.delete(hex));
-              grid.colour();
-              this.releasePointerCapture(e.pointerId); chord.stop()
+              chord.stop("pointer-" + e.pointerId);
+              this.releasePointerCapture(e.pointerId)
             }
           }))()
         }, labelEl)
       }
-      Object.assign(hexGrid, { limit, maxerror, edo, hmap: [...hmap] });
+      Object.assign(keyboard, { edo, scale, name: "Custom" }); // HexGrid?
 
       // Tonality diamond
       const diamondEl = $("#diamond");
       $.all(":scope > *", diamondEl).forEach(el => el.remove());
-      const temperings = this.temperings = $.all(".harmonic").map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ])
-              .sort(([p], [q]) => Math.log2(p) % 1 > Math.log2(q) % 1),
-            h = temperings.length;
+      const
+        temperings = this.temperings = $.all(".harmonic").map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ])
+          .sort(([p], [q]) => Math.log2(p) % 1 > Math.log2(q) % 1),
+        h = temperings.length;
       diamondEl.style.setProperty("--size", 2 * h + 1);
       for (let i = 0; i <= h; i++) {
-        const cell = $.load("interval-cell", "#diamond")[0][0],
-              [ interval, note, width, button ] = $.all(":scope > *", cell);
+        const
+          cell = $.load("interval-cell", "#diamond")[0][0],
+          [ interval, note, width, button ] = $.all(":scope > *", cell);
         cell.style.gridArea = `${h + 1}/${2 * i + 1}/span 1/span 2`;
         interval.innerHTML = "<sup>1</sup>/<sub>1</sub>";
         note.innerText = "C";
         width.innerText = button.dataset.steps = 0
-        button.dataset.interval = "1/1";
+        button.dataset.interval = "1/1"
       }
-      const ivs = [[[1,1],0]];
       for (let i = h; i > 0; i--) for (let j = 0; j < i; j++) {
-        const upperCell = $.load("interval-cell", "#diamond",)[0][0],
-              lowerCell = $.load("interval-cell", "#diamond",)[0][0],
-              [ upperInterval, upperNote, upperWidth, upperButton ] = $.all(":scope > *", upperCell),
-              [ lowerInterval, lowerNote, lowerWidth, lowerButton ] = $.all(":scope > *", lowerCell),
-              num = h - i + j, den = j - 1,
-              octave = Math.floor(Math.log2(temperings[num][0] / (temperings[den]?.[0] ?? 1))),
-              div = gcd(temperings[num][0], (temperings[den]?.[0] ?? 1)),
-              upNum = temperings[num][0] * (octave < 0 ? 2 ** -octave : 1) / div,
-              upDen = (temperings[den]?.[0] ?? 1) * (octave < 0 ? 1 : 2 ** octave) / div,
-              loNum = (temperings[den]?.[0] ?? 1) * (octave < -1 ? 1 : 2 ** (octave + 1)) / div,
-              loDen = temperings[num][0] * (octave < -1 ? 2 ** (-octave - 1) : 1) / div,
-              upSteps = (temperings[num][1] - (temperings[den]?.[1] ?? 0) + edo) % edo,
-              loSteps = (edo - upSteps) % edo;
+        const
+          upperCell = $.load("interval-cell", "#diamond",)[0][0],
+          lowerCell = $.load("interval-cell", "#diamond",)[0][0],
+          [ upperInterval, upperNote, upperWidth, upperButton ] = $.all(":scope > *", upperCell),
+          [ lowerInterval, lowerNote, lowerWidth, lowerButton ] = $.all(":scope > *", lowerCell),
+          upperIv = intervalSet.getRatio(temperings[h - i + j][0], temperings[j - 1]?.[0] ?? 1),
+          lowerIv = intervalSet.getRatio(temperings[j - 1]?.[0] ?? 1, temperings[h - i + j][0]);
+        upperIv.withOctave(upperIv.octave);
+        lowerIv.withOctave(lowerIv.octave);
         upperCell.style.gridArea = `${i}/${h - i + 2 + 2 * j}/span 1/span 2`;
         lowerCell.style.gridArea = `${2 * h + 2 - i}/${h - i + 2 + 2 * j}/span 1/span 2`;
-        if (!~ivs.findIndex(([n, d]) => n === upNum && d === upDen)) ivs.push([[upNum, upDen], upSteps]);
-        if (!~ivs.findIndex(([n, d]) => n === loNum && d === loDen)) ivs.push([[loNum, loDen], loSteps]);
-        upperInterval.innerHTML = `<sup>${upNum}</sup>/<sub>${upDen}</sub>`;
-        lowerInterval.innerHTML = `<sup>${loNum}</sup>/<sub>${loDen}</sub>`;
-        upperNote.innerText = noteFromFactors(decomp(upNum, upDen)).string;
-        lowerNote.innerText = noteFromFactors(decomp(loNum, loDen)).string;
-        upperButton.dataset.interval = `${upNum}/${upDen}`;
-        lowerButton.dataset.interval = `${loNum}/${loDen}`;
-        upperWidth.innerText = upperButton.dataset.steps = upSteps;
-        lowerWidth.innerText = lowerButton.dataset.steps = loSteps
+        upperInterval.innerHTML = `<sup>${upperIv.fraction[0]}</sup>/<sub>${upperIv.fraction[1]}</sub>`;
+        lowerInterval.innerHTML = `<sup>${lowerIv.fraction[0]}</sup>/<sub>${lowerIv.fraction[1]}</sub>`;
+        upperNote.innerText = upperIv.noteSpelling.string;
+        lowerNote.innerText = lowerIv.noteSpelling.string;
+        upperButton.dataset.interval = upperIv.fraction.join("/");
+        lowerButton.dataset.interval = lowerIv.fraction.join("/");
+        upperWidth.innerText = upperButton.dataset.steps = upperIv.steps();
+        lowerWidth.innerText = lowerButton.dataset.steps = lowerIv.steps()
       }
-      this.intervals = group(ivs, ([[a, b]], [[c, d]]) => a * d === b * c).map(([v]) => v).sort(([, a], [, b]) => a > b);
       app.emit("resize", true);
-      hexGrid.redraw(true)
+      keyboard.hexGrid.redraw(true);
 
       // Interval table
-      const ivTable = $("#interval-table");
+      const ivTable = $("#interval-table"), ps = primes.concat(indexPrimes).sort((a, b) => a > b);
       $.all(":scope > *", ivTable).forEach(el => el.remove());
-      const hs = [...hmap.keys()];
-      ivTable.style.setProperty("--harms", hs.length);
+      ivTable.style.setProperty("--harms", ps.length);
       ivTable.style.setProperty("--edo", edo);
-      tableLegendEl = $.load("interval-th", "", ivTable)[0][0].innerHTML = "Steps";
-      hs.forEach((p, k) => {
+      $.load("interval-th", "", ivTable)[0][0].innerHTML = "Steps";
+      ps.forEach((p, k) => {
         const el = $.load("interval-th", "", ivTable)[0][0];
         el.classList.add("column-head");
         el.style.gridColumnStart = k + 2;
@@ -1778,32 +2089,34 @@ $.targets({
         el.style.gridRowStart = k + 2;
         $("span", el).innerText = k
       }
-      for (let steps = 0; steps < edo; steps++) hexGrid.getLabelsFromSteps(steps)
-        .forEach(({ interval: iv, label, noteClass }) => {
-          const [ n, d ] = iv.map(side => side.reduce(([big, log], [p, rad]) =>
-                  [big * BigInt(p) ** BigInt(rad), log + Math.log2(p) * rad], [1n, 0]))
-                  .reduce(([bn, ln], [bd, ld]) => {
-                    const oct = BigInt(Math.floor(ln - ld));
-                    return [oct < 0 ? bn << -oct : bn, oct > 0 ? bd << oct : bd]
-                  }),
-                curh = noteClass.match(/\d{1,2}/g)
-                  ?.map(s => parseInt(s)).sort((a, b) => a < b)[0] ?? (steps ? 3 : 1);
+      for (let steps = 0; steps < edo; steps++) scale.getKey(steps).getLabels()
+        .forEach(({ interval: iv, label, keyClass }) => {
+          const
+            [ n, d ] = iv.map(side => side.reduce(([big, log], [p, rad]) =>
+              [big * BigInt(p) ** BigInt(rad), log + Math.log2(p) * rad], [1n, 0]))
+              .reduce(([bn, ln], [bd, ld]) => {
+                const oct = BigInt(Math.floor(ln - ld));
+                return [oct < 0 ? bn << -oct : bn, oct > 0 ? bd << oct : bd]
+              }),
+            curh = keyClass.match(/\d{1,2}/g)
+              ?.map(s => parseInt(s)).sort((a, b) => a < b)[0] ?? (steps ? 3 : 1);
           let td = $(`.interval-td[data-cell="${steps},${curh}"]`);
           if (!td) {
             td = $.load("interval-td", "", ivTable)[0][0];
             td.style.gridArea = steps === 0 ?
-              `2/2/span 1/span ${hs.length}` :
-              `${steps + 2}/${hs.findIndex(h => h % curh === 0) + 2}`;
+              `2/2/span 1/span ${ps.size}` :
+              `${steps + 2}/${ps.findIndex(p => p % curh === 0) + 2}`;
             td.dataset.cell = `${steps},${curh}`
           }
-          const cell = $.load("interval-cell", "", td)[0][0],
-                [ interval, note, width, button ] = $.all(":scope > *", cell);
+          const
+            cell = $.load("interval-cell", "", td)[0][0],
+            [ interval, note, width, button ] = $.all(":scope > *", cell);
           if (steps === 0) cell.id = "table-unison";
           interval.innerHTML = `<sup>${n}</sup>/<sub>${d}</sub>`;
           note.innerText = label;
           width.innerText = button.dataset.steps = steps
           button.dataset.interval = `${n}/${d}`;
-        })
+        });
 
       // Play interval buttons
       $.queries({
@@ -1812,52 +2125,37 @@ $.targets({
             this.setPointerCapture(e.pointerId);
             if (this.closest("#diamond"))
               $.all('.interval-display button[data-steps="0"]').forEach(el => el.parentElement.classList.add("activeEnharmonic"));
-            const { hexGrid: grid } = app.getGridScope();
-            (hex = [ ...grid ][0]).start();
-            grid.scheduled.add(hex);
-            grid.colour();
+              Keyboard.getScope().keyboard.play(0, 0, "pointer-" + e.pointerId)
           },
           pointerup (e) {
             $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
-            hex.stop();
-            const { hexGrid: grid } = app.getGridScope();
-            grid.scheduled.delete(hex);
-            grid.colour();
-            this.releasePointerCapture(e.pointerId);
+            Keyboard.getScope().keyboard.stop("pointer-" + e.pointerId);
+            this.releasePointerCapture(e.pointerId)
           }
         }))(),
         '.interval-display button:not([data-steps="0"])': (chord => ({
           pointerdown (e) {
             this.setPointerCapture(e.pointerId);
-            const { hexGrid: grid } = app.getGridScope(),
-                  steps = parseInt(this.dataset.steps),
-                  [n, d] = this.dataset.interval.split("/").map(v => non2(parseInt(v))),
-                  enhi = grid.getEnharmonics(steps).findIndex(({ interval: iv }) => comp(iv[0])[0] === n && comp(iv[1])[0] === d);
+            const
+              { keyboard } = Keyboard.getScope(),
+              steps = parseInt(this.dataset.steps),
+              [n, d] = this.dataset.interval.split("/").map(v => Common.non2(parseInt(v))),
+              key = keyboard.scale.getKey(steps),
+              enhi = key.getLabels().findIndex(({ interval: iv }) => comp(iv[0])[0] === n && comp(iv[1])[0] === d);
             $.all(`button[data-steps="${steps}"]`, this.closest(".interval-display"))
               .forEach(el => el.parentElement.classList.add("activeEnharmonic"));
-            ~enhi && grid.renameKey(steps, enhi);
-            chord = new HexChord([ ...grid ][0], app.getGridScope().hexGrid.getHexFromSteps(steps));
-            chord.start();
-            chord.getHexes().forEach(hex => grid.scheduled.add(hex));
-            grid.colour();
+            ~enhi && key.setLabel(enhi);
+            keyboard.hexGrid.redraw();
+            chord = new Chord(keyboard, [0, 0], keyboard.scale.getKey(steps).getHome().getCoord());
+            chord.start("pointer-" + e.pointerId)
           },
           pointerup (e) {
             $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
-            const { hexGrid: grid } = app.getGridScope();
-            chord.stop();
-            chord.getHexes().forEach(hex => grid.scheduled.delete(hex));
-            grid.colour();
-            this.releasePointerCapture(e.pointerId);
+            chord.stop("pointer-" + e.pointerId);
+            this.releasePointerCapture(e.pointerId)
           }
         }))()
       })
-    },
-
-    "set-colour" (harm, colour, isBlackKeys) {
-      if (harm === 3) this.noteColours[isBlackKeys ? "black" : "white"] = colour;
-      else this.noteColours[harm] = colour;
-      localStorage.setItem("noteColours", JSON.stringify(this.noteColours));
-      this.getGridScope().hexGrid.redraw()
     },
 
 
@@ -1897,9 +2195,10 @@ $.targets({
     "track-editor" (name) {
       const { tracks } = this;
       if (!name) {
-        const nth = Object.keys(tracks)
-                .map(tn => tn.match(/^Untitled( [1-9]\d*)?$/)?.slice(1).map(v => v ? parseInt(v) : 0))
-                .flat().sort().findLastIndex((k, i) => k === i) + 1;
+        const
+          nth = Object.keys(tracks)
+            .map(tn => tn.match(/^Untitled( [1-9]\d*)?$/)?.slice(1).map(v => v ? parseInt(v) : 0))
+            .flat().sort().findLastIndex((k, i) => k === i) + 1;
         name = "Untitled" + (nth ? " " + nth : "");
         $("#track-edit").value = "";
         $("#track-file").classList.remove("saved")
@@ -1953,11 +2252,12 @@ $.targets({
     // Menu
 
     "menu-select" (which, ...data) {
-      const breadcrumbText = {
-              "keyboard-settings": "Keyboard ⚙️",
-              "temperaments": "Temperament 💡",
-              "track-editor": "Track ✎"
-            };
+      const
+        breadcrumbText = {
+          "keyboard-settings": "Keyboard ⛭",
+          "temperaments": "Temperament 💡",
+          "track-editor": "Track ✏"
+        };
       this.emit("menu-cancel");
       this.menuState = which.concat([null]);
       const menuLeaf = which.at(-1);
@@ -1983,14 +2283,14 @@ $.targets({
           $.queries({
             "#keyboard-settings-cancel": { click () { app.emit("menu-cancel") } },
             "#keyboard-settings-apply": { click () {
-              app.hexGrid = app.menuState[1].hexGrid;
-              app.emit("load-keyboard");
+              app.keyboard = app.menuState[1].keyboard;
+              app.keyboardSelection = app.keyboard.load().keyboardSelection;
               app.emit("menu-cancel")
             } }
           });
-          this.menuState[1] = { hexGrid: new HexGrid(this.hexGrid) };
-          this.emit("fill-keyboard-settings", this.hexGrid);
-          this.emit("update-mapping");
+          this.menuState[1] = { keyboard: this.keyboard };
+          this.keyboard.fillSettings();
+          this.emit("generate-keyboard");
           break;
         case "temperaments":
           this.emit("generate-temperaments")
@@ -2018,10 +2318,10 @@ $.targets({
       }
       this.menuState = [];
       this.emit("resize", true);
-      this.getGridScope().hexGrid.redraw(true)
+      Keyboard.getScope().keyboard.hexGrid.redraw(true)
     },
 
-    "volume-change" (value) { this.masterVolume.gain.value = scaleVolume(value) }
+    "volume-change" (value) { this.masterVolume.gain.value = Common.scaleVolume(value) }
 
   }
 });
@@ -2032,55 +2332,62 @@ $.targets({
 
 $.queries({
 
-  nav: { touchstart (e) { if ($.all("#refresh, #panic, #volume > input").every(el => e.target !== el)) this.focus() } },
+  nav: { touchstart (e) { if ($.all("#refresh, #panic, #fullscreen, #volume > input").every(el => e.target !== el)) this.focus() } },
   form: { submit (e) { e.preventDefault() } },
   "#volume > input": { change () { app.emit("volume-change", this.valueAsNumber) } },
   "#octaves > input": { change () {
     app.octaves = this.valueAsNumber;
     app.emit("resize", true);
-    app.getGridScope().hexGrid.redraw(true)
+    Keyboard.getScope().keyboard.hexGrid.redraw(true)
   } },
   "#refresh": { click () {
     app.emit("resize", true);
-    app.getGridScope().hexGrid.redraw(true)
+    const { keyboard } = Keyboard.getScope();
+    keyboard.refresh()
   } },
   "#panic": { click () { app.emit("panic") } },
+  "#fullscreen": { click () { app.emit("fullscreen", this.classList.toggle("active")) } },
 
   "#keyboard-settings-button": { click () {
     if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
     else app.emit("menu-select", [ "keyboard-settings" ])
   } },
-  "#keyboard-settings > form": { change (e) { $("#keyboard-select > select").value = "Custom" } },
-  "#keyboard-select > select": { change () { app.emit("load-keyboard") } },
+  "#keyboard-settings > form": { change (e) { Keyboard.selectEl.value = "Custom" } },
+  "#keyboard-select > select": { change () { app.keyboardSelection = app.keyboard.load().keyboardSelection } },
   "#edo > input": { change () {
-    app.emit("change-keyboard-edo");
-    app.emit("resize", true);
-    app.getGridScope().hexGrid.redraw(true);
+    const
+      { refNoteEl, maxErrorEl, scaleOutputEl } = Keyboard,
+      edo = this.valueAsNumber;
+    refNoteEl.value = Math.round(Math.log2(5 / 3) * edo); // C-A = 5/3
+    scaleOutputEl.value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
+    maxErrorEl.value = Math.floor(400 / edo);
+    Keyboard.getScope().keyboard.update();
+    app.emit("generate-keyboard");
     this.focus()
   } },
   ":is(#gstep, #hstep) > input": { change () {
-    app.emit("change-keyboard-lattice");
-    const selEl = $("#orientation > select");
-    if (selEl.children.length) {
+    const { keyboard } = Keyboard.getScope(), { orientationSelectEl } = Keyboard;
+    keyboard.update();
+    if (orientationSelectEl.children.length) {
       app.emit("resize", true);
-      app.getGridScope().hexGrid.redraw(true);
-      selEl.showPicker();
+      keyboard.hexGrid.redraw(true);
+      orientationSelectEl.showPicker();
     }
   } },
   "#orientation > select": { change () {
-    const { hexGrid } = app.getGridScope();
+    const { hexGrid } = Keyboard.getScope().keyboard;
     hexGrid.setOrientation(...JSON.parse(`[${this.value}]`));
     app.emit("resize", true);
     hexGrid.redraw(true);
     this.focus()
   } },
   "#unit > input": { change () {
-    const { hexGrid } = app.getGridScope();
+    const { hexGrid } = Keyboard.getScope().keyboard;
     hexGrid.unit = this.valueAsNumber;
     app.emit("resize", true);
     hexGrid.redraw(true)
   } },
-  ":is(#limit, #maxerror) > input": { change () { app.emit("update-mapping") } },
+  ":is(#limit, #maxError) > input": { change () { app.emit("generate-keyboard") } },
   "#generate-temperaments": { click () { app.emit("menu-select", [ "keyboard-settings", "temperaments" ]) } }, 
 
   "#track-select > select": { change () {
@@ -2111,6 +2418,6 @@ $.queries({
 
 })
   </script>
-  <noscript><h6>Only viewable with JavaScript enabled.</h6></noscript>
+  <noscript>Only viewable with JavaScript enabled.</noscript>
 </body>
 </html>

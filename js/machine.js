@@ -12,7 +12,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
 
 //   $.Machine creates state machines for the page
   Machine: class { constructor (s) { let state = Object.seal(s); wm.set(this, { es: {}, state: Object.seal(s) });
-      for (let k in state) Object.defineProperty(this, k, { get: () => state[k], set: v => state[k] = v }) }
+      for (let k in state) Object.defineProperty(this, k, { get: () => state[k], set: v => state[k] = v }); return Object.seal(this) }
     state () { return wm.get(this).state }
     on (t, fn) { (wm.get(this).es[t] ??= new Map()).set(fn.name, fn); return this }
     stop (t, fname = t) { let {es} = wm.get(this); es[t]?.delete(fname) && (es[t].size || delete es[t]); return this }
