@@ -46,7 +46,7 @@
   #track-editor > form > textarea {
     width: 100% !important;
     resize: vertical }
-  .interval-display, #mapping { max-width: calc(100dvw - 3.5em - 4px) } }
+  .interval-display, #mapping { max-width: calc(100dvw - 2.5em - 8px) } }
 
 html, body {
   height: 100dvh }
@@ -86,8 +86,12 @@ body {
       #fullscreen.active::before { content: "🗕" }
       #fullscreen:not(.active)::before { content: "🗖" }
     #controls:has(.activeControls) { grid-template-columns: auto auto 1fr repeat(4, auto) }
-    #track-controls { display: none }
-      #track-controls > * { margin-right: .5em }
+    #track-controls {
+      display: none;
+      align-items: center }
+      #track-controls > * {
+        margin-right: .5em;
+        width: max-content }
       #track-controls.activeControls { display: flex }
         #track-play:not(.trackPlaying)::before { content: "Play ⏵" }
         #track-play.trackPlaying::before { content: "Pause ⏸" }
@@ -171,7 +175,9 @@ body {
             grid: auto / auto auto 1fr;
             width: 100% }
             #interval-view > div { text-align: right }
-          .interval-display { display: none }
+          .interval-display {
+            display: none;
+            padding: 0 }
           .choice:has(label#diamond-choice > input[type="radio"]:checked) ~ #diamond-wrapper,
           .choice:has(label#table-choice > input[type="radio"]:checked) ~ #ivtable-wrapper { display: block }
           .interval-display, #mapping { overflow-x: scroll }
@@ -184,31 +190,45 @@ body {
             grid-template-rows: repeat(var(--size), 2em);
             justify-items: end;
             width: max-content }
+        #harmonic-mapping:has(#table-choice > :checked)
+          { height: calc(var(--iv-display-offsetTop) + var(--iv-display-scrollHeight)) }
+          #ivtable-wrapper {
+            max-height: calc(var(--iv-display-height));
+            position: sticky;
+            top: -.5em;
+            overflow-y: hidden }
           #interval-table {
             display: grid;
-            grid-template-columns: repeat(calc(var(--harms) + 1), auto);
-            grid-template-rows: repeat(calc(var(--edo) + 1), minmax(0, min-content));
-            gap: .5em;
+            grid-template-columns: repeat(2, auto) repeat(calc(var(--harms) - 1), 1px auto);
+            grid-template-rows: repeat(2, minmax(0, min-content)) repeat(calc(var(--edo) - 1), 1px minmax(0, min-content));
             width: max-content }
+            #interval-table > :not(.table-border) { padding: .25em }
+              .interval-th.column-head.row-head { z-index: 3 }
+              .interval-th.column-head {
+                position: sticky;
+                top: 0;
+                background-color: #222;
+                z-index: 2;
+                border-bottom: 1px solid #ddd8 }
+              .interval-th.column-head:nth-child(n+2) {
+                border-left: 1px solid #ddd8;
+                margin-left: -1px }
+              .interval-th.row-head {
+                position: sticky;
+                left: 0;
+                background-color: #222;
+                z-index: 2;
+                border-right: 1px solid #ddd8 }
             .interval-th {
               position: relative;
               display: grid;
               place-items: center }
               .table-border {
-                position: absolute;
                 pointer-events: none }
-              .column-head > span::after { content: "-limit" }
-              .column-head > .table-border {
-                border-left: 1px solid #ddd8;
-                width: calc(100% + .5em);
-                align-self: start;
-                height: var(--table-height) }
-              .row-head > .table-border {
-                border-top: 1px solid #ddd8;
-                height: calc(100% + .5em);
-                justify-self: start;
-                width: var(--table-width);
-                z-index: 2 }
+              .column-head:not(.row-head) > span::after { content: "-limit" }
+              .column-head + .table-border { border-right: 1px solid #ddd8 }
+              .row-head:not(.column-head) + .table-border,
+              .column-head.row-head + * + .table-border { border-bottom: 1px solid #ddd8 }
             .interval-td {
               display: flex;
               flex-flow: column;
@@ -355,7 +375,7 @@ body {
             <output></output>
           </div>
         </fieldset>
-        <fieldset>
+        <fieldset id="harmonic-mapping">
           <legend>Harmonic mapping</legend>
           <label id="limit">Harmonic limit: <input type="number" value="9" min="3" step="2" size="3"></label>
           <label id="maxError">Maximum error: <input type="number" value="30" min="0" max="100" size="4"> ¢</label>
@@ -455,12 +475,12 @@ body {
   </template>
   <template id="interval-th">
     <div class="interval-th">
-      <div class="table-border"></div>
       <span></span>
    </div>
+   <div class="table-border"></div>
   </template>
   <template id="interval-td">
-    <div class="interval-td"> </div>
+    <div class="interval-td"></div>
   </template>
   <template id="comma">
     <div class="comma">
@@ -496,6 +516,7 @@ class Common {
   static between = (min, max, val) => val <= max && val >= min
   static clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined
   static lerp = (a, b, t) => a * (1 - t) + b * t
+  static mod = (n, m) => ((n % m) + m) % m
   static non2 = h => h / (h & (~--h))
   static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
   static group = (ar, groupBy = x => x, mapBy = x => x) => ar.reduce((a, v) => {
@@ -968,8 +989,6 @@ class IntervalSet {
 // Keyboard grid
 
 class HexGrid { // TODO: set w, h, theta within HexGrid
-  static mod = (n, m) => ((n % m) + m) % m
-
   #keyboard
   w = 0; h = 0; c; unit; r; octLen
   gstep; hstep; orientations; theta = 0
@@ -1063,7 +1082,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     }
 
     // One octave
-    const rank = (g, h) => HexGrid.mod(g * gstep + h * hstep, edo),
+    const rank = (g, h) => Common.mod(g * gstep + h * hstep, edo),
           dev = coord => Math.abs(this.h / 2 - HexButton.centre(...coord, this)[1]);
     this.fillGrid({
       candidate: (g0, h0) => Common.between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
@@ -1121,7 +1140,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
           if (thisHex) { if (viewEdges.has(thisHex)) removeViewEdges.add(thisHex) }
           else if (candidate(g, h)) {
             newViewEdges.get(g)?.add(h) ?? newViewEdges.set(g, new Set([h]));
-            newNotes.add(HexGrid.mod(g * this.gstep + h * this.hstep, this.#keyboard.edo));
+            newNotes.add(Common.mod(g * this.gstep + h * this.hstep, this.#keyboard.edo));
           } else remove = false;
         }
         removeViewEdges.add(hex)
@@ -1183,13 +1202,13 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         prevResult = structuredClone(result);
         for (let iv of prevIvset) {
           const [ n, d ] = iv.fraction.map(Common.non2), step = iv.steps();
-          let s = HexGrid.mod(step + k * pstep, edo);
+          let s = Common.mod(step + k * pstep, edo);
           if (prevResult[s] === undefined && mapping.decomp(n * pn ** k, d * pd ** k)()) {
             const newIv = new Interval({ keyboard: this.#keyboard, mapping, n: n * pn ** k, d: d * pd ** k });
             (result[s] ??= (i--, [])).push(newIv.splitDecomp);
             ivset.add(newIv)
           }
-          s = HexGrid.mod(step - k * pstep, edo);
+          s = Common.mod(step - k * pstep, edo);
           if (k > 0 && prevResult[s] === undefined && mapping.decomp(n * pd ** k, d * pn ** k)()) {
             const newIv = new Interval({ keyboard: this.#keyboard, mapping, n: n * pd ** k, d: d * pn ** k });
             (result[s] ??= (i--, [])).push(newIv.splitDecomp);
@@ -1210,7 +1229,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       hex.setNote(note);
       if (result[rank]) for (let i = 0, ivs = result[rank]; i < ivs.length; i++) {
         const { accid, string: label } = Common.noteFromFactors(ivs[i]);
-        let keyClass = Common.between(6, 10, HexGrid.mod(accid[3], 12)) ? "black" : "white";
+        let keyClass = Common.between(6, 10, Common.mod(accid[3], 12)) ? "black" : "white";
         const ot = ivs[i][0].findLast(([p]) => p !== 3);
         if (ot) keyClass += ot[0] + "o";
         const ut = ivs[i][1].findLast(([p]) => p !== 3);
@@ -1227,10 +1246,10 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.classifyKeys(force);
     gridctx.fillStyle = "#000000";
     gridctx.fillRect(0, 0, width, height);
-    for (let hex of this) hex.colour();
+    for (let hex of this) hex.colour();  // Redraw by local hexes?
     canvas.toBlob(blob => {
       const url = URL.createObjectURL(new Blob([blob]));
-      canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache}')`;
+      canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache ?? url}')`;
       this.#bgImgCache = url
     })
   }
@@ -1306,6 +1325,7 @@ class HexButton {
     return [ Math.floor(n / edo), (n % edo + edo) % edo ]
   }
   setNote (note) { this.#note = note }
+  getNote () { return this.#note }
 
   colour ({ bgColour, ctx } = {}) {
     ctx ??= app.state().gridctx;
@@ -1392,7 +1412,7 @@ class Keyboard {
     },
     "94edo": {
       gstep: 9, hstep: 7, orientation: [5, 7], unit: 45, refNote: 69, freqBasis: 220,
-      edo: 94, limit: 17, maxError: 4, hmap: [[3, 55], [5, 30], [7, 76], [9, 16], [11, 43], [13, 66], [15, 85], [17, 8]], instrument: "triangle"
+      edo: 94, limit: 21, maxError: 4, hmap: [[3, 55], [5, 30], [7, 76], [9, 16], [11, 43], [13, 66], [15, 85], [17, 8], [19, 23], [21, 37]], instrument: "triangle"
     },
   }
 
@@ -1460,6 +1480,7 @@ class Keyboard {
   // Instance
   name; edo; hexGrid; scale; instrument = "triangle"
   touches = new Map(); mousedown = false
+  hoveredKey; wheelVal = 0
   constructor ({
     name, edo,
     gstep, hstep, unit, orientation,
@@ -1582,6 +1603,16 @@ class Keyboard {
     touches.delete(id);
   }
 
+  cycleLabel (delta) {
+    const { hoveredKey } = this, i = hoveredKey.getLabelIndex();
+    if (Common.between(0, 100, this.wheelVal += delta)) return;
+    const d = Math.floor(this.wheelVal / 100), m = hoveredKey.getLabels().length;
+    this.wheelVal = Common.mod(this.wheelVal, 100);
+    hoveredKey.setLabel(Common.mod(d + i, m));
+    app.emit("resize", true);
+    this.hexGrid.redraw();
+  }
+
   refresh () {
     this.touches = new Map();
     this.scale.refresh();
@@ -1667,6 +1698,7 @@ class Key {
   getNotes () { return [ ...this.#notes ] }
   getLabels () { return this.#labels.slice() }
   getLabel () { return this.#labels[this.#labelIndex] ?? { label: this.rank } }
+  getLabelIndex () { return this.#labelIndex }
   setLabels (labels) { this.#labels = labels }
   setLabel (i) { this.#notes.forEach(note => {
     if (!Common.between(0, this.#labels.length - 1, i)) return false;
@@ -1817,10 +1849,11 @@ $.targets({
   },
   mousemove (e) {
     if (!Keyboard.ready) return;
-    const { hexGrid, mousedown } = Keyboard.getScope().keyboard,
-          hover = hexGrid.hasHex(...hexGrid.getCoord(e.layerX, e.layerY));
-    $("main").classList.toggle("hover", hover);
-    if (mousedown && hover) app.emit("press", e.layerX, e.layerY, "mouse", "move")
+    const { keyboard } = Keyboard.getScope(), { hexGrid, mousedown } = keyboard,
+          hex = hexGrid.getHex(...hexGrid.getCoord(e.layerX, e.layerY));
+    $("main").classList.toggle("hover", hex);
+    if (!mousedown) keyboard.hoveredKey = hex?.getNote().getKey();
+    if (mousedown && hex) app.emit("press", e.layerX, e.layerY, "mouse", "move");
   },
   "mouseup mouseout" (e) {
     if (!Keyboard.ready) return;
@@ -1829,6 +1862,11 @@ $.targets({
       keyboard.mousedown = false;
       app.emit("press", e.layerX, e.layerY, "mouse", "end")
     }
+  },
+
+  wheel (e) {
+    const { keyboard } = Keyboard.getScope();
+    if (keyboard.hoveredKey) keyboard.cycleLabel(e.deltaY)
   },
 
   document: { fonts: { loadingdone () {
@@ -1847,16 +1885,35 @@ $.targets({
       }
       this.canvas = $("#hex");
       this.gridctx = this.canvas.getContext("2d");
+
       new ResizeObserver(() => {
         this.emit("resize", true);
         Keyboard.getScope().keyboard.hexGrid.redraw(true)
       }).observe($("main"));
-      const ivTable = $("#interval-table");
-      new ResizeObserver(() => {
-        const { width, height } = ivTable.getBoundingClientRect();
-        ivTable.style.setProperty("--table-width", Math.round(width) + "px");
-        ivTable.style.setProperty("--table-height", Math.round(height) + "px")
-      }).observe(ivTable);
+      const
+        keyboardSettingsEl = $("#keyboard-settings"),
+        mappingFieldsetEl = $("#harmonic-mapping"),
+        ivInnerTableEl = $("#interval-table"), diamondEl = $("#diamond");
+      new ResizeObserver(() =>
+        mappingFieldsetEl.style.setProperty("--iv-display-height", `${Math.round(keyboardSettingsEl.offsetHeight)}px`)
+      ).observe(keyboardSettingsEl);
+      const
+        ro1 = new ResizeObserver(() => {
+          const height = diamondEl.offsetHeight || ivInnerTableEl.offsetHeight;
+          mappingFieldsetEl.style.setProperty("--iv-display-scrollHeight", `${Math.round(height)}px`)
+        }),
+        ro2 = new ResizeObserver(() => {
+          const
+            { offsetHeight, offsetTop } = $("#interval-view"), { offsetTop: fsTop } = mappingFieldsetEl,
+            { offsetLeft: x } = $("#keyboard-settings > form");
+          mappingFieldsetEl.style.setProperty("--iv-display-offsetTop", `${Math.round(offsetHeight + offsetTop - fsTop - x)}px`)
+        });
+      ro1.observe(diamondEl);
+      ro1.observe(ivInnerTableEl);
+      ro2.observe(keyboardSettingsEl);
+      ro2.observe($("#mapping"));
+      ro2.observe($("#ivtable-wrapper"));
+
       const
         audioctx = this.audioctx = new AudioContext(),
         masterVolume = this.masterVolume = audioctx.createGain();
@@ -2076,19 +2133,27 @@ $.targets({
       $.all(":scope > *", ivTable).forEach(el => el.remove());
       ivTable.style.setProperty("--harms", ps.length);
       ivTable.style.setProperty("--edo", edo);
-      $.load("interval-th", "", ivTable)[0][0].innerHTML = "Steps";
+      const [ cornerEl, firstBorderEl ] = $.load("interval-th", "", ivTable)[0];
+      cornerEl.classList.add("column-head", "row-head");
+      $("span", cornerEl).innerText = "Steps";
+      firstBorderEl.remove();
       ps.forEach((p, k) => {
-        const el = $.load("interval-th", "", ivTable)[0][0];
+        const [ el, bel ] = $.load("interval-th", "", ivTable)[0];
         el.classList.add("column-head");
-        el.style.gridColumnStart = k + 2;
-        $("span", el).innerText = p
-      })
+        el.style.gridColumnStart = 2 * k + 2;
+        $("span", el).innerText = p;
+        bel.style.gridArea = `1/${2 * k + 3}/span calc(2 * var(--edo))/span 1`;
+      });
+      $("div:last-of-type", ivTable).remove();
       for (k = 0; k < edo; k++) {
-        const el = $.load("interval-th", "", ivTable)[0][0];
+        const [ el, bel ] = $.load("interval-th", "", ivTable)[0];
         el.classList.add("row-head");
-        el.style.gridRowStart = k + 2;
-        $("span", el).innerText = k
+        el.style.gridRowStart = 2 * k + 2;
+        $("span", el).innerText = k;
+        bel.style.gridArea = `${2 * k + 3}/1/span 1/span calc(2 * var(--harms))`;
       }
+      $("div:last-of-type", ivTable).remove();
+      $.all(".column-head:last-of-type, .row-head:last-of-type")
       for (let steps = 0; steps < edo; steps++) scale.getKey(steps).getLabels()
         .forEach(({ interval: iv, label, keyClass }) => {
           const
@@ -2104,8 +2169,8 @@ $.targets({
           if (!td) {
             td = $.load("interval-td", "", ivTable)[0][0];
             td.style.gridArea = steps === 0 ?
-              `2/2/span 1/span ${ps.size}` :
-              `${steps + 2}/${ps.findIndex(p => p % curh === 0) + 2}`;
+              `2/2/span 1/span ${2 * ps.length}` :
+              `${2 * steps + 2}/${2 * ps.findIndex(p => p % curh === 0) + 2}`;
             td.dataset.cell = `${steps},${curh}`
           }
           const
@@ -2352,6 +2417,19 @@ $.queries({
     if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
     else app.emit("menu-select", [ "keyboard-settings" ])
   } },
+  "#keyboard-settings": {
+    scroll ({ SCROLL_PAGE_DOWN }) {
+      if (!$("#table-choice > input").checked) return;
+      const
+        { scrollTop } = this, el = $("#ivtable-wrapper"), { scrollLeft } = el,
+        { offsetTop, offsetHeight } = $("#interval-view"), { clientHeight } = $("#keyboard-settings"),
+        { offsetTop: y, offsetLeft: x, offsetHeight: height } = $("#keyboard-settings > form"),
+        offset = offsetTop + offsetHeight - y + x;
+      if (Common.between(offset, height - clientHeight + 2 * x, scrollTop)) el.scrollTo(scrollLeft, scrollTop - offset);
+      else if (scrollTop < offset) el.scrollTo(scrollLeft, 0);
+      else el.scrollTo(scrollLeft, SCROLL_PAGE_DOWN)
+    }
+  },
   "#keyboard-settings > form": { change (e) { Keyboard.selectEl.value = "Custom" } },
   "#keyboard-select > select": { change () { app.keyboardSelection = app.keyboard.load().keyboardSelection } },
   "#edo > input": { change () {

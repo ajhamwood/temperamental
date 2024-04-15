@@ -1,0 +1,20 @@
+> Necessary
+Temperaments!
+*** BigInt Interval
+Save & delete keyboard layouts
+Render pipeline (hex grid then labels), redraw by hex whitelist (use neighbours)
+Track class
+MenuState class
+
+> Would be nice
+Grid vertical origin dragger
+Sticky buttons? Pedal?
+Moment-of-symmetry scales (related to orientations); compute all orientations on edo change?
+Relabelling keys while playing: relative to lowest note, relative to chosen key
+
+BUG sound clicking on mobile
+BUG pointer capture on pointerdown fails on mobile (touch?)
+BUG keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
+BUG separate black/white key colours for ghost keys?
+
+What would "Mary had a little lamb" sound like expressed as beats subdividing a repeating duration? Eg. 12 equal polyrhythms which stack to a halving/doubling of time
