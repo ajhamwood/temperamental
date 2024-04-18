@@ -556,7 +556,7 @@ $.targets({
               .map(([a, b]) => a[0] === b[0] && a[1] === b[1] ?
                 [[a, invIv(a)]] : [[a, invIv(b)], [b, invIv(a)]]).flat();
       targetStacks = targetStacks.filter(ch => ch.length > 2).map(ch =>
-        ch.reduce((acc, iv) => {  // TODO: eg 4/3 = 6/5 * 10/9, 5/4 * 16/15
+        ch.reduce((acc, iv) => {
           const ps = iv.map(non2),
                 ni = hs.findIndex(h => h === ps[0]), di = hs.findIndex(h => h === ps[1]),
                 divs = ni > di ?
@@ -564,8 +564,8 @@ $.targets({
                   hs.slice(ni + 1, di),
                 ivparts = divs.reduce((acc, h) => acc.map(piv => [piv, piv.toSpliced(-1).concat([[piv.at(-1)[0], h], [h, piv.at(-1)[1]]])]).flat(), [[ps]])
                   .map(ivs => ivs.map(([n, d]) => {
-                    const octave = Math.floor(Math.log2(n/d)), s = gcd(n, d);
-                    return octave < 0 ? [n / s / 2 ** octave, d / s] : [n / s, d / s * 2 ** octave]
+                    const octave = Math.floor(Math.log2(n/d)), c = gcd(n, d);
+                    return octave < 0 ? [n / c / 2 ** octave, d / c] : [n / c, d / c * 2 ** octave]
                   }));
           return acc.map(pch => ivparts.map(ivpart => pch.concat(ivpart))).flat()
         },

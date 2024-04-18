@@ -1,6 +1,16 @@
 > Necessary
+* Include selected key labels in stored keyboard data
+* User-editable wheel sensitivity => app settings menu?
+* Convert getX methods to getters
 Temperaments!
-*** BigInt Interval
+  * Move Temperaments UI to control bar - how to integrate with tracks?
+  * Group otonal and utonal variants
+  * Colour coding on temperaments?
+  * Order chords by adicity vs symmetry
+  * Gesture drag through chord inversions? Allow selection of pivot position other than the root
+    => Setting a key for the keyboard and transposing note names through the key
+  * Generate commas and chords off the main thread; UI for moving a computation to a jobs list (Important!), pausing/resuming etc (may require a different approach/algorithm)
+BigInt Interval (Important!)
 Save & delete keyboard layouts
 Render pipeline (hex grid then labels), redraw by hex whitelist (use neighbours)
 Track class
@@ -13,7 +23,7 @@ Moment-of-symmetry scales (related to orientations); compute all orientations on
 Relabelling keys while playing: relative to lowest note, relative to chosen key
 
 BUG sound clicking on mobile
-BUG pointer capture on pointerdown fails on mobile (touch?)
+BUG if the viewport is resized too small, the hex grid disappears and the control bar freaks out
 BUG keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
 BUG separate black/white key colours for ghost keys?
 
