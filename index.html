@@ -12,12 +12,26 @@
   font-family: HEJI2;
   src: url('fonts/HEJI2Text.woff2') format('woff2');
   font-weight: normal;
+  font-synthesis-weight: none;
   font-style: normal;
   font-display: swap;
   unicode-range: U+E260-E266, U+E2C0-E2FA;
   size-adjust: 150%;
   ascent-override: 0%;
   descent-override: 0% }
+@font-face {
+  font-family: Ratafly;
+  src: url('fonts/Ratafly-Extrabold.woff2') format('woff2');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 100%; }
+@font-face {
+  font-family: Ratafly;
+  src: url('fonts/Ratafly-Medium.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap }
 @font-face {
   font-family: Netto;
   src: url('fonts/NettoIcons.woff2') format('woff2');
@@ -26,12 +40,8 @@
   font-display: swap;
   ascent-override: 0%;
   descent-override: 0% }
-@font-face {
-  font-family: ArbutusSlab;
-  src: url('fonts/ArbutusSlab-Regular.woff2') format('woff2');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap }
+
+
 
 @media (min-aspect-ratio: 1) {
   body.menuActive { grid: "nav nav" auto "menu main" 1fr / min-content 1fr }
@@ -49,18 +59,21 @@
     resize: vertical }
   .interval-display, #mapping { max-width: calc(100dvw - 2.5em - 8px) }
   #temperament-list, #chord-list { max-width: calc(100dvw - 3.5em - 4px) }
-  #temperament-list { min-height: calc(50dvh - 8em) } }
+  #temperament-list {
+    min-height: calc(50dvh - 8em);
+    min-width: calc(var(--tp-display-width) - 3em) } }
 
 html, body {
   height: 100dvh }
-body, button, select, input, textarea { font: min(16px, 2.7dvw) HEJI2, ArbutusSlab, Netto }
+body, button, select, input, textarea { font: min(16px, 2.7dvw) HEJI2, Ratafly, Netto }
 body {
   margin: 0;
   background-color: #222;
   color: #ddd;
   display: grid;
   grid: "nav" auto "main" 1fr / 100dvw;
-  overflow: hidden }
+  overflow: hidden;
+  position: relative }
   nav {
     background-color: #222;
     grid-area: nav;
@@ -105,6 +118,34 @@ body {
       background-color: #000 }
       #dropdown > :nth-last-child(n+2) { margin-right: 2em }
         #dropdown > * > * { vertical-align: middle }
+      #clipboard-item-select:has(#clipboard-peek:empty) { color: #666 }
+      #clipboard-item-select.active {
+        border: 2px dashed #ddd8;
+        margin: -2px calc(2em - 2px) -2px -2px }
+        #clipboard-peek { display: none }
+        #clipboard-item-select > #clipboard-peek:not(:empty) { display: inline-block }
+        #clipboard-peek {
+          border: 1px solid #333;
+          margin: -1px }
+        #clipboard-peek:hover {
+          border: 1px solid #ddd8;
+          cursor: pointer }
+        #clipboard-peek.active { background-color: #333 }
+        body.copying #clipboard-peek:hover {
+          border: 2px dashed #ddd8;
+          margin: -2px }
+          #clipboard-peek > * {
+            display: flex;
+            gap: .3em;
+            padding: .1em .3em;
+            align-items: baseline }
+          .item-colour {
+            background-color: var(--colour);
+            height: 1em;
+            width: 1em;
+            display: inline-block }
+          .split-colours.item-colour {
+            background: linear-gradient(to bottom right, var(--colour-1) 50%, var(--colour-2) 50%) }
       #track-select { flex: 1 }
   menu {
     background-color: #222;
@@ -153,9 +194,13 @@ body {
             .harmonic {
               grid-template-columns: subgrid;
               display: grid !important;
-              grid-column: span 11;
+              grid-column: span 20;
               gap: .3em;
-              align-items: center }
+              align-items: center;
+              white-space: nowrap }
+              .harmonic > span { user-select: none }
+              .harm-obj::after { content: " harmonic" }
+              .subharm-obj::after { content: " subharmonic" }
               .harmonic > .harmonic-spelling { text-align: start }
               .harmonic > :not(input) { text-align: end }
               .harmonic:not(.basis) > input, .harmonic.basis > span.steps,
@@ -176,11 +221,6 @@ body {
             background-color: #ddd;
             color: #222 }
           .choice > label:has(input[type="radio"]:checked) { border-bottom: 1px solid }
-          #interval-view {
-            display: grid;
-            grid: auto / auto auto 1fr;
-            width: 100% }
-            #interval-view > div { text-align: right }
           .interval-display {
             display: none;
             padding: 0 }
@@ -249,7 +289,7 @@ body {
                 width: calc(100% - .25em);
                 padding: .25em;
                 z-index: 1 }
-      #temperament-list { height: calc(var(--tp-display-height) - 1.8em) }
+      #temperament-list { height: calc(var(--tp-display-height) - 1.8em)  }
         #commas {
           display: grid;
           grid-template-columns: max-content;
@@ -262,14 +302,15 @@ body {
           .comma:nth-child(2) { margin-top: -.8em }
           .comma:hover, .comma.active {
             border-bottom: 1px solid;
-            margin-bottom: -1px }
+            margin-bottom: -1px;
+            font-weight: bold }
           #computing-commas {
             min-height: 2em;
             min-width: inherit;
             order: 32767;
             text-align: center;
             line-height: 2em }
-          #computing-commas.active::before { content: "⌛" }
+          #computing-commas.active > .hourglass { display: inline }
       #chord-list {
         position: relative;
         z-index: 1 }
@@ -278,7 +319,11 @@ body {
           top: -.5em;
           background-color: #222;
           padding: .5em;
-          margin: -.5em }
+          margin: -.5em;
+          display: flex;
+          flex-flow: row;
+          align-items: baseline;
+          gap: 2em }
           .heading-border {
             background-color: #ddd8;
             height: 1px;
@@ -294,15 +339,15 @@ body {
           margin-top: 1em;
           max-width: inherit;
           overflow-x: scroll }
-        #chords:empty::before { content: "To display chords, select a temperament" }
-        #chords:not(.computing):empty { color: #666 }
+        #chords:has(.hourglass:last-child)::before { content: "To display chords, select a temperament" }
+        #chords:not(.computing):has(.hourglass:last-child) { color: #666 }
         #chords.computing::before {
           line-height: 0;
           overflow: hidden }
-        #chords.computing::after {
-          content: "⌛";
-          text-align: center;
-          margin-top: -2em }
+        #chords.computing > .hourglass {
+          display: inline;
+          margin-top: -2.3em;
+          align-self: center }
           .chord {
             display: grid;
             width: fit-content;
@@ -385,31 +430,47 @@ body {
   dialog { padding: 1em 0 }
     #dialog-prompt { padding: 0 1em }
     dialog > form { justify-content: space-evenly }
-  .switch {
-    position: relative;
-    display: inline-block;
-    height: 1.4em;
-    width: 2.4em;
-    border-radius: .7em;
-    background-color: #666;
-    vertical-align: bottom;
-    cursor: pointer }
-  .switch:has(input:checked) { background-color: #ddd }
-    .switch input { display: none }
-    .slider {
-      position: absolute;
-      top: 0;
-      left: 0 }
-    .slider:before {
-      position: absolute;
-      content: "";
-      top: .2em;
-      left: .2em;
-      height: 1em;
-      width: 1em;
-      border-radius: 50%;
-      background-color: #222 }
-      input:checked + .slider:before { transform: translateX(1em) }
+input[type="number"] { min-width: calc(var(--size) * .8rem) }
+.switch {
+  position: relative;
+  display: inline-block;
+  height: 1.4em;
+  width: 2.4em;
+  border-radius: .7em;
+  background-color: #666;
+  vertical-align: bottom;
+  cursor: pointer }
+.switch:has(input:checked) { background-color: #ddd }
+  .switch input { display: none }
+  .slider {
+    position: absolute;
+    top: 0;
+    left: 0 }
+  .slider:before {
+    position: absolute;
+    content: "";
+    top: .2em;
+    left: .2em;
+    height: 1em;
+    width: 1em;
+    border-radius: 50%;
+    background-color: #222 }
+    input:checked + .slider:before { transform: translateX(1em) }
+.copyable { user-select: none }
+body.copying .copyable:hover {
+  border: 2px dashed #ddd8;
+  padding: 2px;
+  margin: -4px;
+  cursor: cell }
+  #drag-feedback {
+    position: absolute;
+    opacity: 50%;
+    z-index: 10 }
+#hourglass-template, .hourglass {
+  display: none;
+  fill: #ddd;
+  width: 2em }
+#hourglass text { font: 10px Netto }
   </style>
 </head>
 <body>
@@ -419,6 +480,14 @@ body {
         <span>Keyboard</span>
         <select></select>
         <button id="keyboard-settings-button" type="button">⛭</button>
+      </div>
+      <div id="temperament-menu">
+        <span>Temperaments</span>
+        <button id="generate-temperaments" type="button">💡</button>
+      </div>
+      <div id="clipboard-item-select">
+        <span>Clipboard</span>
+        <span id="clipboard-peek" draggable="true"></span>
       </div>
       <div id="track-select">
         <span>Track</span>
@@ -487,10 +556,6 @@ body {
           <div id="interval-view" class="choice">
             <label id="diamond-choice"><input type="radio" name="interval-view" checked>Tonality diamond</label>
             <label id="table-choice"><input type="radio" name="interval-view">Interval table</label>
-            <div>
-              <span>Temper&shy;ament</span>
-              <button id="generate-temperaments" type="button">💡</button>
-            </div>
           </div>
           <div id="diamond-wrapper" class="interval-display"><div id="diamond"></div></div>
           <div id="ivtable-wrapper" class="interval-display"><div id="interval-table"></div></div>
@@ -518,16 +583,25 @@ body {
         <fieldset id="temperament-list">
           <legend>Temperaments</legend>
           <div id="commas">
-            <div id="computing-commas"></div>
+            <div id="computing-commas">
+              <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
+                <use href="#hourglass"></use>
+              </svg>
+            </div>
           </div>
         </fieldset>
         <fieldset id="chord-list">
           <legend>Chords</legend>
           <div class="chord-settings">
-            Cycle inversions <label class="switch"><input type="checkbox"><span class="slider"></span></label>
+            <div>Cycle inversions <label class="switch"><input type="checkbox"><span class="slider"></span></label></div>
+            <div>Comma: <span id="comma-info"></span></div>
           </div>
           <div class="heading-border"></div>
-          <div id="chords"></div>
+          <div id="chords">
+            <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
+              <use href="#hourglass"></use>
+            </svg>
+          </div>
         </fieldset>
       </form>
     </li>
@@ -572,14 +646,13 @@ body {
   </template>
   <template id="harmonic">
     <label class="harmonic">
-      <span class="nth-harmonic"></span> harmonic&nbsp;(<span class="harmonic-spelling"></span>): <input class="steps" type="number" step="1" size="4"><span class="steps"></span> steps, <span id="error"></span> error
-      <button type="button">⏵</button>
-      <input class="hcolour" type="color">
+      <span class="nth-harmonic harm-obj copyable" draggable="true"></span> (<span class="harmonic-name"></span>) at <input class="steps" type="number" step="1" size="4"><span class="steps"></span> steps <button type="button">⏵</button>,
+      <span class="nth-harmonic subharm-obj copyable" draggable="true"></span> (<span class="subharmonic-name"></span>) at <span class="sub-steps"></span> steps <button data-is-subharm type="button">⏵</button>, <span id="error"></span> error <input class="hcolour" type="color">
     </label>
   </template>
   <template id="interval-cell">
     <div class="interval-cell">
-      <span></span> (<span></span>, <span></span> steps) <button type="button">⏵</button>
+      <span class="interval-obj copyable" draggable="true"></span> (<span></span>), <span></span> steps <button type="button">⏵</button>
     </div>
   </template>
   <template id="interval-th">
@@ -598,7 +671,7 @@ body {
     </div>
   </template>
   <template id="chord">
-    <div class="chord" data-inv="0">
+    <div class="chord copyable" data-inv="0" draggable="true">
       <div class="chord-intervals">
         Intervals:<span class="chord-interval-harmonic"></span>=<span class="chord-interval-steps"></span>⧹<span class="chord-edo"></span>
       </div>
@@ -616,6 +689,40 @@ body {
       </div>
     </div>
   </template>
+  <template id="clipboard-item-harmonic">
+    <div class="item-harmonic">
+      <div class="item-colour"></div>
+      <span class="item-harmonic-order"></span>
+      (<span class="item-spelling"></span>)
+    </div>
+  </template>
+  <template id="clipboard-item-interval">
+    <div class="item-interval">
+      <div class="item-colour"></div>
+      <span class="item-interval-ratio"></span>
+      (<span class="item-spelling"></span>)
+    </div>
+  </template>
+  <template id="clipboard-item-chord">
+    <div class="item-chord"></div>
+  </template>
+  <svg xmlns="http://www.w3.org/2000/svg" id="hourglass-template" viewBox="-6,-6,12,12">
+    <g id="hourglass">
+      <mask id="sand">
+        <rect x="-2.4" y="-4.6" width="4.8" height="4.6" fill="white">
+          <animate attributeName="height" attributeType="XML" values="4.6; 0; 0; 4.6" keyTimes="0; .3333; 1; 1" dur="3s" repeatCount="indefinite" />
+          <animate attributeName="y" attributeType="XML" values="-4.6; 0; 0; -4.6" keyTimes="0; .3333; 1; 1" dur="3s" repeatCount="indefinite" />
+        </rect>
+        <rect x="-2.4" y="4.6" width="4.8" height="0" fill="white">
+          <animate attributeName="height" attributeType="XML" values="0; 4.6; 4.6; 0" keyTimes="0; .3333; 1; 1" dur="3s" repeatCount="indefinite" />
+          <animate attributeName="y" attributeType="XML" values="4.6; 0; 0; 4.6" keyTimes="0; .3333; 1; 1" dur="3s" repeatCount="indefinite" />
+        </rect>
+      </mask>
+      <path mask="url(#sand)" d="M -2.4 -4.6 L -2.4 -2.5 L -.5 0 L -2.4 2.5 L -2.4 4.6 L 2.4 4.6 L 2.4 2.5 L .5 0 L 2.4 -2.5 L 2.4 -4.6 Z" />
+      <text dominant-baseline="middle" text-anchor="middle" transform="translate(0 1.8)">⌛</text>
+      <animateTransform attributeName="transform" attributeType="XML" type="rotate" values="0; 0; 180; 0" keyTimes="0; .6667; 1; 1" dur="3s" repeatCount="indefinite" />
+    </g>
+  </svg>
   <script src="js/machine.js"></script>
   <script>
 
@@ -684,7 +791,9 @@ class Common {
   })()
 
   static noteFromFactors = (() => {  // Any way to generalise? Use u/e26c and u/e26d ?
-    const pythag = "FCGDAEB".split("").reduce((acc, key, i) => ({ ...acc, [i - 1]: key }), {}),
+    const degree = [["F", "IV", 4], ["C", "I", 1], ["G", "V", 5], ["D", "II", 2],
+            ["A", "VI", 6], ["E", "III", 3], ["B", "VII", 7]]
+            .reduce((acc, vals, i) => ({ ...acc, [i - 1]: vals }), {}),
           hejiRatios = {
             5: [[[3, 4]], [[5, 1]]],
             7: [[], [[3, 2], [7, 1]]],
@@ -703,6 +812,9 @@ class Common {
     return factors => {
       let accid = {};
       factors = structuredClone(factors);
+      const
+        { mod, bigLog2, comp } = Common,
+        logHigh = mod((bigLog2(comp(factors[0])) - bigLog2(comp(factors[1]))), 1) > .5;
 
       // Factorise out commas
       structuredClone(factors).forEach((d, i) => {
@@ -764,9 +876,18 @@ class Common {
       Object.keys(hejiRatios).slice(2).forEach((p, i) => acstring += accid[p] > 0 ?
         String.fromCodePoint((i < 7 ? 0xe2e3 : 0xee41) + 2 * i).repeat(accid[p]) :
         String.fromCodePoint((i < 7 ? 0xe2e2 : 0xee40) + 2 * i).repeat(-accid[p]));
+      const
+        [ key, roman, num ] = degree[ mod(fifths + 1, 7) - 1 ],
+        revac = acstring.split("").reverse().join(""),
+        oct = fifths / 12,
+        numAdj = oct > 0 ? -(oct >= 8 - num) : oct < 0 ? + (oct <= 1 - num) : 0,
+        baseIvNum = num - 2 * (numAdj < 0) + 7 * ((num === 1 && logHigh) || numAdj);
       return {
         accid: { "3": fifths, ...accid },
-        string: pythag[(((fifths + 1) % 7 + 7) % 7) - 1] + acstring
+        number: revac + (numAdj < 0 ? `(${baseIvNum})` : baseIvNum),
+        roman: revac + roman,
+        romanlow: revac + roman.toLowerCase(),
+        letter: key + acstring
       };
     }
   })()
@@ -844,9 +965,9 @@ class HarmonicMapping {
   rawHarmonicList; harmonicList = new Map()
   nonHarmonics = new Set() // TODO: Cached blacklist
   indexPrimes = []; primes = []; params = []; index = []; verify = () => true; stepsBasis
-  #properIntervalSet = new IntervalSet(this); intervalSet = new IntervalSet(this)
+  #properIntervalSet = new IntervalSet(this); intervalSet = new IntervalSet(this); unison
   ready = false
-  #temperaments = new Map()
+  #temperaments = new Map(); temperament
   mask // TODO: for temperings
 
   constructor ({ keyboard, scale, hmap }) { // Map([ odd, number ])
@@ -877,8 +998,8 @@ class HarmonicMapping {
     this.indexPrimes = ps;
     this.primes = simplePrimeDecs.map(([h]) => h);
 
-    simplePrimeDecs.forEach(([h]) => this.harmonicList.set(h, new Harmonic(this, h,
-      (...params) => params[ simplePrimeDecs.findIndex(([p]) => p === h) ]), true));
+    simplePrimeDecs.forEach(([h]) => this.harmonicList.set(h, new Harmonic({ keyboard, mapping: this, order: h,
+      countingFn: (...params) => params[ simplePrimeDecs.findIndex(([p]) => p === h) ] })));
     simpleDecs.forEach(([h, hdec]) => {
       const
         just = Math.log2(h) % 1,
@@ -886,7 +1007,7 @@ class HarmonicMapping {
         error = (steps / edo - just) * 1200;
       if (Math.abs(error) >= maxError || steps + edo * maxError / 1200 < 1 ||
         steps - edo * maxError / 1200 > edo - 1) hmap.delete(i);
-      else this.harmonicList.set(h, new Harmonic(this, h, {}, true))
+      else this.harmonicList.set(h, new Harmonic({ keyboard, mapping: this, order: h }))
     });
 
     if (residue.length) {
@@ -930,11 +1051,11 @@ class HarmonicMapping {
         return verify.every(([p, vec], i) => dps.reduce((a, x, j) => a + x * vec[j] * (mods[j]?.[1] ?? 1), 0) === vps[i])
       };
 
-      inv.forEach(([h, vec]) => this.harmonicList.set(h, new Harmonic(this, h,
-        (...params) => {
+      inv.forEach(([h, vec]) => this.harmonicList.set(h, new Harmonic({ keyboard, mapping: this, order: h,
+        countingFn: (...params) => {
           const rawNum = hs.reduce((a, _, i) => a + (params[i] ?? 0) * vec[i] * (mods[i]?.[1] ?? 1), 0);
           return rawNum % lcm ? null : rawNum / lcm // Null means failure
-        }), true));
+        } }), true));
       residue.filter(([d]) => !~inv.findIndex(([h]) => h === d))
         .forEach(([h, dec]) => {
           if (~residueDecs.findIndex(([p]) => p === h)) {
@@ -951,8 +1072,8 @@ class HarmonicMapping {
               return
             }
           }
-          this.harmonicList.set(h, new Harmonic(this, h, {}, true))
-      });
+          this.harmonicList.set(h, new Harmonic({ keyboard, mapping: this, order: h }))
+      })
     }
     this.rawHarmonicList = hmap;
 
@@ -963,9 +1084,12 @@ class HarmonicMapping {
         params = Array(this.params.length).fill(0),
         iv = new Interval({ keyboard: this.#keyboard, mapping: this, n, d, params, isProper: true });
       this.#properIntervalSet.add(iv);
-      this.intervalSet.add(iv)
+      this.intervalSet.add(iv);
+      if (d === 1 && n !== 1) this.harmonicList.get(n).withQuality("harmonic", true)
     }
     this.setSteps(new Map(hmap));
+    
+    this.unison = this.#properIntervalSet.getRatio(1, 1);
     this.ready = true
   }
 
@@ -1152,7 +1276,10 @@ class HarmonicMapping {
 
   chords (iv) {
     const existing = this.#temperaments.get(iv)
-    if (existing) return existing;
+    if (existing) {
+      this.temperament = existing
+      return existing.chords;
+    }
     const comma = iv.fraction;
     if (Common.bigLog2(comma[0]) - Common.bigLog2(comma[1]) >= this.#scale.maxError / 400)
       throw new Error("Mapping error: comma to temper must be within error bounds");
@@ -1205,7 +1332,6 @@ class HarmonicMapping {
         .flatMap(ivs => ivs.map((iv, i) => [ iv.inverse(), ivs.toSpliced(i, 1).sort(ivOrder) ]))
         .filter(([iv, ch], i, ar) => {
           if (i === 0) return true;
-          // if (!chordIvs.has(iv)) return false;
           const [ iv0, ch0 ] = ar[i - 1];
           return iv.n !== iv0.n || iv.d !== iv0.d || !ch.every((iv, i) => iv === ch0[i])
         }), ([a]) => a, ([,b]) => b),
@@ -1235,40 +1361,69 @@ class HarmonicMapping {
             intIvs[i][j - 1] = equiv;
             intIvs[(i + j) % ch.length][ch.length - 1 - j] = equiv.inverse()
           }
-          return acc.concat([[ch, intIvs]])
-        }, []);
-    this.#temperaments.set(iv, { chords, enharms });
-    return { chords, enharms }
+          return acc.concat([intIvs])
+        }, [])
+        .map(internalIntervals => {
+          internalIntervals.forEach(ivs => ivs.unshift(this.unison));
+          return new Chord({ keyboard, mapping: this, type: "essentially tempered", internalIntervals })
+        });
+    const temperament = new Temperament({ keyboard, mapping: this, comma: iv, chords, enharms });
+    this.#temperaments.set(iv, temperament);
+    this.temperament = temperament;
+    return temperament.chords
+  }
+
+  setTemperament (n, d) {
+    const
+      keyboard = this.#keyboard,
+      temp = this.#temperaments.get(new Interval({ keyboard, mapping: this, n, d }));
+    if (temp) this.temperament = temp
   }
 
 }
 
 class Harmonic {
-  #mapping; h; isBasis; countingFn = null; decomp; primeDecomp
-  constructor (mapping, h, countingFn, isInitial = false) {
-    const existing = mapping.harmonicList.get(h);
-    if (existing) return existing;
+  #keyboard; #mapping; order; isBasis; countingFn = null; decomp; primeDecomp
+  isSubHarm = false; label
+  constructor ({ keyboard, mapping, order, countingFn, isSubHarm = false }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Harmonic error: must provide Keyboard object");
+    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Harmonic error: must provide HarmonicMapping object");
+    this.#keyboard = keyboard;
     this.#mapping = mapping;
-    this.h = h;
-    this.primeDecomp = [ ...Common.decomp(h)[0] ];
-    if (h === 1) { // Unison
+    this.order = order;
+    this.isSubHarm = isSubHarm;
+    this.primeDecomp = [ ...Common.decomp(order)[0] ];
+    if (order === 1) { // Unison
       this.isBasis = false;
       this.decomp = () => []
     } else {
       const
-        { harmonicList, nonHarmonics, index, primes, ready } = mapping,
+        { nonHarmonics, index, primes, ready } = mapping,
         doErr = () => { throw new Error("Harmonic not in mapping") };
       if (ready) {
-        decomp = mapping.decomp(h);
-        if (nonHarmonics.has(h) || decomp === null) doErr();
+        let decomp = mapping.decomp(order);
+        if (nonHarmonics.has(order) || decomp === null) doErr();
         this.isBasis = false;
         this.decomp = decomp
       } else {
-        if (this.isBasis = primes.concat(index).includes(h)) this.countingFn = countingFn;
-        else this.decomp = mapping.decomp(h)()
+        if (this.isBasis = primes.concat(index).includes(order)) this.countingFn = countingFn;
+        else this.decomp = mapping.decomp(order)()
       }
     }
-
+  }
+  withQuality (q, mutate = false) {
+    if (!["harmonic", "subharmonic"].includes(q)) return;
+    const mapping = this.#mapping, { order } = this, isSubHarm = q === "subharmonic";
+    if (mutate) {
+      this.isSubHarm = isSubHarm;
+      this.label = isSubHarm ?
+        mapping.intervalSet.getRatio(1, order).noteSpelling.romanlow :
+        mapping.intervalSet.getRatio(order, 1).noteSpelling.roman;
+      return this
+    } else return new Harmonic({
+      keyboard: this.#keyboard, mapping,
+      order: this.order, countingFn: this.countingFn, isSubHarm
+    }).withQuality(q, true)
   }
 }
 
@@ -1334,9 +1489,7 @@ class IntervalSet {
     for (let interval of intervalList) this.add(interval)
   }
   add (interval) {
-    const
-      { harmonicList } = this.#mapping, { n, d } = interval,
-      dMap = this.#rawMap.get(d) ?? this.#rawMap.set(d, new Map()).get(d);
+    const { n, d } = interval, dMap = this.#rawMap.get(d) ?? this.#rawMap.set(d, new Map()).get(d);
     if (!dMap.has(n)) dMap.set(n, interval)
   }
   has (interval) {
@@ -1603,13 +1756,13 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         note = scaleKey.addNote(octave);
       hex.setNote(note);
       if (result[rank]) for (let i = 0, ivs = result[rank]; i < ivs.length; i++) {
-        const { accid, string: label } = Common.noteFromFactors(ivs[i]);
+        const { accid, ...labelStrings } = Common.noteFromFactors(ivs[i]);
         let keyClass = Common.between(6, 10, Common.mod(accid[3], 12)) ? "black" : "white";
         const ot = ivs[i][0].findLast(([p]) => p !== 3);
         if (ot) keyClass += ot[0] + "o";
         const ut = ivs[i][1].findLast(([p]) => p !== 3);
         if (ut) keyClass += ut[0] + "u";
-        labels.push({ label, keyClass, interval: ivs[i] })
+        labels.push({ ...labelStrings, keyClass, interval: ivs[i] })
       }
       if (!scaleKey.getLabels().length) scaleKey.setLabels(labels)
     }
@@ -1740,12 +1893,12 @@ class HexButton {
       } else drawHex(bgColour = (oc ? HexButton.#colourMix(oc, noteColours.white, .1) : uc ?
         HexButton.#colourMix(uc, noteColours.black, .1) : bc))
     } else drawHex(bgColour = noteColours.default);
-    ctx.font = (isGhost ? "bold  " : "") + (.5 * this.#hexGrid.r) + "px HEJI2, ArbutusSlab";
+    ctx.font = (isGhost ? "bold  " : "") + (.5 * this.#hexGrid.r) + "px HEJI2, Ratafly";
     const [ x, y ] = this.centre(),
-          { label } = this.#note.getKey().getLabel(),
-          { width } = ctx.measureText(label);
+          { letter } = this.#note.getKey().getLabel(),
+          { width } = ctx.measureText(letter);
     ctx.fillStyle = isGhost ? bgColour : HexButton.#contrast(bgColour);
-    ctx.fillText(label ?? this.note()[1], x - width / 2, y)
+    ctx.fillText(letter ?? this.note()[1], x - width / 2, y)
   }
 
   turnOn (id) { this.#hexGrid.addToActive(this, id) }
@@ -1856,6 +2009,7 @@ class Keyboard {
   name; edo; hexGrid; scale; instrument = "triangle"
   touches = new Map(); mousedown = false
   hoveredKey; wheelVal = 0; wheelSensitivity = 200
+  clipboard = []; clipboardPeekIndex
   constructor ({
     name, edo,
     gstep, hstep, unit, orientation,
@@ -1958,7 +2112,7 @@ class Keyboard {
     orientationSelectEl.namedItem(hexGrid.orientation).selected = true
   }
 
-  play (g, h, id) {
+  play (g, h, id) { // Convert g, h to hex?
     const
       { hexGrid, scale, touches } = this, hex = hexGrid.getHex(g, h),
       [ octave, rank ] = hex.note(), note = scale.getNote({ octave, rank });
@@ -1977,14 +2131,23 @@ class Keyboard {
     touches.delete(id);
   }
 
-  cycleLabel (delta) {
+  cycle (which, delta) {
     const { wheelSensitivity } = this;
     if (Common.between(0, wheelSensitivity, this.wheelVal += delta)) return;
-    const { hoveredKey, wheelVal } = this;
+    const { wheelVal } = this;
     this.wheelVal = Common.mod(wheelVal, wheelSensitivity);
-    hoveredKey.setLabel(Common.mod(Math.floor(wheelVal / wheelSensitivity) + hoveredKey.getLabelIndex(), hoveredKey.getLabels().length));
-    app.emit("resize", true);
-    this.hexGrid.redraw();
+    switch (which) {
+      case "label":
+        const { hoveredKey } = this;
+        hoveredKey.setLabel(Common.mod(Math.floor(wheelVal / wheelSensitivity) + hoveredKey.getLabelIndex(), hoveredKey.getLabels().length));
+        app.emit("resize", true);
+        this.hexGrid.redraw();
+        break
+      case "clipboard":
+        const { clipboard, clipboardPeekIndex } = this;
+        this.clipboardPeekIndex = Common.mod(Math.floor(wheelVal / wheelSensitivity) + clipboardPeekIndex, clipboard.length);
+        app.emit("clipboard-display-peek")
+    }
   }
 
   refresh () {
@@ -2075,9 +2238,7 @@ class Key {
   getLabelIndex () { return this.#labelIndex }
   setLabels (labels) { this.#labels = labels }
   setLabel (i) { this.#notes.forEach(note => {
-    if (!Common.between(0, this.#labels.length - 1, i)) return false;
-    this.#labelIndex = i;
-    const { label, keyClass } = this.#labels[i]
+    if (Common.between(0, this.#labels.length - 1, i)) this.#labelIndex = i
   }) }
   setHome (hex) { this.#home = hex }
   getHome () { return this.#home }
@@ -2125,14 +2286,101 @@ class Note {
   turnOff (id) { this.#scale.stop(this, id) }
 }
 
-class Chord {
-  #keyboard; #coordss
-  constructor (keyboard, ...coordss) {
+
+
+// Temperaments
+
+class Temperament {
+  #keyboard; #mapping; comma; #chords
+  constructor ({ keyboard, mapping, comma, chords, enharms }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Temperament error: must provide Keyboard object");
+    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Temperament error: must provide HarmonicMapping object");
     this.#keyboard = keyboard;
-    this.#coordss = coordss
+    this.#mapping = mapping;
+    this.comma = comma;
+    this.#chords = chords;
+    this.enharms = enharms
   }
-  start (id) { this.#coordss.forEach(([g, h], i) => this.#keyboard.play(g, h, id + "-" + i)) }
-  stop (id) { this.#coordss.forEach((_, i) => this.#keyboard.stop(id + "-" + i)) }
+  get chords () { return this.#chords.map(ch => ch.withRoot(0, true)) }
+  getChordByIntervals (ivs) {
+    ivs = ivs.map(([n, d]) => new Interval({ keyboard: this.#keyboard, mapping: this.#mapping, n, d }));
+    for (let chord of this.chords) {
+      const civs = chord.intervals, m = ivs.length;
+      if (m !== civs.length) continue;
+      const i = civs.findIndex((_, j) => ivs.every((iv, k) => iv === civs[(j + k) % m]));
+      if (~i) return chord.withRoot(i)
+    }
+  }
+}
+
+class Chord {  // TODO BigNum
+  static types = [ "harmonic series", "essentially tempered" ]
+  #keyboard; #mapping; type; adicity; #intervals; #internalIntervals
+  harmonics; isSubHarm; #inversion
+  constructor ({ keyboard, mapping, type, harmonics, bass, isSubHarm = false, internalIntervals }) {
+    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Chord error: must provide Keyboard object");
+    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Chord error: must provide HarmonicMapping object");
+    this.#keyboard = keyboard;
+    this.#mapping = mapping;
+    if (typeof type !== "string" && !Chord.types.includes(type)) throw new Error("Chord error: unknown type");
+    this.type = type;
+    switch (type) {
+      case "harmonic series":
+      if (typeof bass !== "number" || !harmonics.includes(bass) || !("length" in harmonics) || harmonics.length < 2 ||
+        harmonics.some(h => typeof h !== "number" || !mapping.decomp(h, bass)()))
+        throw new Error("Chord error: harmonic not supported by temperament");
+      this.adicity = harmonics.length;
+      this.harmonics = harmonics;
+      this.isSubHarm = isSubHarm;
+      this.#inversion = 0;
+      const ordHarms = harmonics.sort((a, b) => Math.log2(a) % 1 > Math.log2(b) % 1)
+      // const octIndex = harmonics.length - ordHarms.indexOf(bass);
+      ordHarms.splice(0, 0, ...ordHarms.splice(ordHarms.indexOf(bass)));
+      this.#internalIntervals = ordHarms.map(d => ordHarms.map(n =>
+        new Interval({ keyboard, mapping, ...(isSubHarm ? { n: d, d: n } : { n, d }) })));
+      this.#intervals = this.internalIntervals.map(ivs => ivs[1])
+      break
+    case "essentially tempered":
+      if (!("length" in internalIntervals) || internalIntervals.length < 2 ||
+        internalIntervals.some((ivs, _, ar) => !("length" in ivs) || ivs.length !== ar.length ||
+          !ivs.every(iv => Interval.prototype.isPrototypeOf(iv))))
+        throw new Error("Chord error: malformed interval data");
+      this.adicity = internalIntervals.length;
+      this.#inversion = 0;
+      this.#internalIntervals = internalIntervals;
+      this.#intervals = internalIntervals.map(ivs => ivs[1])
+    }
+  }
+  get inversion () { return this.#inversion }
+  set inversion (i) {
+    if (!Common.between(0, this.adicity - 1, i)) return;
+    this.#inversion = i
+  }
+  get intervals () {
+    const intervals = this.#intervals.slice();
+    intervals.splice(0, 0, ...intervals.splice(this.#inversion));
+    return intervals
+  }
+  get internalIntervals () { return this.#internalIntervals[this.#inversion].slice() }
+  withRoot (i, mutate = false) {
+    if (!Common.between(0, this.adicity - 1, i)) return;
+    if (mutate) {
+      this.#inversion = i;
+      return this
+    } else {
+      const { type, harmonics } = this;
+      let opts
+      if (type === "harmonic series") opts = { harmonics, isSubHarm: this.isSubHarm, root: harmonics[0] };
+      else if (type === "essentially tempered") opts = { internalIntervals: this.#internalIntervals };
+      return new Chord({ keyboard: this.#keyboard, mapping: this.#mapping, type, ...opts }).withRoot(i, true)
+    }
+  }
+  start (id) {
+    const { scale } = this.#keyboard;
+    this.internalIntervals.forEach((iv, i) =>
+      this.#keyboard.play(...scale.getKey(iv.steps()).getHome().getCoord(), id + "-" + i))
+  }
+  stop (id) { for (let i = 0; i < this.adicity; i++) this.#keyboard.stop(id + "-" + i) }
 }
 
 
@@ -2151,6 +2399,50 @@ class MenuState {}
 
 // Page state
 
+class Listeners {
+  static dragDropTouch = ((img, dx, dy) => ({
+    touchstart (e) {
+      e.preventDefault();
+      const
+        { changedTouches: [ { pageX, pageY } ] } = e,
+        { left, top } = this.getBoundingClientRect();
+      dx = pageX - left;
+      dy = pageY - top;
+      img = this.cloneNode(true);
+      img.id = "drag-feedback";
+      img.style.setProperty("left", pageX - dx + "px");
+      img.style.setProperty("top", pageY - dy + "px")
+      $("body").appendChild(img)
+    },
+    touchmove ({ changedTouches: [ { pageX, pageY } ] }) {
+      img.style.setProperty("left", pageX - dx + "px");
+      img.style.setProperty("top", pageY - dy + "px");
+      const clipboardEl = $("#clipboard-item-select");
+      $("#clipboard-item-select").classList
+        .toggle("active", document.elementsFromPoint(pageX, pageY).includes(clipboardEl))
+    },
+    touchend ({ changedTouches: [ { pageX, pageY } ] }) {
+      img.remove();
+      const clipboardEl = $("#clipboard-item-select");
+      if (document.elementsFromPoint(pageX, pageY).includes(clipboardEl)) {
+        const
+          e = new Event("drop", { bubbles: true, cancelable: true }),
+          tr = new DataTransfer(), { classList } = this;
+        let data;
+        if (classList.contains("harm-obj")) data = { type: "harmonic", order: this.parentElement.dataset.harm };
+        else if (classList.contains("subharm-obj")) data = { type: "subharmonic", order: this.parentElement.dataset.harm };
+        else if (classList.contains("interval-obj")) data = { type: "interval", interval: this.parentElement.dataset.interval };
+        else if (classList.contains("chord")) data = { type: "chord", intervals: $(".chord-intervals", this).dataset.intervals };
+        tr.setData("text/plain", JSON.stringify(data));
+        tr.effectAllowed = "copy";
+        tr.dropEffect = "copy";
+        e.dataTransfer = tr;
+        clipboardEl.dispatchEvent(e)
+      }
+    }
+  }))()
+}
+
 // TODO: add freeze property feature to machine.js
 var app = new $.Machine({
     // Version
@@ -2162,18 +2454,18 @@ var app = new $.Machine({
       // Keyboard
       maxEdo: 270,
       maxKeyboardNameLength: 255,
-      octaves: null,
+      maxHarmonic: 51,
+
       keyboard: null,
       keyboards: null,
       keyboardSelection: null,
+
       canvas: null,
       gridctx: null,
       audioctx: null,
       masterVolume: null,
 
-      // Harmony
-      maxHarmonic: 51,
-      temperings: null,
+      octaves: null,
 
       // Track
       tracks: {},
@@ -2188,7 +2480,11 @@ $.targets({
 
   load () { app.emit("init") },
 
-  keydown (e) { if (e.key === "Escape") document.activeElement.blur() },
+  keydown (e) { switch (e.key) {
+    case "Control": $("body").classList.add("copying"); break
+    case "Escape": document.activeElement.blur()
+  } },
+  keyup (e) { if (e.key === "Control") $("body").classList.remove("copying") },
 
   resize () {
     if (!Keyboard.ready) return;
@@ -2201,7 +2497,7 @@ $.targets({
   "touchstart touchend touchmove" (e) {
     if (!Keyboard.ready) return;
     const nav = $("nav");
-    if (e.type === "touchstart" && document.activeElement === nav && !e.composedPath().includes(nav)) $(nav).blur();
+    if (e.type === "touchstart" && document.activeElement === nav && !e.composedPath().includes(nav)) nav.blur();
     const canvas = $("canvas");
     if (e.target === $("main")) for (let { clientX, clientY, identifier } of e.changedTouches) {
       const
@@ -2219,6 +2515,9 @@ $.targets({
     if (e.target === $("main") && hexGrid.hasHex(...hexGrid.getCoord(e.layerX, e.layerY))) {
       keyboard.mousedown = true;
       app.emit("press", e.layerX, e.layerY, "mouse", "start")
+    } else if (e.ctrlKey) {
+      const mbCopy = e.target.closest(".copyable");
+      if (mbCopy) app.emit("copy", { node: mbCopy })
     }
   },
   mousemove (e) {
@@ -2241,7 +2540,8 @@ $.targets({
 
   wheel (e) {
     const { keyboard } = Keyboard.getScope();
-    if (keyboard.hoveredKey) keyboard.cycleLabel(e.deltaY)
+    if (keyboard.hoveredKey) keyboard.cycle("label", e.deltaY);
+    else if (e.composedPath().includes($("#clipboard-peek"))) keyboard.cycle("clipboard", e.deltaY)
   },
 
   document: { fonts: { loadingdone () {
@@ -2261,7 +2561,7 @@ $.targets({
       this.canvas = $("#hex");
       this.gridctx = this.canvas.getContext("2d");
 
-      new ResizeObserver(() => {
+      new ResizeObserver(() => {  // Put these elsewhere? TODO: reset css vars on resize
         this.emit("resize", true);
         Keyboard.getScope().keyboard.hexGrid.redraw(true)
       }).observe($("main"));
@@ -2303,9 +2603,13 @@ $.targets({
         }, 0);
         loadingCommasEl.classList.toggle("active", isInt = isIntersecting)
       }), { threshold: [0, .01] }).observe(loadingCommasEl);
-      new ResizeObserver(() =>
-        tempsListEl.style.setProperty("--tp-display-height", `${Math.round(tempsEl.offsetHeight)}px`)
-      ).observe(tempsEl);
+      let prevTpWidth = 0;
+      new ResizeObserver(() => {
+        tempsListEl.style.setProperty("--tp-display-height", `${Math.round(tempsEl.offsetHeight)}px`);
+        tempsListEl.style.setProperty("--tp-display-width", `${prevTpWidth = Math.max(prevTpWidth, 2 + Math.round(tempsListEl.offsetWidth))}px`)
+      }).observe(tempsListEl);
+
+      $.all("input[size]").forEach(el => el.style.setProperty("--size", el.size));
 
       const
         audioctx = this.audioctx = new AudioContext(),
@@ -2333,13 +2637,18 @@ $.targets({
         scaleOutputEl: $("#scale > output")
       });
       Keyboard.limitEl.max = this.maxHarmonic;
-      this.octaves = $("#octaves > input").valueAsNumber;
       this.emit("load-presets");
     },
 
     "clear-storage" () { localStorage.clear() },
 
     "load-presets" () {
+      const octaves = localStorage.getItem("octaves");
+      if (!octaves) {
+        this.octaves = $("#octaves > input").valueAsNumber;
+        localStorage.setItem("octaves", this.octaves);
+      } else this.octaves = $("#octaves > input").value = parseInt(octaves);
+
       const { keyboard, keyboards } = Keyboard.load({ keyboards: this.keyboards, keyboardSelection: this.keyboardSelection });
       Object.assign(this, { keyboard, keyboards, keyboardSelection: keyboard.name });
 
@@ -2350,7 +2659,7 @@ $.targets({
       // Tracks
       let tracks = localStorage.getItem("tracks");
       if (!tracks) {
-        this.tracks = tracks = {};
+        this.tracks = {};
         localStorage.setItem("tracks", "{}");
       } else this.tracks = tracks = JSON.parse(tracks);
       const trackSelEl = $("#track-select select"), selectHrEl = $("#track-select hr");
@@ -2377,8 +2686,12 @@ $.targets({
       }
       hexGrid.c = (octaves % 2) * Math.hypot(x, y) * r / 2;
       hexGrid.octLen = Math.hypot(x, y) * r;
-      canvas.style.setProperty("width", Math.ceil(width));
-      canvas.style.setProperty("height", Math.ceil(height));
+
+      const tempsListEl = $("#temperament-list");
+      if (tempsListEl) {
+        tempsListEl.style.setProperty("--tp-display-height", `${Math.round($("#temperaments").offsetHeight)}px`);
+        tempsListEl.style.setProperty("--tp-display-width", `${2 + Math.round(tempsListEl.offsetWidth)}px`)
+      }
     },
 
     press (x, y, type, action, id) {
@@ -2397,6 +2710,108 @@ $.targets({
           break;
         case "end": keyboard.stop(id)
       }
+    },
+
+    copy ({ node, text }) {
+      let type, objEl;
+      if (text) {
+        const data = JSON.parse(text);
+        ({ type } = data);
+        switch (type) {
+          case "harmonic": objEl = $(`[data-harm="${data.order}"] > .harm-obj`); break
+          case "subharmonic": objEl = $(`[data-harm="${data.order}"] > .subharm-obj`); break
+          case "interval": objEl = $(`[data-interval="${data.interval}"] > .interval-obj`); break
+          case "chord": objEl = $(`.chord:has([data-intervals="${data.intervals}"])`)
+        }
+      } else {
+        const { classList } = objEl = node;
+        type = classList.contains("harm-obj") ? "harmonic" :
+          classList.contains("subharm-obj") ? "subharmonic" :
+          classList.contains("interval-obj") ? "interval" :
+          classList.contains("chord") ? "chord" : null
+      }
+      const
+        clipboardEl = $("#clipboard-item-select"), clipboardPeekEl = $("#clipboard-peek"),
+        { keyboard } = Keyboard.getScope(), { scale, clipboard } = keyboard, { mapping } = scale;
+      let
+        itemEl, chord,
+        data = {
+          start: function (id) {
+            this.classList.add("active");
+            for (let iv of chord.internalIntervals) {
+              const key = scale.getKey(iv.steps());
+              key.setLabel(key.getLabels().findIndex(({ letter }) => letter === iv.noteSpelling.letter))
+            }
+            Keyboard.getScope().keyboard.hexGrid.redraw();
+            chord.start("pointer-" + id)
+          }.bind(clipboardPeekEl),
+          stop: function (id) {
+            this.classList.remove("active");
+            chord.stop("pointer-" + id)
+          }.bind(clipboardPeekEl)
+        };
+      switch (type) {
+        case "harmonic": case "subharmonic":
+          data.item = mapping.harmonicList.get(parseInt(objEl.parentElement.dataset.harm)).withQuality(type);
+          chord = new Chord({ keyboard, mapping, type: "harmonic series", harmonics: [ data.item.order, 1 ], root: 1, isSubHarm: data.item.isSubHarm })
+          break
+        case "interval":
+          data.item = mapping.intervalSet.getRatio(...objEl.parentElement.dataset.interval.split("/"));
+          const { n, d } = data.item;
+          chord = new Chord({ keyboard, mapping, type: "harmonic series", harmonics: [ n, d ], root: n < d ? n : d, isSubHarm: n < d });
+          break
+        case "chord":
+          data.item = this.keyboard.scale.mapping.temperament
+            .getChordByIntervals(JSON.parse($(".chord-intervals", objEl).dataset.intervals));
+          chord = data.item
+      }
+      clipboard.unshift(data);
+      keyboard.clipboardPeekIndex = 0;
+      this.emit("clipboard-display-peek")
+    },
+
+    uncopy () {
+      const { keyboard } = Keyboard.getScope(), { clipboard, clipboardPeekIndex } = keyboard;
+      clipboard.splice(clipboardPeekIndex, 1);
+      keyboard.clipboardPeekIndex = clipboard.length === 0 ? null :
+        Math.min(clipboardPeekIndex, clipboard.length - 1);
+      this.emit("clipboard-display-peek")
+    },
+
+    "clipboard-display-peek" () {
+      const { clipboard, clipboardPeekIndex } = Keyboard.getScope().keyboard, data = clipboard[clipboardPeekIndex];
+      $("#clipboard-peek > *")?.remove();
+      if (!data) return;
+      else if (Harmonic.prototype.isPrototypeOf(data.item)) {
+        const
+          itemEl = $.load("clipboard-item-harmonic", "#clipboard-peek")[0][0],
+          [ hColourEl, hOrderEl, hSpellingEl ] = itemEl.children,
+          colours = $.all(`.harmonic[data-harm="${data.item.order}"] > .hcolour`).map(el => el.value)
+        if (colours.length === 1) hColourEl.style.setProperty("--colour", colours[0]);
+        else {  // TODO: won't work for 15 without 3 and 5
+          hColourEl.classList.add("split-colours");
+          hColourEl.style.setProperty("--colour-1", colours[0]);
+          hColourEl.style.setProperty("--colour-2", colours[1]);
+        }
+        hOrderEl.innerText = Common.ordinal(data.item.order);
+        hSpellingEl.innerText = data.item.label
+      } else if (Interval.prototype.isPrototypeOf(data.item)) {
+        const
+          itemEl = $.load("clipboard-item-interval", "#clipboard-peek")[0][0],
+          [ iColourEl, ratioEl, spellingEl ] = itemEl.children, { fraction, splitDecomp } = data.item,
+          colours = splitDecomp.map(side => side.findLast(([p]) => p !== 3)?.[0])
+            .filter(Boolean).map(h => Keyboard.noteColours[h]);
+        if (colours.length === 1) iColourEl.style.setProperty("--colour", colours[0]);
+        else {
+          if (colours.length === 0) ([ colours[0], colours[1] ] = [ Keyboard.noteColours.white, Keyboard.noteColours.black ]);
+          iColourEl.classList.add("split-colours");
+          iColourEl.style.setProperty("--colour-1", colours[0]);
+          iColourEl.style.setProperty("--colour-2", colours[1]);
+        }
+        ratioEl.innerHTML = `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>`;
+        spellingEl.innerText = data.item.noteSpelling.number
+      } else if (Chord.prototype.isPrototypeOf(data.item))
+        $.load("clipboard-item-chord", "#clipboard-peek")[0][0].innerText = data.item.internalIntervals.map(iv => iv.noteSpelling.letter).join(" ")
     },
 
     panic () {
@@ -2437,66 +2852,87 @@ $.targets({
           harmObj = harmonicList.get(harmonic),
           just = Math.log2(harmonic) % 1,
           labelEl = $.load("harmonic", "#mapping")[0][0],
-          [ , spellingEl, inputEl, compositeEl, errorEl, , colourEl ] = [ ...labelEl.children ];
+          [ , spellingEl, inputEl, compositeStepsEl, ,
+            , subSpellingEl, subStepsEl, , errorEl, colourEl ] = labelEl.children;
         labelEl.dataset.harm = harmonic;
-        $(".nth-harmonic", labelEl).innerText = Common.ordinal(harmonic);
-        spellingEl.innerText = mapping.intervalSet.getRatio(harmonic, 1).noteSpelling.string;
+        $.all(".nth-harmonic", labelEl).forEach(el => el.innerText = Common.ordinal(harmonic));
+        spellingEl.innerText = mapping.intervalSet.getRatio(harmonic, 1).noteSpelling.roman;
         inputEl.setAttribute("value", steps);
         inputEl.setAttribute("min", Math.max(1, Math.ceil((just - maxError / 1200) * edo)));
         inputEl.setAttribute("max", Math.min(edo - 1, Math.floor((just + maxError / 1200) * edo)));
+        inputEl.style.setProperty("--size", inputEl.size);
         // TODO eg hcolour when 15 in but 3, 5 out
         if (harmObj.isBasis) labelEl.classList.add("basis");
         if (isPrime) labelEl.classList.add("prime");
         else {
-          compositeEl.innerText = steps;
+          compositeStepsEl.innerText = steps;
           if (dec.size === 1 && [ ...dec ][0][1] > 1) labelEl.classList.add("prime", "power"); // Not correct
         }
+        subSpellingEl.innerText = mapping.intervalSet.getRatio(1, harmonic).noteSpelling.romanlow;
+        subStepsEl.innerText = edo - steps;
         errorEl.innerText = ((steps / edo - just) * 1200).toFixed(2);
         if (harmObj.isBasis && primeHarmonic === 3) { // Not correct!
           colourEl.value = Keyboard.noteColours.white;
           labelEl.appendChild(colourEl.cloneNode()).value = Keyboard.noteColours.black;
         } else if (isPrime) colourEl.value = Keyboard.noteColours[harmonic] ??= Keyboard.noteColours.default;
+        const
+          harm = new Chord({ keyboard, mapping, type: "harmonic series", harmonics: [ harmonic, 1 ], root: 1 }),
+          subharm = new Chord({ keyboard, mapping, type: "harmonic series", harmonics: [ harmonic, 1 ], root: 1, isSubHarm: true });
         $.queries({
           "input.steps": { change () { app.emit("generate-keyboard") } },
           "input.hcolour": { change () { Keyboard.setColour(primeHarmonic, this.value, this === $.all("input.hcolour", labelEl)[1]) } },
-          button: (chord => ({
+          button: {
             pointerdown (e) {
               this.setPointerCapture(e.pointerId);
               const
-                { keyboard } = Keyboard.getScope(),
-                key = keyboard.scale.getKey(steps),
-                enhi = key.getLabels().findIndex(({ interval: iv }) => Common.comp(iv[0]) === harmonic && iv[1].length === 0);
+                isSubHarm = "isSubharm" in this.dataset,
+                hsteps = isSubHarm ? edo - steps : steps,
+                { keyboard } = Keyboard.getScope(), { mapping } = keyboard.scale,
+                key = keyboard.scale.getKey(hsteps),
+                enhi = key.getLabels().findIndex(({ interval: iv }) =>
+                  Common.comp(iv[Number(isSubHarm)]) === harmonic && iv[Number(!isSubHarm)].length === 0);
               ~enhi && key.setLabel(enhi);
               keyboard.hexGrid.redraw();
-              chord = new Chord(keyboard, [0, 0], keyboard.scale.getKey(steps).getHome().getCoord());
-              chord.start("pointer-" + e.pointerId)
+              if (isSubHarm) subharm.start("pointer-" + e.pointerId);
+              else harm.start("pointer-" + e.pointerId);
             },
             "pointerup lostpointercapture" (e) {
-              chord.stop("pointer-" + e.pointerId);
+              ("isSubharm" in this.dataset ? subharm : harm).stop("pointer-" + e.pointerId);
               this.releasePointerCapture(e.pointerId)
             }
-          }))()
+          },
+          ".copyable": {
+            dragstart (e) {
+              e.dataTransfer.effectAllowed = "copy";
+              e.dataTransfer.dropEffect = "copy";
+              e.dataTransfer.setData("text/plain", JSON.stringify({
+                type: this.classList.contains("harm-obj") ? "harmonic" : "subharmonic",
+                order: this.parentElement.dataset.harm
+              }))
+            },
+            ...Listeners.dragDropTouch
+          }
         }, labelEl)
       }
-      Object.assign(keyboard, { edo, scale, name: "Custom" }); // HexGrid?
+      Object.assign(keyboard, { edo, scale, name: "Custom" });
 
       // Tonality diamond
       const diamondEl = $("#diamond");
       $.all(":scope > *", diamondEl).forEach(el => el.remove());
       const
-        temperings = this.temperings = $.all(".harmonic").map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ])
+        temperings = $.all(".harmonic").map(el => [ parseInt(el.dataset.harm), $("input", el).valueAsNumber ])
           .sort(([p], [q]) => Math.log2(p) % 1 > Math.log2(q) % 1),
-        h = temperings.length;
+        h = temperings.length, chords = new Map();
       diamondEl.style.setProperty("--size", 2 * h + 1);
       for (let i = 0; i <= h; i++) {
         const
           cell = $.load("interval-cell", "#diamond")[0][0],
           [ interval, note, width, button ] = $.all(":scope > *", cell);
         cell.style.gridArea = `${h + 1}/${2 * i + 1}/span 1/span 2`;
-        interval.innerHTML = "<sup>1</sup>/<sub>1</sub>";
-        note.innerText = "C";
+        interval.innerHTML = "<sup>1</sup>⁄<sub>1</sub>";
+        note.innerText = "I";
         width.innerText = button.dataset.steps = 0
-        button.dataset.interval = "1/1"
+        cell.dataset.interval = "1/1"
       }
       for (let i = h; i > 0; i--) for (let j = 0; j < i; j++) {
         const
@@ -2505,17 +2941,20 @@ $.targets({
           [ upperInterval, upperNote, upperWidth, upperButton ] = $.all(":scope > *", upperCell),
           [ lowerInterval, lowerNote, lowerWidth, lowerButton ] = $.all(":scope > *", lowerCell),
           upperIv = intervalSet.getRatio(temperings[h - i + j][0], temperings[j - 1]?.[0] ?? 1).withOctave(0),
-          lowerIv = intervalSet.getRatio(temperings[j - 1]?.[0] ?? 1, temperings[h - i + j][0]).withOctave(0);
+          lowerIv = intervalSet.getRatio(temperings[j - 1]?.[0] ?? 1, temperings[h - i + j][0]).withOctave(0),
+          [nUp, dUp] = upperIv.fraction, [nLo, dLo] = lowerIv.fraction;
         upperCell.style.gridArea = `${i}/${h - i + 2 + 2 * j}/span 1/span 2`;
         lowerCell.style.gridArea = `${2 * h + 2 - i}/${h - i + 2 + 2 * j}/span 1/span 2`;
-        upperInterval.innerHTML = `<sup>${upperIv.fraction[0]}</sup>/<sub>${upperIv.fraction[1]}</sub>`;
-        lowerInterval.innerHTML = `<sup>${lowerIv.fraction[0]}</sup>/<sub>${lowerIv.fraction[1]}</sub>`;
-        upperNote.innerText = upperIv.noteSpelling.string;
-        lowerNote.innerText = lowerIv.noteSpelling.string;
-        upperButton.dataset.interval = upperIv.fraction.join("/");
-        lowerButton.dataset.interval = lowerIv.fraction.join("/");
+        upperInterval.innerHTML = `<sup>${nUp}</sup>⁄<sub>${dUp}</sub>`;
+        lowerInterval.innerHTML = `<sup>${nLo}</sup>⁄<sub>${dLo}</sub>`;
+        upperNote.innerText = upperIv.noteSpelling[upperIv.n > upperIv.d ? "roman" : "romanlow"];
+        lowerNote.innerText = lowerIv.noteSpelling[lowerIv.n > lowerIv.d ? "roman" : "romanlow"];
+        upperCell.dataset.interval = upperIv.fraction.join("/");
+        lowerCell.dataset.interval = lowerIv.fraction.join("/");
         upperWidth.innerText = upperButton.dataset.steps = upperIv.steps();
-        lowerWidth.innerText = lowerButton.dataset.steps = lowerIv.steps()
+        lowerWidth.innerText = lowerButton.dataset.steps = lowerIv.steps();
+        chords.set(upperInterval, new Chord({ keyboard, mapping, type: "harmonic series", harmonics: [ nUp, dUp ], root: dUp }));
+        chords.set(lowerInterval, new Chord({ keyboard, mapping, type: "harmonic series", harmonics: [ nLo, dLo ], root: nLo, isSubHarm: true }))
       }
       app.emit("resize", true);
       keyboard.hexGrid.redraw(true);
@@ -2547,7 +2986,7 @@ $.targets({
       $("div:last-of-type", ivTable).remove();
       $.all(".column-head:last-of-type, .row-head:last-of-type")
       for (let steps = 0; steps < edo; steps++) scale.getKey(steps).getLabels()
-        .forEach(({ interval: iv, label, keyClass }) => {
+        .forEach(({ interval: iv, number, keyClass }) => {
           const
             [ n, d ] = iv.map(side => side.reduce(([big, log], [p, rad]) =>
               [big * BigInt(p) ** BigInt(rad), log + Math.log2(p) * rad], [1n, 0]))
@@ -2569,10 +3008,15 @@ $.targets({
             cell = $.load("interval-cell", "", td)[0][0],
             [ interval, note, width, button ] = $.all(":scope > *", cell);
           if (steps === 0) cell.id = "table-unison";
-          interval.innerHTML = `<sup>${n}</sup>/<sub>${d}</sub>`;
-          note.innerText = label;
+          interval.innerHTML = `<sup>${n}</sup>⁄<sub>${d}</sub>`;
+          note.innerText = number;
           width.innerText = button.dataset.steps = steps
-          button.dataset.interval = `${n}/${d}`;
+          cell.dataset.interval = `${n}/${d}`;
+          const N = Number(n), D = Number(d);
+          chords.set(interval, new Chord({  // TODO use correct quality
+            keyboard, mapping, type: "harmonic series", harmonics: [ N, D ],
+            root: N < D ? N : D, isSubHarm: N < D
+          }))
         });
 
       // Play interval buttons
@@ -2594,24 +3038,31 @@ $.targets({
           pointerdown (e) {
             this.setPointerCapture(e.pointerId);
             const
-              { keyboard } = Keyboard.getScope(),
+              { keyboard } = Keyboard.getScope(), { mapping } = keyboard.scale,
               steps = parseInt(this.dataset.steps),
-              [n, d] = this.dataset.interval.split("/").map(v => Common.non2(parseInt(v))),
+              [n, d] = this.parentElement.dataset.interval.split("/").map(v => Common.non2(parseInt(v))),
               key = keyboard.scale.getKey(steps),
               enhi = key.getLabels().findIndex(({ interval: iv }) => Common.comp(iv[0]) === n && Common.comp(iv[1]) === d);
             $.all(`button[data-steps="${steps}"]`, this.closest(".interval-display"))
               .forEach(el => el.parentElement.classList.add("activeEnharmonic"));
             ~enhi && key.setLabel(enhi);
             keyboard.hexGrid.redraw();
-            chord = new Chord(keyboard, [0, 0], keyboard.scale.getKey(steps).getHome().getCoord());
-            chord.start("pointer-" + e.pointerId)
+            chords.get($(".interval-obj", this.parentElement)).start("pointer-" + e.pointerId)
           },
           "pointerup lostpointercapture" (e) {
             $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
-            chord.stop("pointer-" + e.pointerId);
+            chords.get($(".interval-obj", this.parentElement)).stop("pointer-" + e.pointerId);
             this.releasePointerCapture(e.pointerId)
           }
-        }))()
+        }))(),
+        ".interval-display .copyable": {
+          dragstart (e) {
+            e.dataTransfer.effectAllowed = "copy";
+            e.dataTransfer.dropEffect = "copy";
+            e.dataTransfer.setData("text/plain", JSON.stringify({ type: "interval", interval: this.parentElement.dataset.interval }))
+          },
+          ...Listeners.dragDropTouch
+        }
       })
     },
 
@@ -2641,7 +3092,7 @@ $.targets({
           dDecompSpan.innerHTML = (t2 > 0 ? [[2, t2]] : []).concat(iv.splitDecomp[1])
             .map(([p, rad]) => p + (rad > 1 ? `<sup>${rad}</sup>` : "")).join(".");
           sizeSpan.innerText = `${((l1 - l2) * 1200).toFixed(2)}`;
-          spellingSpan.innerText = iv.noteSpelling.string;
+          spellingSpan.innerText = iv.noteSpelling.letter;
           $.queries({ "": { click () { app.emit("generate-chords", this) } } }, commaEl)
         }
       }
@@ -2657,58 +3108,77 @@ $.targets({
         [ n, d ] = commaEl.dataset.comma.split(",").map(x => parseInt(x)),
         { keyboard } = Keyboard.getScope(), { edo, scale } = keyboard, { mapping } = scale,
         tempsEl = $("#temperaments");
+      $("#comma-info").innerText = n + "/" + d;
+
       await new Promise(requestAnimationFrame);
       tempsEl.scrollTo(0, 32767);
-      $("#chords").classList.add("computing");  // TODO urgent: move off main thread
+      $("#chords").classList.add("computing");
       await new Promise(requestAnimationFrame);
-      const { chords, enharms } = mapping.chords(new Interval({ keyboard, mapping, n, d }));
+      
+      // TODO urgent: move off main thread
+      const chords = mapping.chords(new Interval({ keyboard, mapping, n, d }));
       $("#chords").classList.remove("computing");
-      for (let [ chord, internalIvs ] of chords) {
-        const chordEl = $.load("chord", "#chords")[0][0];
-        app.emit("display-chord", chord, internalIvs, enharms, chordEl);
+      for (let chord of chords) {
+        const chordEl = $.load("chord", "#chords")[0][0], chordIvsEl = $(".chord-intervals", chordEl);
+        chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction));
+
+        app.emit("display-chord", chord, chordEl);
         $.queries({
-          "button.play-chord": (chord => ({
+          "button.play-chord": (id => ({
             pointerdown (e) {
               this.setPointerCapture(e.pointerId);
-              let coordss = [[0, 0]];
-              const { inv } = chordEl.dataset
-              for (let iv of internalIvs[inv]) {
+              for (let iv of chord.internalIntervals) {
                 const key = scale.getKey(iv.steps());
-                key.setLabel(key.getLabels().findIndex(({ label }) => label === iv.noteSpelling.string));
-                coordss.push(key.getHome().getCoord());
+                key.setLabel(key.getLabels().findIndex(({ letter }) => letter === iv.noteSpelling.letter))
               }
               keyboard.hexGrid.redraw();
-              chord = new Chord(keyboard, ...coordss);
+              if ($(".switch input:checked")) id = setInterval(() => {
+                chord.stop("pointer-" + e.pointerId);
+                chord.inversion = (chord.inversion + 1) % chord.adicity;
+                app.emit("display-chord", chord, chordEl);
+                setTimeout(() => chord.start("pointer-" + e.pointerId), 20)
+              }, 667);
               chord.start("pointer-" + e.pointerId)
             },
             "pointerup lostpointercapture" (e) {
+              clearInterval(id);
               chord.stop("pointer-" + e.pointerId);
               this.releasePointerCapture(e.pointerId)
             }
           }))(),
           "button.inversion": { click () {
-            chordEl.dataset.inv = ++chordEl.dataset.inv % chord.length;
-            app.emit("display-chord", chord, internalIvs, enharms, chordEl)
-          } }
+            const inv = chord.inversion = chordEl.dataset.inv = ++chordEl.dataset.inv % chord.adicity;
+            chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction));
+            app.emit("display-chord", chord, chordEl)
+          } },
+          button: { "touchstart touchmove touchend" (e) { e.stopPropagation() } },
+          "": {
+            dragstart (e) {
+              e.dataTransfer.effectAllowed = "copy";
+              e.dataTransfer.setData("text/plain", JSON.stringify({
+                type: "chord", intervals: $(".chord-intervals", this).dataset.intervals
+              }))
+            },
+            ...Listeners.dragDropTouch
+          }
         }, chordEl)
       }
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
     },
 
-    "display-chord" (chord, internalIvs, enharms, chordEl) {
+    "display-chord" (chord, chordEl) {
       const
         { keyboard } = Keyboard.getScope(), { edo } = keyboard, { mapping } = keyboard.scale,
-        { inv } = chordEl.dataset, invChord = chord.slice(inv).concat(chord.toSpliced(inv)),
         [ chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
         [ chIvHarmonicEl, chIvStepsEl ] = chIntervalsEl.children,
         [ chPcHarmonicEl, chPcStepsEl ] = chPitchesEl.children,
         [ chIsSymmetricEl, chNextInvBtn, chPlayChordBtn ] = chControlsEl.children;
-      $.all(".chord-edo", chordEl).forEach(el => el.innerText = edo)
-      chIvHarmonicEl.innerHTML = invChord.map(({ fraction }) => `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>`).join(" ");
-      chIvStepsEl.innerHTML = invChord.map(iv => iv.steps()).join(" ");
-      chPcHarmonicEl.innerHTML = internalIvs[inv].map(({ fraction }) => `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>`).join(" – ");
-      chPcStepsEl.innerHTML = `0-${internalIvs[inv].map(iv => iv.steps()).join("-")}-${edo}`;
-      chSpellingEl.innerText = "C – " + internalIvs[inv].map(iv => iv.noteSpelling.string).join(" – ");
+      $.all(".chord-edo", chordEl).forEach(el => el.innerText = edo);
+      chIvHarmonicEl.innerHTML = chord.intervals.map(({ fraction }) => `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>`).join(" ");
+      chIvStepsEl.innerText = chord.intervals.map(iv => iv.steps()).join(" ");
+      chPcHarmonicEl.innerHTML = chord.internalIntervals.map(({ fraction }) => `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>`).join(" – ");
+      chPcStepsEl.innerText = `${chord.internalIntervals.map(iv => iv.steps()).join("-")}-${edo}`;
+      chSpellingEl.innerText = chord.internalIntervals.map(iv => iv.noteSpelling.letter).join(" – ");
     },
 
 
@@ -2842,7 +3312,8 @@ $.targets({
           $("#commas").dataset.upperBound = 100;
           $.all("#commas > .comma").forEach(el => el.remove());
           $.all("#chords > .chord").forEach(el => el.remove());
-          this.menuState[1] = prevMenu[0] === "keyboard-settings" ? prevMenu[1] : { keyboard: this.keyboard };
+          this.menuState[1] = { keyboard: this.keyboard };
+          // this.menuState[1] = prevMenu[0] === "keyboard-settings" ? prevMenu[1] : { keyboard: this.keyboard };
           this.emit("resize", true);
           this.emit("generate-temperaments")
           break;
@@ -2887,7 +3358,7 @@ $.queries({
   form: { submit (e) { e.preventDefault() } },
   "#volume > input": { change () { app.emit("volume-change", this.valueAsNumber) } },
   "#octaves > input": { change () {
-    app.octaves = this.valueAsNumber;
+    localStorage.setItem("octaves", app.octaves = this.valueAsNumber);
     app.emit("resize", true);
     Keyboard.getScope().keyboard.hexGrid.redraw(true)
   } },
@@ -2958,7 +3429,67 @@ $.queries({
     hexGrid.redraw(true)
   } },
   ":is(#limit, #maxError) > input": { change () { app.emit("generate-keyboard") } },
-  "#generate-temperaments": { click () { app.emit("menu-select", [ "keyboard-settings", "temperaments" ]) } }, 
+
+  "#generate-temperaments": { click () { app.emit("menu-select", [ "temperaments" ]) } },
+
+  "#clipboard-item-select": {
+    "dragenter dragover" (e) {
+      e.preventDefault();
+      this.classList.add("active")
+    },
+    dragleave (e) { this.classList.remove("active") },
+    drop (e) {
+      e.stopPropagation();
+      this.classList.remove("active");
+      const text = e.dataTransfer.getData('text/plain');
+      if (text !== "self") app.emit("copy", { text })
+    },
+    dragstart (e) { e.dataTransfer.setData("text/plain", "self") },
+    dragend ({ x, y }) {
+      if (!document.elementsFromPoint(x, y).includes(this)) app.emit("uncopy")
+    }
+  },
+  "#clipboard-peek": {
+    ...((x, prevX, y, threshhold, phase) => ({
+      pointerdown ({ pointerId, ctrlKey, pageX, pageY }) {
+        this.setPointerCapture(pointerId);
+        if (!this.firstChild) return;
+        if (ctrlKey) return app.emit("uncopy");
+        const
+          { height } = this.getBoundingClientRect(),
+          { clipboard, clipboardPeekIndex } = Keyboard.getScope().keyboard,
+          data = clipboard[clipboardPeekIndex];
+        x = pageX;
+        y = pageY;
+        threshhold = height;
+        phase = 0;
+        data.start(pointerId)
+      },
+      pointermove ({ clientX, pageX, pageY, pointerId }) {
+        if (this.children.length === 0) return;
+        const { keyboard } = Keyboard.getScope(), { clipboard, clipboardPeekIndex } = keyboard;
+        if (phase === 0 && Math.hypot(pageX - x, pageY - y) > threshhold) {
+          phase = 1 + (Math.abs(pageX - x) < Math.abs(pageY - y));
+          prevX = pageX;
+          if (Math.abs(pageX - x) < Math.abs(pageY - y)) {
+            clipboard[clipboardPeekIndex].stop(pointerId);
+            app.emit("uncopy")
+          }
+        } else if (phase === 1) {
+          keyboard.cycle("clipboard", (-prevX + (prevX = pageX)) * 4);
+          if (keyboard.clipboardPeekIndex !== clipboardPeekIndex) {
+            clipboard[clipboardPeekIndex].stop(pointerId);
+            clipboard[keyboard.clipboardPeekIndex].start(pointerId)
+          }
+        }
+      },
+      "pointerup lostpointercapture" ({ pointerId }) {
+        const { clipboard, clipboardPeekIndex } = Keyboard.getScope().keyboard;
+        clipboard[clipboardPeekIndex]?.stop(pointerId);
+        this.releasePointerCapture(pointerId)
+      }
+    }))()
+  },
 
   "#track-select > select": { change () {
     if (this.value === "None") app.emit("menu-cancel");
@@ -2987,6 +3518,9 @@ $.queries({
   } }
 
 })
+
+
+
   </script>
   <noscript>Only viewable with JavaScript enabled.</noscript>
 </body>

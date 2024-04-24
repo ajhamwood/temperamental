@@ -2,29 +2,34 @@
 * Include selected key labels in stored keyboard data
 * User-editable wheel sensitivity => app settings menu?
 * Convert getX methods to getters
+* Store octaves
 Temperaments!
-  * Move Temperaments UI to control bar - how to integrate with tracks?
-  * Group otonal and utonal variants
+  * Copyable Key (changes key of keyboard)
+  * Group otonal and utonal variants; How to classify chords of the same temperament?
   * Colour coding on temperaments?
-  * Order chords by adicity vs symmetry
+  * Order chords by adicity vs symmetry vs simplest internal interval
   * Gesture drag through chord inversions? Allow selection of pivot position other than the root
     => Setting a key for the keyboard and transposing note names through the key
   * Generate commas and chords off the main thread; UI for moving a computation to a jobs list (Important!), pausing/resuming etc (may require a different approach/algorithm)
 BigInt Interval (Important!)
 Save & delete keyboard layouts
-Render pipeline (hex grid then labels), redraw by hex whitelist (use neighbours)
+Render pipeline (hex grid then labels), redraw by hex whitelist (black hex to clear then source-over with neighbours)
 Track class
 MenuState class
+Scales
+  * Moment-of-symmetry (related to orientations); compute all orientations on edo change?
+  * Compute motion between chords; Threshhold to include a scale?
 
 > Would be nice
 Grid vertical origin dragger
 Sticky buttons? Pedal?
-Moment-of-symmetry scales (related to orientations); compute all orientations on edo change?
 Relabelling keys while playing: relative to lowest note, relative to chosen key
 
-BUG sound clicking on mobile
-BUG if the viewport is resized too small, the hex grid disappears and the control bar freaks out
+BUG sound clicking
+BUG saved form data not read at initialisation on page reload (but not refresh) => Save octaves in localStorage?
 BUG keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
 BUG separate black/white key colours for ghost keys?
+
+Documentation: Explain chord names in relation to inversions, eg IV 6/4 becomes IV 3:4:5, II 2 becomes II 7:8:10:12, etc
 
 What would "Mary had a little lamb" sound like expressed as beats subdividing a repeating duration? Eg. 12 equal polyrhythms which stack to a halving/doubling of time
