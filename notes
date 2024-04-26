@@ -1,8 +1,7 @@
 > Necessary
+Make work in Chrome and Safari
 * Include selected key labels in stored keyboard data
 * User-editable wheel sensitivity => app settings menu?
-* Convert getX methods to getters
-* Store octaves
 Temperaments!
   * Copyable Key (changes key of keyboard)
   * Group otonal and utonal variants; How to classify chords of the same temperament?
@@ -11,6 +10,7 @@ Temperaments!
   * Gesture drag through chord inversions? Allow selection of pivot position other than the root
     => Setting a key for the keyboard and transposing note names through the key
   * Generate commas and chords off the main thread; UI for moving a computation to a jobs list (Important!), pausing/resuming etc (may require a different approach/algorithm)
+    => BUG! Save/load commas per edo and limit, chords per edo, limit and comma
 BigInt Interval (Important!)
 Save & delete keyboard layouts
 Render pipeline (hex grid then labels), redraw by hex whitelist (black hex to clear then source-over with neighbours)
@@ -25,8 +25,6 @@ Grid vertical origin dragger
 Sticky buttons? Pedal?
 Relabelling keys while playing: relative to lowest note, relative to chosen key
 
-BUG sound clicking
-BUG saved form data not read at initialisation on page reload (but not refresh) => Save octaves in localStorage?
 BUG keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
 BUG separate black/white key colours for ghost keys?
 
