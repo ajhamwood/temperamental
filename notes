@@ -2,6 +2,8 @@
 Make work in Chrome and Safari
 * Include selected key labels in stored keyboard data
 * User-editable wheel sensitivity => app settings menu?
+* Limit notes to frequencies between 10 and 40000 Hz; shade echo notes according to octave difference
+* Refactor keyboard data lifecycle
 Temperaments!
   * Copyable Key (changes key of keyboard)
   * Group otonal and utonal variants; How to classify chords of the same temperament?
@@ -9,8 +11,11 @@ Temperaments!
   * Order chords by adicity vs symmetry vs simplest internal interval
   * Gesture drag through chord inversions? Allow selection of pivot position other than the root
     => Setting a key for the keyboard and transposing note names through the key
-  * Generate commas and chords off the main thread; UI for moving a computation to a jobs list (Important!), pausing/resuming etc (may require a different approach/algorithm)
-    => BUG! Save/load commas per edo and limit, chords per edo, limit and comma
+  * Generate commas and chords off the main thread; UI for moving a computation to a jobs list (Important!)
+    => Provide real time logs during computation to display in job area
+    => Group chords by adicity/stack and return partial results
+    => Pausing/resuming etc (may require a different approach/algorithm)
+  * Splitting commas
 BigInt Interval (Important!)
 Save & delete keyboard layouts
 Render pipeline (hex grid then labels), redraw by hex whitelist (black hex to clear then source-over with neighbours)
@@ -25,9 +30,17 @@ Grid vertical origin dragger
 Sticky buttons? Pedal?
 Relabelling keys while playing: relative to lowest note, relative to chosen key
 
-BUG keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
-BUG separate black/white key colours for ghost keys?
+> Outside scope
+Giving musical objects ungeneralisable proper names or symbols
 
-Documentation: Explain chord names in relation to inversions, eg IV 6/4 becomes IV 3:4:5, II 2 becomes II 7:8:10:12, etc
+> Bugs
+* !! Save/load commas per edo and limit, chords per edo, limit and comma
+* What triggers the 2/1 bug?
+* Keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
+* Separate black/white key colours for ghost keys?
 
+> Documentation
+* Explain chord names in relation to inversions, eg IV 6/4 becomes IV 3:4:5, II 2 becomes II 7:8:10:12, etc
+
+> Misc
 What would "Mary had a little lamb" sound like expressed as beats subdividing a repeating duration? Eg. 12 equal polyrhythms which stack to a halving/doubling of time
