@@ -49,15 +49,15 @@
   #track-editor > form > textarea {
     width: 20em;
     min-width: 10em }
-  .interval-display, #mapping { max-width: calc(50dvw - 3.5em - 4px) }
-  #temperament-list, #chord-list { max-width: calc(50dvw - 3.5em - 4px) } }
+  .interval-display, #mapping { max-width: calc(50dvw - 3.4em - 4px) }
+  #temperament-list, #chord-list { max-width: calc(50dvw - 3.4em - 4px) } }
 @media (max-aspect-ratio: 1) {
   body.menuActive { grid: "nav" auto "menu" minmax(auto, 1fr) "main" 1fr / 100dvw }
   #track-editor > form > textarea {
     width: 100% !important;
     resize: vertical }
-  .interval-display, #mapping { max-width: calc(100dvw - 2.5em - 8px) }
-  #temperament-list, #chord-list { max-width: calc(100dvw - 3.5em - 4px) } }
+  .interval-display, #mapping { max-width: calc(100dvw - 3.4em - 4px) }
+  #temperament-list, #chord-list { max-width: calc(100dvw - 3.4em - 4px) } }
 
 html, body {
   height: 100dvh }
@@ -107,14 +107,15 @@ body {
       #track-controls.activeControls { display: flex }
         #track-play:not(.trackPlaying)::before { content: "Play ⏵" }
         #track-play.trackPlaying::before { content: "Pause ⏸" }
-    nav:focus-within:not(:has(.non-focus:focus)) > #dropdown, .copying #dropdown { display: flex }
+    nav:focus-within:not(:has(.non-focus:focus)) > #dropdown, .menuActive.copying #dropdown { display: flex }
     #dropdown {
       display: none;
       background-color: #000 }
       #dropdown > :nth-last-child(n+2) { margin-right: 2em }
         #dropdown > * > * { vertical-align: middle }
+        #keyboard-select option[disabled]:not(:nth-last-child(3)) { display: none }
       #clipboard-item-select:has(#clipboard-peek:empty) { color: #666 }
-      .copying #clipboard-item-select {
+      .menuActive.copying #clipboard-item-select {
         position: absolute;
         top: 0;
         left: 0;
@@ -186,6 +187,12 @@ body {
       flex-flow: row wrap;
       gap: 0 .6em }
       #track-editor > form > * { width: 100% }
+      #keyboard-file {
+        flex-basis: 100%;
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: .3em }
+        #keyboard-name-field { width: calc(100% - 1em) }
       fieldset {
         display: flex;
         flex-flow: column }
@@ -216,9 +223,7 @@ body {
                 max-height: 6dvw;
                 height: 100% }
               #error::after { content: "¢" }
-          .interval-display {
-            display: none;
-            padding: 0 }
+          .interval-display { display: none }
           .choice:has(label#diamond-choice > input[type="radio"]:checked) ~ #diamond-wrapper,
             .choice:has(label#table-choice > input[type="radio"]:checked) ~ #ivtable-wrapper { display: block }
           .interval-display, #mapping { overflow-x: scroll }
@@ -378,16 +383,6 @@ body {
         margin-bottom: .5em }
         #track-file > :nth-last-child(n+2) { margin-right: .5em }
         #track-name { flex: 1 }
-        #track-name > * {
-          display: none;
-          vertical-align: middle }
-        #track-name-text { cursor: text }
-        #track-name-text:empty::before {
-          color: #666;
-          content: "..." }
-        #track-name:not(.editingTrackName) > #track-name-text,
-          #track-name.editingTrackName > input { display: inline }
-        #track-name-field.invalid { outline: 1px solid red }
         #track-file:not(.saved) > :is(#track-savestate, #track-delete) { display: none }
         #track-savestate.saving::before {
           content: "...";
@@ -481,6 +476,17 @@ body.copying .copyable:hover:not([data-active]) {
     position: absolute;
     opacity: 50%;
     z-index: 10 }
+.editable > * { display: none }
+.editable > span {
+  cursor: text;
+  padding: .2em;
+  line-height: 1.6em }
+.editable > span:empty::before {
+  color: #666;
+  content: "..." }
+.editable:not(.editing) > span,
+  .editable.editing > input { display: inline }
+.editable > input.invalid { outline: 1px solid red }
 #hourglass-template, .hourglass {
   display: none;
   fill: #ddd;
@@ -493,7 +499,9 @@ body.copying .copyable:hover:not([data-active]) {
     <div id="dropdown">
       <div id="keyboard-select">
         <span>Keyboard</span>
-        <select></select>
+        <select>
+          <option name="Empty" disabled>Empty</option>
+        </select>
         <button id="keyboard-settings-button" type="button">⛭</button>
       </div>
       <div id="temperament-menu">
@@ -544,6 +552,14 @@ body.copying .copyable:hover:not([data-active]) {
     </li>
     <li id="keyboard-settings">
       <form>
+        <div id="keyboard-file">
+          <div id="keyboard-name" class="editable">
+            <span id="keyboard-name-text"></span>
+            <input id="keyboard-name-field" type="text">
+          </div>
+          <button id="keyboard-create" type="button">➕</button>
+          <button id="keyboard-delete" type="button">✗</button>
+        </div>
         <fieldset>
           <legend>Shape</legend>
           <label id="gstep">Horizontal steps: <input type="number" min="1" step="1" size="4" enterkeyhint="done"></label>
@@ -628,7 +644,7 @@ body.copying .copyable:hover:not([data-active]) {
     <li id="track-editor">
       <form>
         <div id="track-file">
-          <div id="track-name">
+          <div id="track-name" class="editable">
             <span id="track-name-text"></span>
             <input id="track-name-field" type="text">
           </div>
@@ -666,7 +682,14 @@ body.copying .copyable:hover:not([data-active]) {
   <main>
     <canvas id="hex"></canvas>
   </main>
-  <dialog id="delete-dialog">
+  <dialog id="delete-keyboard-dialog">
+    <div class="dialog-prompt">Delete keyboard "<span id="delete-keyboard-name"></span>"?</div>
+    <form method="dialog">
+      <button type="button" data-action="Cancel">Cancel</button>
+      <button type="button" data-action="Delete">Delete</button>
+    </form>
+  </dialog>
+  <dialog id="delete-track-dialog">
     <div class="dialog-prompt">Delete track "<span id="delete-track-name"></span>"?</div>
     <form method="dialog">
       <button type="button" data-action="Cancel">Cancel</button>
@@ -781,10 +804,6 @@ class Common {
   static #allPrimes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ]
   static #allPrimesBig = this.#allPrimes.map(BigInt)
   
-  static versionCmp = (a, b) => {
-    if (![a, b].every(s => s.match(/^\d+(?:\.\d+)*$/))) throw new Error("Version error: malformed version string");
-    return [a, b].sort()[0] === a ? a === b ? 0 : -1 : 1
-  }
   static between = (min, max, val) => val <= max && val >= min
   static clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined
   static lerp = (a, b, t) => a * (1 - t) + b * t
@@ -1756,7 +1775,6 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   gstep; hstep; orientations; displayKeyNames; theta = 0
   #orientation
   #hexes = new Map(); #edges; #notes
-  // #active = new Map() // Map([hex, Set(id)])
   #activeClasses = new Map() // Map([classname, Map([hex, Set(id)])])
   #bgImgCache
 
@@ -1788,10 +1806,8 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   hasHex (g, h) { return this.#hexes.get(g)?.has(h) ?? false }
 
   coordToSteps (g, h) { return g * this.gstep + h * this.hstep }
-  coordToNote (g, h) {
-    const { edo } = this.#keyboard, steps = this.coordToSteps(g, h);
-    return { rank: Common.mod(steps, edo), octave: Math.floor(steps / edo) }
-  }
+  coordToRank (g, h) { return Common.mod(this.coordToSteps(g, h), this.#keyboard.edo) }
+  coordToOctave (g, h) { return Math.floor(this.coordToSteps(g, h) / this.#keyboard.edo) }
 
   * [Symbol.iterator] () { for (let [ , row ] of this.#hexes) for (let [ , hex ] of row) yield hex }
 
@@ -1859,8 +1875,8 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     const dev = coord => Math.abs(this.h / 2 - HexButton.centre(...coord, this)[1]);
     this.fillGrid({
       candidate: (g0, h0) => Common.between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
-        !this.#notes.has(this.coordToNote(g0, h0).rank),
-      filter: hexes => Common.group(hexes, ([a, b], [c, d]) => this.coordToNote(a - c, b - d).rank === 0)
+        !this.#notes.has(this.coordToRank(g0, h0)),
+      filter: hexes => Common.group(hexes, ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
         .map(enhs => enhs.sort((a, b) => dev(a) > dev(b))[0]),
       isGhost: () => false
     });
@@ -1869,9 +1885,9 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.#notes = new Set();
     this.fillGrid({
       candidate: (g0, h0) => Common.between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
-        !this.#notes.has(this.coordToNote(g0, h0).rank),
-      filter: hexes => Common.group(hexes, ([a, b], [c, d]) => this.coordToNote(a - c, b - d).rank === 0)
-        .filter(([[g0, h0]]) => !this.#notes.has(this.coordToNote(g0, h0).rank))
+        !this.#notes.has(this.coordToRank(g0, h0)),
+      filter: hexes => Common.group(hexes, ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
+        .filter(([[g0, h0]]) => !this.#notes.has(this.coordToRank(g0, h0)))
         .map(enhs => enhs.sort((a, b) => dev(a) > dev(b))[0]),
       isGhost: () => true
     });
@@ -1911,7 +1927,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
           if (thisHex) { if (viewEdges.has(thisHex)) removeViewEdges.add(thisHex) }
           else if (candidate(g, h)) {
             newViewEdges.get(g)?.add(h) ?? newViewEdges.set(g, new Set([h]));
-            newNotes.add(this.coordToNote(g, h).rank);
+            newNotes.add(this.coordToRank(g, h));
           } else remove = false;
         }
         removeViewEdges.add(hex)
@@ -2031,7 +2047,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     const { gridctx, canvas } = app.state(), { width, height } = canvas;
     gridctx.clearRect(0, 0, width, height);
     for (const [ name, activeHexes ] of this.#activeClasses)
-      for (const [hex, ids] of activeHexes) hex.colour({ bgColour: Keyboard.noteColours[name] })
+      for (const [ hex, ids ] of activeHexes) hex.colour({ bgColour: Keyboard.noteColours[name] })
   }
 }
 
@@ -2045,7 +2061,7 @@ class HexButton {
   static #contrast = hc => {
     if (!hc.match(/#\p{Hex_Digit}{6,8}/ug)) return null;
     const [r, g, b, a] = hc.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
-    return r * .299 + g * .587 + b * .114 >= 128 / (((a ?? 255) + 1) / 256) ? "#222222" : "#dddddd"
+    return r * .299 + g * .587 + b * .114 >= 32768 / ((a ?? 255) + 1) ? "#222222" : "#dddddd"
   }
 
   static vertices (g, h, grid) {
@@ -2152,14 +2168,87 @@ class HexButton {
 // Local data
 
 class Persist {
-  static {
-    // Init DB
+  static reset () {
+    localStorage.clear();
+    return new Promise((success, error) => $.targets({ success, error }, indexedDB.deleteDatabase("userdata")))
   }
-  constructor () {
-    // For the current page lifetime
+  static #txWait = tx => new Promise((complete, error) => $.targets({ complete, error }, tx));
+   
+  static async #upgradeFromVersion0 (e) {
+    // Initialise keyboards
+    const
+      db = e.target.result, createKbStore = db.createObjectStore("keyboards", { keyPath: "name" }),
+      createKbTx = Persist.#txWait(createKbStore.transaction);
+    createKbStore.createIndex("name", "name", { unique: true }); // mode: versionchange
+    await createKbTx;
+    const
+      kbStore = db.transaction("keyboards", "readwrite").objectStore("keyboards"),
+      kbTx = Persist.#txWait(kbStore.transaction);
+    Keyboard.presets.forEach(obj => kbStore.add(obj)); // mode: readwrite
+    await kbTx;
+
+    // Create comma store
+    const
+      createCommaStore = db.createObjectStore("commas", { keyPath: ["edo", "limit", "ratio"] }),
+      createCommasTx = Persist.#txWait(createCommaStore.transaction);
+    createCommaStore.createIndex("commas", ["edo", "limt"], { unique: false, multiEntry: true });
+    await createCommasTx;
+
+    // Create chord store
+    const
+      createChordStore = db.createObjectStore("chords", { keyPath: ["edo", "limit", "intervals"] }),
+      createChordsTx = Persist.#txWait(createChordStore.transaction);
+    createChordStore.createIndex("chords", ["edo", "limit"], { unique: false, multiEntry: true })
+    await createChordsTx
   }
-  loadKeyboard () {}
-  saveKeyboard () {}
+
+  #db; #resolveReady; #rejectReady
+  #promiseReady = new Promise((res, rej) => [ this.#resolveReady, this.#rejectReady ] = [ res, rej ]);
+  get ready () { return this.#promiseReady }
+  constructor (version) {
+    const
+      dbv = version.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})/)?.slice(1)
+        .reduce((n, s, i) => n + parseInt(s) * 100 ** (2 - i), 0),
+      req = indexedDB.open("userdata", dbv), self = this;
+    $.targets({
+      async upgradeneeded (e) { try {
+        if (e.oldVersion < 3) await Persist.#upgradeFromVersion0(e);
+        return self.#resolveReady()
+      } catch ({}) { return self.#rejectReady() } },
+      success () {
+        self.#db = req.result;
+        self.#resolveReady()
+      },
+      error () { self.#rejectReady() },
+      blocked () {} // An old version is open while new version wants to load elsewhere
+    }, req)
+  }
+  loadItem (key, initial) {
+    let value = localStorage.getItem(key);
+    if (value === null) localStorage.setItem(key, value = initial);
+    return value
+  }
+  saveItem (key, val) { localStorage.setItem(key, val) }
+  async loadKeyboards () {
+    const
+      kbStore = this.#db.transaction("keyboards").objectStore("keyboards"),
+      readKbTx = Persist.#txWait(kbStore.transaction), req = kbStore.getAll();
+    await readKbTx;
+    return req.result
+  }
+  async saveKeyboard (keyboard) {
+    const
+      kbStore = this.#db.transaction("keyboards", "readwrite").objectStore("keyboards"),
+      saveKbTx = Persist.#txWait(kbStore.transaction), req = kbStore.put(keyboard);
+    await saveKbTx
+  }
+  async deleteKeyboard (name) {
+    const
+      kbStore = this.#db.transaction("keyboards", "readwrite").objectStore("keyboards"),
+      delKbTx = Persist.#txWait(kbStore.transaction), reqR = kbStore.delete(name);
+    await delKbTx;
+  }
+  resetPresetKeyboards () {}
   loadCommas () {}
   saveCommas () {}
   loadChords () {}
@@ -2173,36 +2262,28 @@ class Persist {
 class Keyboard {
 
   // Static
-  static presets = {
-    "12edo": {
-      gstep: 2, hstep: 1, orientation: [5, 2], unit: 45, refNote: 9, freqBasis: 220,
-      edo: 12, limit: 9, maxError: 33, hmap: [[3, 7], [5, 4], [7, 10], [9, 2]], instrument: "triangle"
-    },
-    "19edo": {
-      gstep: 3, hstep: 2, orientation: [5, 2], unit: 45, refNote: 14, freqBasis: 220,
-      edo: 19, limit: 9, maxError: 22, hmap: [[3, 11], [5, 6], [7, 15], [9, 3]], instrument: "triangle"
-    },
-    "22edo": {
-      gstep: 4, hstep: 1, orientation: [5, 2], unit: 45, refNote: 16, freqBasis: 220,
-      edo: 22, limit: 11, maxError: 18, hmap: [[3, 13], [5, 7], [7, 18], [9, 4], [11, 10]], instrument: "triangle"
-    },
-    "31edo": {
-      gstep: 5, hstep: 3, orientation: [5, 2], unit: 45, refNote: 23, freqBasis: 220,
-      edo: 31, limit: 11, maxError: 12, hmap: [[3, 18], [5, 10], [7, 25], [9, 5], [11, 14]], instrument: "triangle"
-    },
-    "41edo": {
-      gstep: 7, hstep: 3, orientation: [5, 2], unit: 45, refNote: 30, freqBasis: 220,
-      edo: 41, limit: 15, maxError: 9, hmap: [[3, 24], [5, 13], [7, 33], [9, 7], [11, 19], [13, 29], [15, 37]], instrument: "triangle"
-    },
-    "53edo": {
-      gstep: 5, hstep: 4, orientation: [5, 7], unit: 45, refNote: 39, freqBasis: 220,
-      edo: 53, limit: 15, maxError: 8, hmap: [[3, 31], [5, 17], [7, 43], [9, 9], [11, 24], [13, 37], [15, 48]], instrument: "triangle"
-    },
-    "94edo": {
-      gstep: 9, hstep: 7, orientation: [5, 7], unit: 45, refNote: 69, freqBasis: 220,
-      edo: 94, limit: 21, maxError: 4, hmap: [[3, 55], [5, 30], [7, 76], [9, 16], [11, 43], [13, 66], [15, 85], [17, 8], [19, 23], [21, 37]], instrument: "triangle"
-    },
-  }
+  static presets = [ {
+    name: "12edo", gstep: 2, hstep: 1, orientation: [5, 2], unit: 45, refNote: 9, freqBasis: 220,
+    edo: 12, limit: 9, maxError: 33, hmap: [[3, 7], [5, 4], [7, 10], [9, 2]], instrument: "triangle"
+  }, {
+    name: "19edo", gstep: 3, hstep: 2, orientation: [5, 2], unit: 45, refNote: 14, freqBasis: 220,
+    edo: 19, limit: 9, maxError: 22, hmap: [[3, 11], [5, 6], [7, 15], [9, 3]], instrument: "triangle"
+  }, {
+    name: "22edo", gstep: 4, hstep: 1, orientation: [5, 2], unit: 45, refNote: 16, freqBasis: 220,
+    edo: 22, limit: 11, maxError: 18, hmap: [[3, 13], [5, 7], [7, 18], [9, 4], [11, 10]], instrument: "triangle"
+  }, {
+    name: "31edo", gstep: 5, hstep: 3, orientation: [5, 2], unit: 45, refNote: 23, freqBasis: 220,
+    edo: 31, limit: 11, maxError: 12, hmap: [[3, 18], [5, 10], [7, 25], [9, 5], [11, 14]], instrument: "triangle"
+  }, {
+    name: "41edo", gstep: 7, hstep: 3, orientation: [5, 2], unit: 45, refNote: 30, freqBasis: 220,
+    edo: 41, limit: 15, maxError: 9, hmap: [[3, 24], [5, 13], [7, 33], [9, 7], [11, 19], [13, 29], [15, 37]], instrument: "triangle"
+  }, {
+    name: "53edo", gstep: 5, hstep: 4, orientation: [5, 7], unit: 45, refNote: 39, freqBasis: 220,
+    edo: 53, limit: 15, maxError: 8, hmap: [[3, 31], [5, 17], [7, 43], [9, 9], [11, 24], [13, 37], [15, 48]], instrument: "triangle"
+  }, {
+    name: "94edo", gstep: 9, hstep: 7, orientation: [5, 7], unit: 45, refNote: 69, freqBasis: 220,
+    edo: 94, limit: 21, maxError: 4, hmap: [[3, 55], [5, 30], [7, 76], [9, 16], [11, 43], [13, 66], [15, 85], [17, 8], [19, 23], [21, 37]], instrument: "triangle"
+  } ]
 
   static noteColours = {
     default: "#333333", active: "#ffff00", echo: "#ffffff22",
@@ -2211,62 +2292,44 @@ class Keyboard {
   }
 
   static selectEl; static edoInfoEl; static limitInfoEl; static displayKeyNamesEl
+  static nameFieldEl; static nameTextEl
   static gstepEl; static hstepEl; static orientationSelectEl; static unitEl
   static refNoteEl; static freqBasisEl; static edoEl; static limitEl; static maxErrorEl
   static scaleOutputEl; static clipboardPeekEl
   static attach ({
-    selectEl, edoInfoEl, limitInfoEl, displayKeyNamesEl,
+    selectEl, edoInfoEl, limitInfoEl, displayKeyNamesEl, nameFieldEl, nameTextEl,
     gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
     edoEl, limitEl, maxErrorEl, scaleOutputEl, clipboardPeekEl
   }) { Object.assign(this, {
-    selectEl, edoInfoEl, limitInfoEl, displayKeyNamesEl,
+    selectEl, edoInfoEl, limitInfoEl, displayKeyNamesEl, nameFieldEl, nameTextEl,
     gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
     edoEl, limitEl, maxErrorEl, scaleOutputEl, clipboardPeekEl
   }) }
 
-  static load ({ keyboards }) {
-    let storedKeyboards = localStorage.getItem("keyboards");
-    storedKeyboards ?
-      Object.assign(keyboards ??= {}, JSON.parse(storedKeyboards)) :
-      localStorage.setItem("keyboards", JSON.stringify(keyboards = Keyboard.presets));
-    Object.keys(keyboards).forEach(name => {
-      const el = $.load("option", "", Keyboard.selectEl)[0][0]
-      el.innerText = name;
-      el.setAttribute("name", name)
-    });
-    const customKeybOptEl = $.load("option", "", Keyboard.selectEl)[0][0]
-    customKeybOptEl.innerText = "Custom";
-    customKeybOptEl.setAttribute("name", "Custom");
-    customKeybOptEl.disabled = true;
-
-    let storedKeyboardSelection = localStorage.getItem("keyboardSelection"), keyboardSelection;
-    storedKeyboardSelection ?
-      (keyboardSelection = Keyboard.selectEl.value = storedKeyboardSelection) :
-      localStorage.setItem("keyboardSelection", keyboardSelection = Object.keys(keyboards)[0]);
-
-    let keyboard = keyboardSelection === "Custom" ? JSON.parse(localStorage.getItem("keyboard")) : keyboards[keyboardSelection];
-    Keyboard.edoInfoEl.innerText = keyboard.edo;
-    Keyboard.limitInfoEl.innerText = keyboard.limit;
-
-    let noteColours = localStorage.getItem("noteColours");
-    if (noteColours) Keyboard.noteColours = JSON.parse(noteColours);
-    else localStorage.setItem("noteColours", JSON.stringify(Keyboard.noteColours));
-
-    return {
-      keyboard: new Keyboard({name: keyboardSelection, ...keyboard }), keyboards,
-      clipboard: keyboard.clipboard ?? []
+  static applySettings () {
+    const keyboardObj = {
+      name: Keyboard.nameFieldEl.value,
+      orientation: Keyboard.orientationSelectEl.value.split(",").map(v => parseInt(v)),
+      displayKeyNames: $("#hexbutton-labels input:checked").parentElement.id === "key-name-choice",
+      hmap: $.all(".harmonic.prime > input.steps")
+        .map(el => [ parseInt(el.parentElement.dataset.harm), el.valueAsNumber ])
     }
+    [ "gstep", "hstep", "unit", "refNote", "freqBasis", "edo", "limit", "maxError" ]
+      .forEach(dataname => keyboardObj[dataname] = Keyboard[dataname + "El"].valueAsNumber);
+    Keyboard.edoInfoEl.innerText = keyboardObj.edo;
+    Keyboard.limitInfoEl.innerText = keyboardObj.limit;
+    const keyboard = app.keyboard = new Keyboard(keyboardObj);
+    keyboard.save()
   }
 
   static setColour (harm, colour, isBlackKeys) {
     if (harm === 3) Keyboard.noteColours[isBlackKeys ? "black" : "white"] = colour;
     else Keyboard.noteColours[harm] = colour;
-    localStorage.setItem("noteColours", JSON.stringify(Keyboard.noteColours));
+    app.storage.saveItem("noteColours", JSON.stringify(Keyboard.noteColours));
     this.scope.keyboard.hexGrid.redraw()
   }
 
   static ready = false
-  static get scope () { return app.menuState.at(-2) === "keyboard-settings" ? app.menuState[1] : app }
 
   // Instance
   name; edo; hexGrid; scale; instrument = "triangle"
@@ -2290,59 +2353,34 @@ class Keyboard {
     this.scale = new Scale({ keyboard: this, limit, refNote, freqBasis, maxError })
   }
 
-  load () {
-    const { selectEl, edoInfoEl, limitInfoEl } = Keyboard, keyboardSelection = selectEl.value, keyboard = {};
-    localStorage.setItem("keyboardSelection", keyboardSelection);
-    if (keyboardSelection === "Custom") {
-      Object.assign(keyboard, {
-        name: "Custom",
-        orientation: Keyboard.orientationSelectEl.value.split(",").map(v => parseInt(v)),
-        displayKeyNames: $("#hexbutton-labels input:checked").parentElement.id === "key-name-choice",
-        hmap: $.all(".harmonic.prime > input.steps")
-          .map(el => [ parseInt(el.parentElement.dataset.harm), el.valueAsNumber ])
-      });
-      [ "gstep", "hstep", "unit", "refNote", "freqBasis", "edo", "limit", "maxError" ]
-        .forEach(dataname => keyboard[dataname] = Keyboard[dataname + "El"].valueAsNumber);
-      Keyboard.scope.keyboard = new Keyboard(keyboard);
-      localStorage.setItem("keyboard", JSON.stringify(keyboard))
-    } else {
-      selectEl.namedItem("Custom").disabled = true;
-      Object.assign(keyboard, app.keyboards[keyboardSelection], { name: keyboardSelection });
-      localStorage.removeItem("keyboard");
-      (Keyboard.scope.keyboard = new Keyboard(keyboard)).fillSettings();
-
-      $.all("#clipboard-peek > *").forEach(el => el.remove());
-      keyboard.clipboard?.forEach(text => app.emit("copy", { text }))
-    }
-    edoInfoEl.innerText = keyboard.edo;
-    limitInfoEl.innerText = keyboard.limit;
-    app.emit("generate-keyboard");
-    return { keyboardSelection }
-  }
-
-  save () {
+  async save () {
     const
       { name, edo, hexGrid, scale, clipboard } = this,
       { gstep, hstep, unit, orientation, displayKeyNames } = hexGrid,
       { limit, refNote, freqBasis, maxError, mapping } = scale,
       { hmap } = mapping,
       keyboard = {
-        edo, gstep, hstep, unit, orientation, displayKeyNames,
+        name, edo, gstep, hstep, unit, orientation, displayKeyNames,
         limit, refNote, freqBasis, maxError, hmap,
         clipboard: clipboard.map(({ text }) => text)
-      },
-      keyboardsObj = JSON.parse(localStorage.getItem("keyboards"));
-    Object.assign(app.keyboards[app.keyboardSelection], keyboard);
-    localStorage.setItem("keyboards", JSON.stringify(Object.assign(keyboardsObj, { [name]: keyboard })))
+      };
+    Object.assign(app.keyboards[app.keyboardSelection], keyboard)
+    await app.storage.saveKeyboard(keyboard);
   }
 
-  fillSettings (clipboard) {
+  fillSettings () {
     const
       { gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
-        edoEl, limitEl, maxErrorEl, displayKeyNamesEl, scaleOutputEl } = Keyboard,
-      { edo, hexGrid, scale, name } = this,
+        edoEl, limitEl, maxErrorEl, displayKeyNamesEl, scaleOutputEl,
+        edoInfoEl, limitInfoEl, nameFieldEl, nameTextEl } = Keyboard,
+      { name, edo, hexGrid, scale, clipboard } = this,
       { gstep, hstep, unit, orientation, orientations, displayKeyNames } = hexGrid,
       { limit, refNote, freqBasis, maxError } = scale;
+
+    nameFieldEl.value = name;
+    nameFieldEl.classList.remove("invalid");
+    nameTextEl.innerText = name;
+    nameTextEl.parentElement.classList.remove("editing");
     gstepEl.value = gstep;
     hstepEl.value = hstep;
     $.all(":scope > *", orientationSelectEl).forEach(el => el.remove());
@@ -2359,13 +2397,18 @@ class Keyboard {
     limitEl.value = limit;
     maxErrorEl.value = maxError;
     $(`#key-${displayKeyNames ? "name" : "rank"}-choice > input`, displayKeyNamesEl).checked = true;
-    scaleOutputEl.value = `One step of ${edo}EDO = ${(1200 / edo).toFixed(2)}¢`
+    scaleOutputEl.value = `One step of ${edo}EDO = ${(1200 / edo).toFixed(2)}¢`;
+    $.all("#clipboard-peek > *").forEach(el => el.remove());
+    clipboard.forEach(({ text }) => this.emit("copy", { text }));
+    edoInfoEl.innerText = edo;
+    limitInfoEl.innerText = limit;
   }
 
-  update () {
+  updateShape () { // Soft update while settings is open
+    // TODO edo and limit info hinting?
     const
       { orientationSelectEl, gstepEl, hstepEl, edoEl } = Keyboard,
-      { keyboard } = Keyboard.scope, { hexGrid } = keyboard,
+      { hexGrid } = this,
       gstep = gstepEl.valueAsNumber,
       hstep = hstepEl.valueAsNumber,
       edo = edoEl.valueAsNumber,
@@ -2385,7 +2428,7 @@ class Keyboard {
 
   play (g, h, id) { // Convert g, h to hex?
     const
-      { hexGrid, scale, touches } = this, { octave, rank } = hexGrid.coordToNote(g, h),
+      { hexGrid, scale, touches } = this, rank = hexGrid.coordToRank(g, h), octave = hexGrid.coordToOctave(g, h),
       note = scale.getNote({ octave, rank }) ?? scale.addNote({ rank, octave }),
       key  = scale.getKey(rank), hex = hexGrid.getHex(g, h), hexes = hex ? [hex] : key.hexes;
     let flag = true;
@@ -2402,7 +2445,7 @@ class Keyboard {
     const { hexGrid, scale, touches } = this, touch = touches.get(id);
     if (!touch) return;
     if (touch.cb()) return clearTimeout(touch.to);
-    touch.hexes.forEach(hex => hexGrid.removeFromActiveClasses(hex, id));
+    touch.hexes.forEach(hex => hexGrid.removeFromActiveClasses(hex, id)); // remove from single class?
     hexGrid.colour();
     touch.note.turnOff(id);
     touches.delete(id);
@@ -2602,7 +2645,7 @@ class Listeners {
       img.id = "drag-feedback";
       img.style.setProperty("left", pageX - dx + 40 + "px");
       img.style.setProperty("top", pageY - dy + 40 + "px")
-      $("body").appendChild(img);
+      document.appendChild(img);
       if (this.classList.contains("chord")) this.dataset.active = ""
     },
     touchmove ({ changedTouches: [ { pageX, pageY } ] }) {
@@ -2638,15 +2681,22 @@ class Listeners {
   }))()
 }
 
+
+
+// App state
+
 // TODO: add freeze property feature to machine.js
 var app = new $.Machine({
     // Version
-      version: "0.0.2",
+      version: "0.0.3",
+
+    // Storage
+      storage: null,
 
     // Navigation
       menuState: [],
 
-      // Keyboard
+    // Keyboard
       maxEdo: 270,
       maxKeyboardNameLength: 255,
       maxHarmonic: 57,
@@ -2662,7 +2712,7 @@ var app = new $.Machine({
 
       octaves: null,
 
-      // Track
+    // Track
       tracks: {},
       trackSelection: null
     });
@@ -2675,19 +2725,23 @@ $.targets({
 
   load () { app.emit("init") },
 
+  document: { fonts: { loadingdone () {
+    if (!Keyboard.ready) return;
+    app.emit("resize", true);
+    app.keyboard.hexGrid.redraw(true)
+  } } },
+
+  resize () {
+    if (!Keyboard.ready) return;
+    app.emit("resize", true);
+    app.keyboard.hexGrid.redraw(true)
+  },
+
   keydown (e) { switch (e.key) {
     case "Control": $("body").classList.add("copying"); break
     case "Escape": document.activeElement.blur()
   } },
   keyup (e) { if (e.key === "Control") $("body").classList.remove("copying") },
-
-  resize () {
-    if (!Keyboard.ready) return;
-    app.emit("resize", true);
-    Keyboard.scope.keyboard.hexGrid.redraw(true)
-  },
-
-  contextmenu (e) { e.preventDefault() },
 
   "touchstart touchend touchmove" (e) {
     if (!Keyboard.ready) return;
@@ -2697,7 +2751,7 @@ $.targets({
     if (e.target === $("main")) for (let { clientX, clientY, identifier } of e.changedTouches) {
       const
         x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop,
-        { keyboard } = Keyboard.scope, { hexGrid } = keyboard;
+        { keyboard } = app, { hexGrid } = keyboard;
       if (keyboard && (keyboard.touches.has("touch-" + identifier) || e.type === "touchstart") &&
         (hexGrid.hasHex(...hexGrid.getCoord(x, y)) || e.type === "touchend"))
         app.emit("press", x, y, "touch", e.type.slice(5), identifier)
@@ -2706,7 +2760,7 @@ $.targets({
 
   mousedown (e) {
     if (!Keyboard.ready) return;
-    const { keyboard } = Keyboard.scope, { hexGrid } = keyboard;
+    const { keyboard } = app, { hexGrid } = keyboard;
     if (e.target === $("main") && hexGrid.hasHex(...hexGrid.getCoord(e.layerX, e.layerY))) {
       keyboard.mousedown = true;
       app.emit("press", e.layerX, e.layerY, "mouse", "start")
@@ -2718,7 +2772,7 @@ $.targets({
   mousemove (e) {
     if (!Keyboard.ready) return;
     const
-      { keyboard } = Keyboard.scope, { hexGrid, mousedown } = keyboard,
+      { keyboard } = app, { hexGrid, mousedown } = keyboard,
       hex = hexGrid.getHex(...hexGrid.getCoord(e.layerX, e.layerY)), main = $("main");
     main.classList.toggle("hover", (mousedown || e.target === main) && Boolean(hex));
     if (!mousedown) keyboard.hoveredKey = e.target === main ? hex?.note.key : null;
@@ -2726,7 +2780,7 @@ $.targets({
   },
   "mouseup mouseout" (e) {
     if (!Keyboard.ready) return;
-    const { keyboard } = Keyboard.scope;
+    const { keyboard } = app;
     if (keyboard.mousedown && e.type !== "mouseout") {
       keyboard.mousedown = false;
       app.emit("press", e.layerX, e.layerY, "mouse", "end")
@@ -2734,35 +2788,56 @@ $.targets({
   },
 
   wheel (e) {
-    const { keyboard } = Keyboard.scope;
+    const { keyboard } = app;
     if (keyboard.hoveredKey) keyboard.cycle("label", e.deltaY);
     else if (e.composedPath().includes($("#clipboard-peek"))) keyboard.cycle("clipboard", e.deltaY)
   },
 
+  contextmenu (e) { e.preventDefault() },
+
   "fullscreenchange fullscreenerror" () { $("#fullscreen").classList.toggle("active", document.fullscreenElement) },
 
-  document: { fonts: { loadingdone () {
-    if (!Keyboard.ready) return;
-    app.emit("resize", true);
-    Keyboard.scope.keyboard.hexGrid.redraw(true)
-  } } },
+  visibilitychange () { if (document.visibilityState === "hidden") app.keyboard.save() },
 
   app: {
 
-    init () {
+    async init () {
       const { version } = this;
-      if (Common.versionCmp(version, localStorage.getItem("version") ?? "0") > 0) {
-        localStorage.clear();
-        localStorage.setItem("version", version)
-      }
+      this.storage = new Persist(app.version);
       this.canvas = $("#hex");
       this.gridctx = this.canvas.getContext("2d");
 
+      Keyboard.attach({
+        // Keyboard selection
+        selectEl: $("#keyboard-select > select"),
+        edoInfoEl: $("#edo-info"),
+        limitInfoEl: $("#limit-info"),
+
+        // Keyboard settings
+
+        nameFieldEl: $("#keyboard-name-field"),
+        nameTextEl: $("#keyboard-name-text"),
+        gstepEl: $("#gstep > input"),
+        hstepEl: $("#hstep > input"),
+        orientationSelectEl: $("#orientation > select"),
+        unitEl: $("#unit > input"),
+        refNoteEl: $("#refNote > input"),
+        freqBasisEl: $("#freqBasis > input"),
+        edoEl: $("#edo > input"),
+        limitEl: $("#limit > input"),
+        maxErrorEl: $("#maxError > input"),
+        displayKeyNamesEl: $("#hexbutton-labels"),
+        scaleOutputEl: $("#scale > output")
+      });
+      Keyboard.limitEl.max = this.maxHarmonic;
+      await this.emitAsync("load-presets");
+
+      // Resize cbs called around pageshow (ie after load)
       const navEl = $("nav"), clipboardEl = $("#clipboard-item-select");
       new ResizeObserver(() => clipboardEl.style.setProperty("--nav-height", navEl.offsetHeight + "px")).observe(navEl);
       new ResizeObserver(() => {  // Put these elsewhere? TODO: reset css vars on resize
         this.emit("resize", true);
-        Keyboard.scope.keyboard.hexGrid.redraw(true)
+        this.keyboard.hexGrid.redraw(true)
       }).observe($("main"));
       const
         keyboardSettingsEl = $("#keyboard-settings"),
@@ -2815,47 +2890,31 @@ $.targets({
         masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
       masterVolume.gain.value = Common.scaleVolume($("#volume > input").valueAsNumber);
-      $("#track-select > select").selectedIndex = 0;
-
-      Keyboard.attach({
-        // Keyboard selection
-        selectEl: $("#keyboard-select > select"),
-        edoInfoEl: $("#edo-info"),
-        limitInfoEl: $("#limit-info"),
-
-        // Keyboard settings
-        gstepEl: $("#gstep > input"),
-        hstepEl: $("#hstep > input"),
-        orientationSelectEl: $("#orientation > select"),
-        unitEl: $("#unit > input"),
-        refNoteEl: $("#refNote > input"),
-        freqBasisEl: $("#freqBasis > input"),
-        edoEl: $("#edo > input"),
-        limitEl: $("#limit > input"),
-        maxErrorEl: $("#maxError > input"),
-        displayKeyNamesEl: $("#hexbutton-labels"),
-        scaleOutputEl: $("#scale > output")
-      });
-      Keyboard.limitEl.max = this.maxHarmonic;
-      this.emit("load-presets");
+      $("#track-select > select").selectedIndex = 0
     },
 
-    "clear-storage" () { localStorage.clear() },
+    "clear-storage": Persist.reset,
 
-    "load-presets" () {
-      const octaves = localStorage.getItem("octaves");
-      if (!octaves) {
-        this.octaves = $("#octaves > input").valueAsNumber;
-        localStorage.setItem("octaves", this.octaves);
-      } else this.octaves = $("#octaves > input").value = parseInt(octaves);
+    async "load-presets" () {  // Once, initially
+      this.octaves = $("#octaves > input").value = parseInt(this.storage.loadItem("octaves", 2));
 
-      const { keyboard, keyboards, clipboard } = Keyboard.load({ keyboards: this.keyboards, keyboardSelection: this.keyboardSelection });
-      Object.assign(this, { keyboard, keyboards, keyboardSelection: keyboard.name });
-
-      keyboard.fillSettings();
-      $.all("#clipboard-peek > *").forEach(el => el.remove());
-      clipboard.forEach(text => this.emit("copy", { text }));
-      this.keyboard = keyboard;
+      // Keyboards
+      const { storage } = this;
+      await storage.ready;
+      const
+        keyboards = this.keyboards = (await storage.loadKeyboards()).reduce((obj, kb) => ({ ...obj, [kb.name]: kb }), {}),
+        keyboardSelection = this.keyboardSelection = storage.loadItem("keyboardSelection", Object.keys(keyboards)[0]),
+        keyboard = keyboards[keyboardSelection], clipboard = keyboard.clipboard ?? [], kbSelectHrEl = $("#keyboard-select hr");
+      this.keyboard = new Keyboard(keyboard);
+      Object.keys(keyboards).forEach(name => {
+        const el = $.load("option", "", Keyboard.selectEl)[0][0]
+        el.innerText = name;
+        el.setAttribute("name", name);
+        Keyboard.selectEl.insertBefore(el, kbSelectHrEl)
+      });
+      Keyboard.selectEl.value = keyboardSelection;
+      Keyboard.noteColours = JSON.parse(storage.loadItem("noteColours", JSON.stringify(Keyboard.noteColours)));
+      this.keyboard.fillSettings();
       Keyboard.ready = true;
 
       // Tracks
@@ -2864,19 +2923,19 @@ $.targets({
         this.tracks = {};
         localStorage.setItem("tracks", "{}");
       } else this.tracks = tracks = JSON.parse(tracks);
-      const trackSelEl = $("#track-select select"), selectHrEl = $("#track-select hr");
+      const trackSelEl = $("#track-select select"), trackSelectHrEl = $("#track-select hr");
       Object.keys(this.tracks).forEach(name => {
         const el = $.load("option", "#track-select > select")[0][0];
         el.innerText = name;
         el.setAttribute("name", name);
-        trackSelEl.insertBefore(el, selectHrEl)
+        trackSelEl.insertBefore(el, trackSelectHrEl)
       })
 
     },
 
     resize (reset) {
       const
-        { hexGrid } = Keyboard.scope.keyboard,
+        { hexGrid } = this.keyboard,
         { canvas, octaves } = this, { unit, orientation: [g, h], theta } = hexGrid,
         x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
         { width, height } = $("main").getBoundingClientRect(),
@@ -2898,9 +2957,7 @@ $.targets({
 
     press (x, y, type, action, id) {
       id = type + "-" + id;
-      const
-        { keyboard } = Keyboard.scope,
-        coord = keyboard.hexGrid.getCoord(x, y), [g, h] = coord;
+      const { keyboard } = this, coord = keyboard.hexGrid.getCoord(x, y), [ g, h ] = coord;
       let hex, note;
       switch (action) {
         case "start": keyboard.play(g, h, id); break;
@@ -2914,11 +2971,11 @@ $.targets({
       }
     },
 
-    copy ({ node, text }) {
+    copy ({ node, text }) {  // Move to Keyboard?
       let type, chord;
       const
         clipboardEl = $("#clipboard-item-select"), clipboardPeekEl = $("#clipboard-peek"),
-        { keyboard } = Keyboard.scope, { scale, clipboard } = keyboard, { mapping } = scale;
+        { keyboard } = this, { scale, clipboard } = keyboard, { mapping } = scale;
       if (text) {
         const data = JSON.parse(text);
         ({ type } = data);
@@ -2987,7 +3044,7 @@ $.targets({
     },
 
     uncopy () {
-      const { keyboard } = Keyboard.scope, { clipboard, clipboardPeekIndex } = keyboard;
+      const { keyboard } = this, { clipboard, clipboardPeekIndex } = keyboard;
       keyboard.clipboard.splice(clipboardPeekIndex, 1);
       keyboard.save();
       keyboard.clipboardPeekIndex = clipboard.length === 0 ? null :
@@ -2996,7 +3053,7 @@ $.targets({
     },
 
     "clipboard-display-peek" () {
-      const { clipboard, clipboardPeekIndex } = Keyboard.scope.keyboard, data = clipboard[clipboardPeekIndex];
+      const { clipboard, clipboardPeekIndex } = this.keyboard, data = clipboard[clipboardPeekIndex];
       $("#clipboard-peek > *")?.remove();
       if (!data) return;
       else if (Harmonic.prototype.isPrototypeOf(data.item)) {
@@ -3046,6 +3103,86 @@ $.targets({
 
     // Keyboard
 
+    async "keyboard-select" (name) {
+      if (this.menuState.at(-2) === "keyboard-settings") await this.keyboard.save(); // TODO get menu state nicely
+      this.storage.saveItem("keyboardSelection", this.keyboardSelection = name);
+      this.keyboard = new Keyboard(this.keyboards[name]); // From here if settings open, app.keyboard !== menuState[1]
+      this.keyboard.fillSettings();
+      this.emit("generate-keyboard");
+
+      $("#commas").dataset.upperBound = 100;
+      $.all("#commas > .comma, #chords > .chord").forEach(el => el.remove())
+    },
+
+    "keyboard-name-update" (name) {
+      const
+        { keyboard, keyboards, storage } = this,
+        { name: oldName } = keyboard, keyboardObj = keyboards[oldName];
+      if (name === "New" || name in keyboards && Keyboard.selectEl.value !== name) {
+        $("#keyboard-name-field").classList.add("invalid");
+        return
+      }
+      app.keyboardSelection = keyboard.name = keyboardObj.name = name;
+      delete keyboards[oldName];
+      keyboards[name] = keyboardObj;
+      Keyboard.nameTextEl.innerText = name;
+      Keyboard.nameFieldEl.classList.remove("invalid");
+      $("#keyboard-name").classList.remove("editing");
+      $(`#keyboard-select option[name='${oldName}']`)?.remove();
+      const
+        el = $.load("option", "#keyboard-select > select")[0][0],
+        nextEl = [...Keyboard.selectEl.options].slice(1)
+          .find(el => el.value.localeCompare(name) > 0);
+      el.innerText = name;
+      el.setAttribute("name", name);
+      nextEl ? Keyboard.selectEl.insertBefore(el, nextEl) : Keyboard.selectEl.append(el);
+      el.selected = true;
+
+      storage.saveItem("keyboardSelection", name);
+      storage.deleteKeyboard(oldName).then(() => keyboard.save()) // Combine as rename option?
+    },
+
+    "keyboard-create" () {
+      if (Keyboard.nameFieldEl.classList.contains("invalid")) return;
+      const
+        { name } = this.keyboard,
+        nth = Object.keys(this.keyboards)
+          .map(kn => kn.match(/(\(([1-9]\d*)\))?$/)?.slice(2).map(v => v ? parseInt(v) : 0))
+          .flat().sort((a, b) => a > b).findLastIndex((k, i) => k === i) + 1,
+        newName = name.match(/^(.*?)(?:\([1-9]\d*\))?$/)[1] + `(${nth})`,
+        keyboardObj = this.keyboards[newName] = this.keyboards[name];
+      this.keyboard = new Keyboard(keyboardObj);
+      this.keyboardSelection = this.keyboard.name = keyboardObj.name = newName
+      Keyboard.nameTextEl.innerText = newName;
+      Keyboard.nameFieldEl.value = newName;
+      const
+        el = $.load("option", "#keyboard-select > select")[0][0],
+        nextEl = Keyboard.selectEl.namedItem(name).nextElementSibling;
+      el.innerText = newName;
+      el.setAttribute("name", newName);
+      nextEl ? Keyboard.selectEl.insertBefore(el, nextEl) : Keyboard.selectEl.append(el);
+      el.selected = true;
+
+      this.storage.saveItem("keyboardSelection", newName);
+      this.keyboard.save()
+    },
+
+    async "keyboard-delete" (response) {
+      $("#delete-keyboard-dialog").close();
+      if (response === "Cancel") return;
+      const
+        { keyboards, keyboardSelection, storage } = this, { selectEl } = Keyboard,
+        { index } = selectEl.namedItem(keyboardSelection);
+      const optionEl = selectEl[index + (index < selectEl.length - 1 ? 1 : -1)]; // Cover empty case
+      optionEl.selected = true;
+      await app.emitAsync("keyboard-select", optionEl.value);
+      app.menuState[1] = { keyboard: app.keyboard };
+      this.emit("menu-cancel");
+      $(`#keyboard-select option[name='${keyboardSelection}']`).remove();
+      await storage.deleteKeyboard(keyboardSelection);
+      delete this.keyboards[keyboardSelection];
+    },
+
     "generate-keyboard" () {
       const
         { limitEl, maxErrorEl, edoEl, refNoteEl, freqBasisEl } = Keyboard,
@@ -3054,7 +3191,7 @@ $.targets({
         edo = edoEl.valueAsNumber,
         refNote = refNoteEl.valueAsNumber,
         freqBasis = freqBasisEl.valueAsNumber,
-        { keyboard } = Keyboard.scope;
+        { keyboard } = this;
       $.all(".harmonic").forEach(el => el.remove());
       
       const
@@ -3131,7 +3268,7 @@ $.targets({
           }
         }, labelEl)
       }
-      Object.assign(keyboard, { edo, scale, name: "Custom" });
+      Object.assign(keyboard, { edo, scale });
 
       // Tonality diamond
       const diamondEl = $("#diamond");
@@ -3239,12 +3376,12 @@ $.targets({
             this.setPointerCapture(pointerId);
             if (this.closest("#diamond"))
               $.all('.interval-display button[data-steps="0"]').forEach(el => el.parentElement.classList.add("activeEnharmonic"));
-              Keyboard.scope.keyboard.play(0, 0, "pointer-" + pointerId)
+              app.keyboard.play(0, 0, "pointer-" + pointerId)
           },
           "pointerup lostpointercapture" ({ pointerId }) {
             if (!this.hasPointerCapture(pointerId)) return;
             $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
-            Keyboard.scope.keyboard.stop("pointer-" + pointerId);
+            app.keyboard.stop("pointer-" + pointerId);
             this.releasePointerCapture(pointerId)
           }
         },
@@ -3252,9 +3389,7 @@ $.targets({
         '.interval-display button:not([data-steps="0"])': {
           pointerdown ({ pointerId }) {
             this.setPointerCapture(pointerId);
-            const
-              { keyboard } = Keyboard.scope, { mapping } = keyboard.scale,
-              steps = parseInt(this.dataset.steps);
+            const { keyboard } = app, { mapping } = keyboard.scale, steps = parseInt(this.dataset.steps);
             $.all(`button[data-steps="${steps}"]`, this.closest(".interval-display"))
               .forEach(el => el.parentElement.classList.add("activeEnharmonic"));
             if (this.closest("#interval-table")) {
@@ -3275,7 +3410,7 @@ $.targets({
             if (!this.hasPointerCapture(pointerId)) return;
             $.all(".activeEnharmonic").forEach(el => el.classList.remove("activeEnharmonic"));
             if (this.closest("#interval-table")) {
-              const { keyboard } = Keyboard.scope;
+              const { keyboard } = app;
               keyboard.stop(`pointer-${pointerId}-0`);
               keyboard.stop(`pointer-${pointerId}-1`);
             } else if (this.closest("#diamond")) chords.get($(".interval-obj", this.parentElement)).stop("pointer-" + pointerId)
@@ -3303,9 +3438,8 @@ $.targets({
 
     "generate-temperaments" () {
       const
-        { keyboard } = Keyboard.scope, { edo } = keyboard,
-        { mapping } = keyboard.scale, ps = mapping.primes.concat(mapping.index).sort((a, b) => a > b),
-        commasEl = $("#commas");
+        { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
+        ps = mapping.primes.concat(mapping.index).sort((a, b) => a > b), commasEl = $("#commas");
       let n, upperBound = parseInt(commasEl.dataset.upperBound);
       for (let [n1, l1, n2, l2] of mapping.takeCommas(upperBound)) {
         n = n1;
@@ -3337,7 +3471,7 @@ $.targets({
       $.all(".chord").forEach(el => el.remove());
       const
         [ n, d ] = commaEl.dataset.comma.split(",").map(x => parseInt(x)),
-        { keyboard } = Keyboard.scope, { edo, scale } = keyboard, { mapping } = scale,
+        { keyboard } = this, { edo, scale } = keyboard, { mapping } = scale,
         tempsEl = $("#temperaments"),
         [ ratioSpan, numSpan, denSpan ] = commaEl.children;
       $("#comma-info").innerHTML = `${ratioSpan.innerHTML} (${numSpan.innerHTML}/${denSpan.innerHTML})`;
@@ -3405,7 +3539,7 @@ $.targets({
 
     "display-chord" (chord, chordEl) {
       const
-        { keyboard } = Keyboard.scope, { edo } = keyboard, { mapping } = keyboard.scale,
+        { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
         [ chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
         [ chIvHarmonicEl, chIvStepsEl ] = chIntervalsEl.children,
         [ chPcHarmonicEl, chPcStepsEl ] = chPitchesEl.children,
@@ -3436,7 +3570,7 @@ $.targets({
       this.trackSelection = name;
       $("#track-name-text").innerText = name;
       $("#track-name-field").classList.remove("invalid");
-      $("#track-name").classList.remove("editingTrackName");
+      $("#track-name").classList.remove("editing");
       $(`#track-select option[name='${trackSelection}']`)?.remove();
       const el = $.load("option", "#track-select > select")[0][0];
       el.innerText = name;
@@ -3452,7 +3586,7 @@ $.targets({
         const
           nth = Object.keys(tracks)
             .map(tn => tn.match(/^Untitled( [1-9]\d*)?$/)?.slice(1).map(v => v ? parseInt(v) : 0))
-            .flat().sort().findLastIndex((k, i) => k === i) + 1;
+            .flat().sort((a, b) => a > b).findLastIndex((k, i) => k === i) + 1;
         name = "Untitled" + (nth ? " " + nth : "");
         $("#track-edit").value = "";
         $("#track-file").classList.remove("saved")
@@ -3464,7 +3598,7 @@ $.targets({
       $("#track-name-field").value = name;
       $("#track-name-field").classList.remove("invalid");
       $("#track-name-text").innerText = name;
-      $("#track-name").classList.remove("editingTrackName");
+      $("#track-name").classList.remove("editing");
     },
 
     "track-save" () {
@@ -3491,7 +3625,7 @@ $.targets({
     },
 
     "track-delete" (response) {
-      $("#delete-dialog").close(response);
+      $("#delete-track-dialog").close();
       if (response === "Cancel") return;
       const { tracks, trackSelection } = this;
       delete this.tracks[trackSelection];
@@ -3539,15 +3673,14 @@ $.targets({
           $.queries({
             "#keyboard-settings-cancel": { click () { app.emit("menu-cancel") } },
             "#keyboard-settings-apply": { click () {
-              app.keyboard = app.menuState[1].keyboard;
-              app.keyboardSelection = app.keyboard.load().keyboardSelection;
+              Keyboard.applySettings(); // Necessary (only reference)? Just save?
+              app.emit("generate-keyboard");
               app.emit("menu-cancel")
             } }
           });
           this.menuState[1] = { keyboard: this.keyboard };
+          this.keyboard = new Keyboard(app.keyboards[Keyboard.selectEl.value]);
           this.keyboard.fillSettings();
-          $.all("#clipboard-peek > *").forEach(el => el.remove());
-          this.keyboard.clipboard.forEach(({ text }) => this.emit("copy", { text }));
           this.emit("generate-keyboard");
           break;
         case "temperaments":
@@ -3571,18 +3704,24 @@ $.targets({
           this.emit("track-editor", ...data)
       }
     },
+    
     "menu-cancel" () {
       $("body").classList.remove("menuActive");
       $("menu > .activeMenu")?.classList.remove("activeMenu");
       $.all("#menu-actions > *").forEach(el => el.remove());
       switch(this.menuState[0]) {
+        case "keyboard-settings":
+          app.keyboard = app.menuState[1].keyboard;
+          Keyboard.selectEl.value = app.keyboardSelection = app.keyboard.name;
+          app.keyboard.fillSettings();
+          break
         case "track-editor":
           $("#track-controls").classList.remove("activeControls");
           $("#track-select > select").selectedIndex = 0
       }
       this.menuState = [];
       this.emit("resize", true);
-      Keyboard.scope.keyboard.hexGrid.redraw(true)
+      this.keyboard.hexGrid.redraw(true)
     },
 
     "volume-change" (value) { this.masterVolume.gain.value = Common.scaleVolume(value) }
@@ -3600,14 +3739,13 @@ $.queries({
   form: { submit (e) { e.preventDefault() } },
   "#volume > input": { change () { app.emit("volume-change", this.valueAsNumber) } },
   "#octaves > input": { change () {
-    localStorage.setItem("octaves", app.octaves = this.valueAsNumber);
+    app.storage.saveItem("octaves", app.octaves = this.valueAsNumber);
     app.emit("resize", true);
-    Keyboard.scope.keyboard.hexGrid.redraw(true)
+    app.keyboard.hexGrid.redraw(true)
   } },
   "#refresh": { click () {
     app.emit("resize", true);
-    const { keyboard } = Keyboard.scope;
-    keyboard.refresh()
+    app.keyboard.refresh()
   } },
   "#panic": { click () { app.emit("panic") } },
   "#fullscreen": { click () { app.emit("fullscreen") } },
@@ -3636,17 +3774,23 @@ $.queries({
       else el.scrollTo(scrollLeft, SCROLL_PAGE_DOWN)
     }
   },
-  "#keyboard-settings > form": { change (e) { Keyboard.selectEl.value = "Custom" } },
-  "#keyboard-select > select": { change () {
-    app.keyboardSelection = app.keyboard.load().keyboardSelection;
-
-    $("#commas").dataset.upperBound = 100;
-    $.all("#commas > .comma").forEach(el => el.remove());
-    $.all("#chords > .chord").forEach(el => el.remove())
+  "#keyboard-select > select": { change () { app.emit("keyboard-select", this.value) } },
+  "#keyboard-name-text": { click () {
+    $("#keyboard-name").classList.add("editing");
+    $("#keyboard-name-field").focus()
   } },
+  "#keyboard-name-field": { "keyup blur" (e) {
+    if (e.type === "blur" || e.key === "Enter") app.emit("keyboard-name-update", this.value = this.value.trim())
+  } },
+  "#keyboard-create": { click () { app.emit("keyboard-create") } },
+  "#keyboard-delete": { click () {
+    $("#delete-keyboard-name").innerText = app.keyboardSelection;
+    $("#delete-keyboard-dialog").showModal()
+  } },
+  "#delete-keyboard-dialog button": { click () { app.emit("keyboard-delete", this.dataset.action) } },
   ":is(#gstep, #hstep) > input": { change () {
-    const { keyboard } = Keyboard.scope, { orientationSelectEl } = Keyboard;
-    keyboard.update();
+    const { keyboard } = app, { orientationSelectEl } = Keyboard;
+    keyboard.updateShape();
     if (orientationSelectEl.children.length) {
       app.emit("resize", true);
       keyboard.hexGrid.redraw(true);
@@ -3654,14 +3798,14 @@ $.queries({
     }
   } },
   "#orientation > select": { change () {
-    const { hexGrid } = Keyboard.scope.keyboard;
+    const { hexGrid } = app.keyboard;
     hexGrid.orientation = JSON.parse(`[${this.value}]`);
     app.emit("resize", true);
     hexGrid.redraw(true);
     this.focus()
   } },
   "#unit > input": { change () {
-    const { hexGrid } = Keyboard.scope.keyboard;
+    const { hexGrid } = app.keyboard;
     hexGrid.unit = this.valueAsNumber;
     app.emit("resize", true);
     hexGrid.redraw(true)
@@ -3674,12 +3818,12 @@ $.queries({
     refNoteEl.value = Math.round(Math.log2(5 / 3) * edo); // C-A = 5/3
     scaleOutputEl.value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
     maxErrorEl.value = Math.floor(400 / edo);
-    Keyboard.scope.keyboard.update();
+    app.keyboard.updateShape();
     app.emit("generate-keyboard");
     this.focus()
   } },
   "#hexbutton-labels input": { change () {
-    const { hexGrid } = Keyboard.scope.keyboard;
+    const { hexGrid } = app.keyboard;
     hexGrid.displayKeyNames = this.closest("label").id === "key-name-choice";
     hexGrid.redraw(true)
   } },
@@ -3713,7 +3857,7 @@ $.queries({
         if (ctrlKey) return app.emit("uncopy");
         const
           { height } = this.getBoundingClientRect(),
-          { clipboard, clipboardPeekIndex } = Keyboard.scope.keyboard,
+          { clipboard, clipboardPeekIndex } = app.keyboard,
           data = clipboard[clipboardPeekIndex];
         x = pageX;
         y = pageY;
@@ -3723,7 +3867,7 @@ $.queries({
       },
       pointermove ({ clientX, pageX, pageY, pointerId }) {
         if (this.children.length === 0) return;
-        const { keyboard } = Keyboard.scope, { clipboard, clipboardPeekIndex } = keyboard;
+        const { keyboard } = app, { clipboard, clipboardPeekIndex } = keyboard;
         if (phase === 0 && Math.hypot(pageX - x, pageY - y) > threshhold) {
           phase = 1 + (Math.abs(pageX - x) < Math.abs(pageY - y));
           prevX = pageX;
@@ -3741,7 +3885,7 @@ $.queries({
       },
       "pointerup lostpointercapture" ({ pointerId }) {
         if (!this.hasPointerCapture(pointerId)) return;
-        const { clipboard, clipboardPeekIndex } = Keyboard.scope.keyboard;
+        const { clipboard, clipboardPeekIndex } = app.keyboard;
         clipboard[clipboardPeekIndex]?.stop(pointerId);
         this.releasePointerCapture(pointerId)
       }
@@ -3753,7 +3897,7 @@ $.queries({
     else app.emit("menu-select", [ "track-editor" ], ...(this.value === "New" ? [] : [ this.value ]))
   } },
   "#track-name-text": { click () {
-    $("#track-name").classList.add("editingTrackName");
+    $("#track-name").classList.add("editing");
     $("#track-name-field").focus()
   } },
   "#track-name-field": { "keyup blur" (e) {
@@ -3761,9 +3905,9 @@ $.queries({
   } },
   "#track-delete": { click () {
     $("#delete-track-name").innerText = app.trackSelection;
-    $("#delete-dialog").showModal()
+    $("#delete-track-dialog").showModal()
   } },
-  "#delete-dialog button": { click () { app.emit("track-delete", this.dataset.action) } },
+  "#delete-track-dialog button": { click () { app.emit("track-delete", this.dataset.action) } },
   "#track-edit": { keyup () { if (this.value !== app.tracks[app.trackSelection]) app.emit("track-save") } },
   "#toggle-accidentals": { click () { $("#insert-accidental").classList.toggle("activeSelect") } },
   "#insert-accidental > *": { click () {

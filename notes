@@ -17,7 +17,6 @@ Temperaments!
     => Pausing/resuming etc (may require a different approach/algorithm)
   * Splitting commas
 BigInt Interval (Important!)
-Save & delete keyboard layouts
 Render pipeline (hex grid then labels), redraw by hex whitelist (black hex to clear then source-over with neighbours)
 Track class
 MenuState class
