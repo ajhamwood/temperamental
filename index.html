@@ -296,7 +296,9 @@ body {
           display: grid;
           grid-template-columns: max-content;
           overflow-y: scroll;
-          max-width: inherit }
+          max-width: inherit;
+          padding: 1em;
+          margin: -.5em }
           #comma-info { line-height: 0 }
           .comma {
             line-height: 1.8em;
@@ -793,6 +795,81 @@ body.copying .copyable:hover:not([data-active]) {
       <animateTransform attributeName="transform" attributeType="XML" type="rotate" values="0; 0; 180; 0" keyTimes="0; .6667; 1; 1" dur="3s" repeatCount="indefinite" />
     </g>
   </svg>
+  <script id="commas-worker" type="javascript/worker">
+class Common {
+  static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
+}
+
+class CommaWorker {
+  #commaGen; curComma; #done = false
+  primes; index; maxError; edo; limit; batchSize
+  constructor({ primes, index, maxError, edo, limit, batchSize }) {
+    Object.assign(this, { primes, index, maxError, edo, limit, batchSize });
+    this.#commaGen = this.#commas()
+  }
+  * #mults () { // Not correct for indexed mappings
+    const
+      ps = this.primes.concat([2], this.index).sort((a, b) => a > b),
+      lps = ps.map(Math.log2), bps = ps.map(BigInt), list = [[ 1n, 0 ]];
+    let len = 1;
+    while (true) {
+      const [ k, l ] = list.splice(0, 1)[0];
+      len--;
+      for (let i = 0, low = 0; i < ps.length; i++) {
+        const val = k * bps[i], log = l + lps[i];
+        let high = len;
+        while (low < high) {
+          const mid = (low + high) >>> 1;
+          if (list[mid][0] < val) low = mid + 1;
+          else high = mid
+        }
+        if (list[low]?.[0] === val) continue;
+        list.splice(low, 0, [ val, log ]);
+        len++
+      }
+      yield [ k, l ]
+    }
+  }
+
+  * #commas () {
+    let prev = [];
+    const lps = this.primes.concat([2], this.index).map(Math.log2).sort((a, b) => a > b); // Fix this...
+    for (let [ n, ln ] of this.#mults()) {
+      prev = prev.filter(([d, ld]) => ln - ld < this.maxError / 400);
+      for (let [ d, ld ] of prev) if (Common.gcd(n, d) === 1n) yield { n, d, ln, ld };
+      prev.push([ n, ln ])
+    }
+  }
+
+  * takeCommas (upperBound) {
+    if (this.curComma) {
+      if (!this.#done) yield this.curComma;
+      if (this.curComma.n > upperBound) {
+        this.#done = true;
+        return
+      } else this.#done = false
+    }
+    if (!this.#done) while ((this.curComma = this.#commaGen.next().value).n <= upperBound) yield this.curComma
+  }
+}
+var commaGen, firstRetrieve = true;
+self.onmessage = ({ data: { params, upperBound, retrieve, i } }) => {
+  if (params) commaGen = new CommaWorker(params);
+  else if (upperBound !== undefined) {
+    const { batchSize } = commaGen, batch = [];
+    if (retrieve && firstRetrieve) { // Always advance signal before retrieval
+      batch.push(commaGen.curComma);
+      firstRetrieve = false
+    }
+    for (const value of commaGen.takeCommas(upperBound)) {
+      if (!retrieve) continue;
+      else if (batch.length < batchSize) batch.push(value);
+      else postMessage({ batch: batch.splice(0), done: false, i })
+    }
+    postMessage({ batch, done: true, i })
+  }
+}
+  </script>
   <script src="js/machine.js"></script>
   <script>
 
@@ -959,6 +1036,25 @@ class Common {
       };
     }
   })()
+
+  static cacheAside (cacheGen, fresh) {
+    let cacheDone = false, value;
+    return async function * (upperBound) {
+      let freshGen = fresh(upperBound, cacheDone), shadowP;
+      if (!cacheDone) shadowP = freshGen.next();
+      while (true) {
+        if (cacheDone) {
+          if (({ value } = await freshGen.next()).done) return;
+          else yield { source: "worker", value }
+        } else {
+          if (({ done: cacheDone, value } = await cacheGen.next()).done) {
+            if ((await shadowP).done) return;
+            freshGen = fresh(upperBound, true);
+          } else yield { source: "cache", value };
+        }
+      }
+    }
+  }
 }
 
 
@@ -1042,7 +1138,7 @@ class HarmonicMapping {
     this.#keyboard = keyboard;
     if (!(Scale.prototype.isPrototypeOf(scale))) throw new Error("Mapping error: must provide Scale object");
     this.#scale = scale;
-    const { edo } = keyboard, { maxError } = scale;
+    const { edo } = keyboard, { maxError, limit } = scale;
     if (!Map.prototype.isPrototypeOf(hmap) || [ ...hmap ].some(v => v.some(u => typeof u !== "number") ||
       v.some(u => u % 1) || v[0] < 3 || v[0] > app.maxHarmonic || v[0] % 2 !== 1 || v[1] < 0 || v[1] > edo)) throw new Error("Mapping error: bad interval-step mapping");
     const harr = [ ...hmap ];
@@ -1155,8 +1251,9 @@ class HarmonicMapping {
       if (d === 1 && n !== 1) this.harmonicList.get(n).withQuality("harmonic", true)
     }
     this.steps = new Map(hmap);
-    
     this.unison = this.#properIntervalSet.getRatio(1, 1);
+
+    this.resetCommas();
     this.ready = true
   }
 
@@ -1199,58 +1296,51 @@ class HarmonicMapping {
     this.stepsBasis = stepsBasis
   }
 
-  // Temperaments
-  * #mults () { // Not correct for indexed mappings
+  // Temperaments (in worker)
+  #worker
+  #commas () {
     const
-      ps = this.primes.concat([2], this.index).sort((a, b) => a > b),
-      lps = ps.map(Math.log2), bps = ps.map(BigInt), list = [[ 1n, 0 ]];
-    let len = 1;
-    while (true) {
-      const [ k, l ] = list.splice(0, 1)[0];
-      len--;
-      for (let i = 0, low = 0; i < ps.length; i++) {
-        const val = k * bps[i], log = l + lps[i];
-        let high = len;
-        while (low < high) {
-          const mid = (low + high) >>> 1;
-          if (list[mid][0] < val) low = mid + 1;
-          else high = mid
-        }
-        if (list[low]?.[0] === val) continue;
-        list.splice(low, 0, [ val, log ]);
-        len++
-      }
-      yield [ k, l ]
+      blob = new Blob([$("#commas-worker").textContent]),
+      worker = this.#worker = new Worker(URL.createObjectURL(blob)), self = this,
+      { primes, index } = this, { edo } = this.#keyboard, { limit, maxError } = this.#scale,
+      { globalBatchSize: batchSize } = app;
+    worker.postMessage({ params: { primes, index, maxError, edo, limit, batchSize } });
+    let id = 0, rs = new Map(), ps = new Map(), // Resolve data
+        ws = new Map(), wps = new Map(), // Wait for yields
+        cs = new Map(), cps = new Map(); // Concatenate streams
+    cps.set(0, new Promise(res => cs.set(0, res)));
+    cs.get(0)();
+    $.targets({ async message ({ data }) {
+      const { i } = data;
+      await wps.get(i).shift();
+      rs.get(i).shift()(data);
+      ps.get(i).push(new Promise(res => rs.get(i).push(res)));
+      wps.get(i).push(new Promise(res => ws.get(i).push(res)));
+    } }, worker);
+    return async function * (upperBound, retrieve) {
+      const i = id++;
+      let batch = [], done, j;
+      cps.set(i + 1, new Promise(res => cs.set(i + 1, res)));
+      await cps.get(i);
+      ps.set(i, [ new Promise(res => rs.set(i, [ res ])) ]);
+      wps.set(i, [ new Promise(res => ws.set(i, [ res ])) ]);
+      self.#worker.postMessage({ upperBound, retrieve, i });
+      do {
+        ws.get(i).shift()();
+        ({ batch, done } = await ps.get(i).shift());
+        for (const value of batch) yield value
+      } while (!done);
+      [ rs, ps, ws, wps, cs, cps ].map(m => m.delete(i));
+      cs.get(i + 1)();
     }
   }
-
-  * #commas () {
-    let prev = [];
-    const lps = this.primes.concat([2], this.index).map(Math.log2).sort((a, b) => a > b); // Fix this...
-    for (let [ k, l ] of this.#mults()) {
-      prev = prev.filter(([pk, pl]) => l - pl < this.#scale.maxError / 400);
-      for (let [ pk, pl ] of prev) if (Common.gcd(k, pk) === 1n) yield [ k, l, pk, pl ];
-      prev.push([ k, l ])
-    }
+  #commaGen
+  async * takeCommas (upperBound) { yield * this.#commaGen(upperBound) }
+  resetCommas () {
+    const { edo } = this.#keyboard, { limit } = this.#scale;
+    this.#worker?.terminate();
+    this.#commaGen = Common.cacheAside(app.storage.yieldCommas({ edo, limit }), this.#commas())
   }
-
-  takeCommas = (() => {
-    const gen = this.#commas();
-    let v = false;
-    return function * (upperBound) {
-      if (v) {
-        yield v;
-        if (v[0] > upperBound) {
-          v = false;
-          return
-        }
-      }
-      while (true) if ((v = gen.next().value)[0] > upperBound) {
-        upperBound = (1n + v[0] / 100n) * 100n;
-        break
-      } else yield v;
-    }
-  })()
 
   // Chords
   #harmCombs = (dec, acc = [], cur = 0) => [ ...this.harmonicList ]
@@ -2173,62 +2263,99 @@ class Persist {
     return new Promise((success, error) => $.targets({ success, error }, indexedDB.deleteDatabase("userdata")))
   }
   static #txWait = tx => new Promise((complete, error) => $.targets({ complete, error }, tx));
+  static #schemaTxWait = (vn, runTx = () => {}, blocked = () => {}) => new Promise((success, error) => {
+    $.targets({ success, error, async upgradeneeded (evt) { try {
+      await runTx(evt); success(evt)
+    } catch (err) {  error(err) } }, blocked (e) { blocked(e, success, error) } }, indexedDB.open("userdata", vn))
+  })
+  static #runSchemaTxs = async (vn, fns) => (await Promise.all(fns.map(async (fn, i) => {
+    const db = (await Persist.#schemaTxWait(vn + i + 1, fn)).target.result;
+    if (i < fns.length - 1) db.close();
+    else return db
+  }))).at(-1)
+  static async * #cursorWait (index) {
+    let r, p = new Promise(res => r = res), csr;
+    $.targets({ success (e) { r(e.target.result); p = new Promise(res => r = res) } }, index);
+    while (true) if (csr = await p) { yield csr.value; csr.continue() } else break
+  }
    
-  static async #upgradeFromVersion0 (e) {
-    // Initialise keyboards
-    const
-      db = e.target.result, createKbStore = db.createObjectStore("keyboards", { keyPath: "name" }),
-      createKbTx = Persist.#txWait(createKbStore.transaction);
-    createKbStore.createIndex("name", "name", { unique: true }); // mode: versionchange
-    await createKbTx;
-    const
-      kbStore = db.transaction("keyboards", "readwrite").objectStore("keyboards"),
-      kbTx = Persist.#txWait(kbStore.transaction);
-    Keyboard.presets.forEach(obj => kbStore.add(obj)); // mode: readwrite
-    await kbTx;
+  static async #upgradeFromVersion0 (vn) {
+    return await Persist.#runSchemaTxs(vn, [
+      // Initialise keyboards
+      async evt => {
+        const
+          createKbStore = evt.target.result.createObjectStore("keyboards", { keyPath: "name" }),
+          createKbTx = Persist.#txWait(createKbStore.transaction);
+        await createKbTx; // mode: versionchange
+        const
+          kbStore = evt.target.result.transaction("keyboards", "readwrite").objectStore("keyboards"),
+          seedKbTx = Persist.#txWait(kbStore.transaction);
+        Keyboard.presets.forEach(obj => kbStore.add(obj));
+        await seedKbTx; // mode: readwrite
+      },
 
-    // Create comma store
-    const
-      createCommaStore = db.createObjectStore("commas", { keyPath: ["edo", "limit", "ratio"] }),
-      createCommasTx = Persist.#txWait(createCommaStore.transaction);
-    createCommaStore.createIndex("commas", ["edo", "limt"], { unique: false, multiEntry: true });
-    await createCommasTx;
+      // Create scale store
+      async evt => {
+        const
+          createScaleStore = evt.target.result.createObjectStore("scales", { keyPath: ["edo", "limit"] }), // maxError?
+          createScalesTx = Persist.#txWait(createScaleStore.transaction);
+        await createScalesTx;
+      },
 
-    // Create chord store
-    const
-      createChordStore = db.createObjectStore("chords", { keyPath: ["edo", "limit", "intervals"] }),
-      createChordsTx = Persist.#txWait(createChordStore.transaction);
-    createChordStore.createIndex("chords", ["edo", "limit"], { unique: false, multiEntry: true })
-    await createChordsTx
+      // Create comma store
+      async evt => {
+        const
+          createCommaStore = evt.target.result.createObjectStore("commas", { keyPath: ["edo", "limit", "ln", "ld"] }),
+          createCommasTx = Persist.#txWait(createCommaStore.transaction);
+        createCommaStore.createIndex("commas", ["edo", "limit"]); //, { multiEntry: true }
+        await createCommasTx;
+      },
+
+      // Create chord store
+      async evt => {  
+        const
+          createChordStore = evt.target.result.createObjectStore("chords", { keyPath: ["edo", "limit", "ln", "ld", "intervals"] }),
+          createChordsTx = Persist.#txWait(createChordStore.transaction);
+        createChordStore.createIndex("chords", ["edo", "limit", "ln", "ld"]); //, { multiEntry: true }
+        await createChordsTx
+      },
+
+      // Create track store
+      async evt => {
+        const
+          createTrackStore = evt.target.result.createObjectStore("tracks", { keyPath: "name" }),
+          createTracksTx = Persist.#txWait(createTrackStore.transaction);
+        await createTracksTx
+      }
+    ])
   }
 
   #db; #resolveReady; #rejectReady
   #promiseReady = new Promise((res, rej) => [ this.#resolveReady, this.#rejectReady ] = [ res, rej ]);
   get ready () { return this.#promiseReady }
-  constructor (version) {
+  constructor (version) { this.#init(version) }
+  async #init (version) {
     const
-      dbv = version.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})/)?.slice(1)
-        .reduce((n, s, i) => n + parseInt(s) * 100 ** (2 - i), 0),
-      req = indexedDB.open("userdata", dbv), self = this;
-    $.targets({
-      async upgradeneeded (e) { try {
-        if (e.oldVersion < 3) await Persist.#upgradeFromVersion0(e);
-        return self.#resolveReady()
-      } catch ({}) { return self.#rejectReady() } },
-      success () {
-        self.#db = req.result;
-        self.#resolveReady()
-      },
-      error () { self.#rejectReady() },
-      blocked () {} // An old version is open while new version wants to load elsewhere
-    }, req)
+      dbv = parseInt(this.loadItem("version") ??
+        version.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})/)?.slice(1)
+          .reduce((n, s, i) => n + parseInt(s) * 100 ** (3 - i), 0)),
+      oldVersion = (await indexedDB.databases()).find(({ name }) => name === "userdata")?.version ?? 0;
+    try {
+      if (oldVersion < 304) this.#db = await Persist.#upgradeFromVersion0(dbv);
+      else this.#db = (await Persist.#schemaTxWait(dbv)).target.result;
+      this.saveItem("version", this.#db.version)
+      this.#resolveReady()
+    } catch (e) { this.#rejectReady() }
   }
+
   loadItem (key, initial) {
     let value = localStorage.getItem(key);
     if (value === null) localStorage.setItem(key, value = initial);
     return value
   }
   saveItem (key, val) { localStorage.setItem(key, val) }
+
+  // Keyboards
   async loadKeyboards () {
     const
       kbStore = this.#db.transaction("keyboards").objectStore("keyboards"),
@@ -2248,11 +2375,66 @@ class Persist {
       delKbTx = Persist.#txWait(kbStore.transaction), reqR = kbStore.delete(name);
     await delKbTx;
   }
-  resetPresetKeyboards () {}
-  loadCommas () {}
-  saveCommas () {}
-  loadChords () {}
-  saveChords () {}
+  resetPresetKeyboards () {} //
+
+  // Scales
+
+  async loadScale ({ edo, limit }) {
+    const
+      scaleStore = this.#db.transaction("scales").objectStore("scales"),
+      readScaleTx = Persist.#txWait(scaleStore.transaction), req = scaleStore.get([ edo, limit ]);
+    await readScaleTx;
+    if (req.result !== undefined) return req.result;
+    const initial = { edo, limit, upperBound: 0n };
+    await this.saveScale(initial);
+    return initial
+  }
+  async saveScale (scale) {
+    const
+      scaleStore = this.#db.transaction("scales", "readwrite").objectStore("scales"),
+      saveScaleTx = Persist.#txWait(scaleStore.transaction), req = scaleStore.put(scale);
+    await saveScaleTx
+  }
+
+  // Commas
+  async * yieldCommas ({ edo, limit }) {
+    const
+      commaStore = this.#db.transaction("commas").objectStore("commas"),
+      csr = commaStore.index("commas").openCursor(IDBKeyRange.only([ edo, limit ])),
+      yieldCommaCsr = Persist.#cursorWait(csr);
+    for await (const value of yieldCommaCsr) yield value
+  }
+  async saveComma (comma) {
+    const
+      commaStore = this.#db.transaction("commas", "readwrite").objectStore("commas"),
+      saveCommaTx = Persist.#txWait(commaStore.transaction), req = commaStore.add(comma);
+    await saveCommaTx
+  }
+
+  // Chords
+  yieldChords (edo, limit, comma) {}
+  saveChord (chord) {}
+
+  // Tracks
+  async loadTracks () {
+    const
+      kbStore = this.#db.transaction("tracks").objectStore("tracks"),
+      readKbTx = Persist.#txWait(kbStore.transaction), req = kbStore.getAll();
+    await readKbTx;
+    return req.result
+  }
+  async saveTrack (track) {
+    const
+      kbStore = this.#db.transaction("tracks", "readwrite").objectStore("tracks"),
+      saveKbTx = Persist.#txWait(kbStore.transaction), req = kbStore.put(track);
+    await saveKbTx
+  }
+  async deleteTrack (name) {
+    const
+      kbStore = this.#db.transaction("tracks", "readwrite").objectStore("tracks"),
+      delKbTx = Persist.#txWait(kbStore.transaction), reqR = kbStore.delete(name);
+    await delKbTx;
+  }
 }
 
 
@@ -2377,6 +2559,9 @@ class Keyboard {
       { gstep, hstep, unit, orientation, orientations, displayKeyNames } = hexGrid,
       { limit, refNote, freqBasis, maxError } = scale;
 
+
+    app.storage.loadScale({ edo, limit })
+      .then(({ upperBound }) => $("#commas").dataset.upperBound = upperBound);
     nameFieldEl.value = name;
     nameFieldEl.classList.remove("invalid");
     nameTextEl.innerText = name;
@@ -2687,11 +2872,10 @@ class Listeners {
 
 // TODO: add freeze property feature to machine.js
 var app = new $.Machine({
-    // Version
+    // Global
       version: "0.0.3",
-
-    // Storage
       storage: null,
+      globalBatchSize: 10,
 
     // Navigation
       menuState: [],
@@ -2802,8 +2986,8 @@ $.targets({
   app: {
 
     async init () {
-      const { version } = this;
       this.storage = new Persist(app.version);
+      await this.storage.ready;
       this.canvas = $("#hex");
       this.gridctx = this.canvas.getContext("2d");
 
@@ -2832,10 +3016,10 @@ $.targets({
       Keyboard.limitEl.max = this.maxHarmonic;
       await this.emitAsync("load-presets");
 
-      // Resize cbs called around pageshow (ie after load)
+      // Resize cbs called around pageshow (ie after load); TODO Put these elsewhere?
       const navEl = $("nav"), clipboardEl = $("#clipboard-item-select");
       new ResizeObserver(() => clipboardEl.style.setProperty("--nav-height", navEl.offsetHeight + "px")).observe(navEl);
-      new ResizeObserver(() => {  // Put these elsewhere? TODO: reset css vars on resize
+      new ResizeObserver(() => {
         this.emit("resize", true);
         this.keyboard.hexGrid.redraw(true)
       }).observe($("main"));
@@ -2918,12 +3102,9 @@ $.targets({
       Keyboard.ready = true;
 
       // Tracks
-      let tracks = localStorage.getItem("tracks");
-      if (!tracks) {
-        this.tracks = {};
-        localStorage.setItem("tracks", "{}");
-      } else this.tracks = tracks = JSON.parse(tracks);
-      const trackSelEl = $("#track-select select"), trackSelectHrEl = $("#track-select hr");
+      const
+        tracks = this.tracks = (await storage.loadTracks()).reduce((obj, tr) => ({ ...obj, [tr.name]: tr }), {}),
+        trackSelEl = $("#track-select select"), trackSelectHrEl = $("#track-select hr");
       Object.keys(this.tracks).forEach(name => {
         const el = $.load("option", "#track-select > select")[0][0];
         el.innerText = name;
@@ -3110,7 +3291,6 @@ $.targets({
       this.keyboard.fillSettings();
       this.emit("generate-keyboard");
 
-      $("#commas").dataset.upperBound = 100;
       $.all("#commas > .comma, #chords > .chord").forEach(el => el.remove())
     },
 
@@ -3139,7 +3319,7 @@ $.targets({
       el.selected = true;
 
       storage.saveItem("keyboardSelection", name);
-      storage.deleteKeyboard(oldName).then(() => keyboard.save()) // Combine as rename option?
+      storage.deleteKeyboard(oldName).then(() => keyboard.save())
     },
 
     "keyboard-create" () {
@@ -3192,6 +3372,8 @@ $.targets({
         refNote = refNoteEl.valueAsNumber,
         freqBasis = freqBasisEl.valueAsNumber,
         { keyboard } = this;
+      this.storage.loadScale({ edo, limit })
+        .then(({ upperBound }) => $("#commas").dataset.upperBound = upperBound);
       $.all(".harmonic").forEach(el => el.remove());
       
       const
@@ -3436,33 +3618,38 @@ $.targets({
 
     // Temperaments
 
-    "generate-temperaments" () {
+    async "generate-temperaments" () {
       const
-        { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
+        { keyboard, storage } = this, { edo } = keyboard, { mapping, limit } = keyboard.scale,
         ps = mapping.primes.concat(mapping.index).sort((a, b) => a > b), commasEl = $("#commas");
-      let n, upperBound = parseInt(commasEl.dataset.upperBound);
-      for (let [n1, l1, n2, l2] of mapping.takeCommas(upperBound)) {
-        n = n1;
-        const iv = new Interval({ keyboard, mapping, n: n1, d: n2 });
+      let boundN, hasFresh, upperBound = parseInt(commasEl.dataset.upperBound);
+      for await (const { source, value: { n, d, ln, ld } } of mapping.takeCommas(upperBound)) {
+        if (source === "worker") boundN = n;
+        const iv = new Interval({ keyboard, mapping, n, d }); // better version?
         if (Common.mod(iv.steps(), edo) === 0) {
+          hasFresh = true;
+          if (source === "worker")
+            await storage.saveComma({ edo, limit, n, d, ln, ld }); // debounce and batch?
           const
             commaEl = $.load("comma", "", commasEl)[0][0],
             [ ratioSpan, nDecompSpan, dDecompSpan, sizeSpan, spellingSpan ] = commaEl.children;
-          commaEl.dataset.comma = [ n1, n2 ];
+          commaEl.dataset.comma = [ n, d ];
           commaEl.dataset.factors = JSON.stringify(iv.splitDecomp);
-          ratioSpan.innerText = `${n1}/${n2}`;
-          const t1 = Common.bigLog2(n1 & -n1), t2 = Common.bigLog2(n2 & -n2);
+          ratioSpan.innerText = `${n}/${d}`;
+          const t1 = Common.bigLog2(n & -n), t2 = Common.bigLog2(d & -d);
           nDecompSpan.innerHTML = (t1 > 0 ? [[2, t1]] : []).concat(iv.splitDecomp[0])
             .map(([p, rad]) => p + (rad > 1 ? `<sup>${rad}</sup>` : "")).join(".");
           dDecompSpan.innerHTML = (t2 > 0 ? [[2, t2]] : []).concat(iv.splitDecomp[1])
             .map(([p, rad]) => p + (rad > 1 ? `<sup>${rad}</sup>` : "")).join(".");
-          sizeSpan.innerText = `${((l1 - l2) * 1200).toFixed(2)}`;
+          sizeSpan.innerText = `${((ln - ld) * 1200).toFixed(2)}`;
           spellingSpan.innerText = iv.noteSpelling.letter;
           $.queries({ "": { click () { app.emit("generate-chords", this) } } }, commaEl)
         }
       }
-      if (n) commasEl.dataset.upperBound = (1n + n / 100n) / 100n;
-      commasEl.scrollTo(0, $("#computing-commas").offsetTop - commasEl.offsetTop - commasEl.offsetHeight - 1)
+      if (!boundN) return;
+      if (hasFresh) commasEl.scrollTo(0, $("#computing-commas").offsetTop - commasEl.offsetTop - commasEl.offsetHeight - 1)
+      commasEl.dataset.upperBound = upperBound = (1n + boundN / 100n) * 100n;
+      await storage.saveScale({ edo, limit, upperBound }) // commaBuffer?
     },
 
     async "generate-chords" (commaEl) {
@@ -3559,14 +3746,14 @@ $.targets({
     // Track editor
 
     "track-name-update" (name) {
-      const { tracks, trackSelection } = this, trackSelEl = $("#track-select > select");
+      const { tracks, trackSelection, storage } = this, trackSelEl = $("#track-select > select");
       if (name === "New" || name in tracks && trackSelEl.value !== name) {
         $("#track-name-field").classList.add("invalid");
         return
       }
       $("#track-file").classList.add("saved");
       delete this.tracks[trackSelection];
-      this.tracks[name] = $("#track-edit").value;
+      const track = this.tracks[name] = { name, text: $("#track-edit").value };
       this.trackSelection = name;
       $("#track-name-text").innerText = name;
       $("#track-name-field").classList.remove("invalid");
@@ -3577,7 +3764,8 @@ $.targets({
       el.setAttribute("name", name);
       trackSelEl.insertBefore(el, $("#track-select hr"));
       el.selected = true;
-      localStorage.setItem("tracks", JSON.stringify(this.tracks));
+
+      storage.deleteKeyboard(trackSelection).then(() => storage.saveTrack(track))
     },
 
     "track-editor" (name) {
@@ -3591,7 +3779,7 @@ $.targets({
         $("#track-edit").value = "";
         $("#track-file").classList.remove("saved")
       } else {
-        $("#track-edit").value = tracks[name];
+        $("#track-edit").value = tracks[name].text;
         $("#track-file").classList.add("saved")
       }
       this.trackSelection = name;
@@ -3606,7 +3794,7 @@ $.targets({
       $("#track-savestate").classList.add("saving");
       clearInterval(this.menuState[1].saveDebounce);
       this.menuState[1].saveDebounce = setTimeout(() => {
-        localStorage.setItem("tracks", JSON.stringify(this.tracks));
+        app.storage.saveTrack(this.tracks[name]); // Hmmm
         $("#track-savestate").classList.remove("saving")
       }, 500)
       const trackSelection = $("#track-name-field").value;
@@ -3618,8 +3806,8 @@ $.targets({
         $("#track-select select").insertBefore(el, $("#track-select hr"));
         el.selected = true
       } else el = $("#track-select > select").namedItem(trackSelection);
-      this.trackSelection = $("#track-name-field").value;
-      this.tracks[this.trackSelection] = $("#track-edit").value;
+      const name = this.trackSelection = $("#track-name-field").value;
+      this.tracks[name] = { name, text: $("#track-edit").value };
       el.innerText = trackSelection;
       el.setAttribute("name", trackSelection)
     },
@@ -3631,7 +3819,7 @@ $.targets({
       delete this.tracks[trackSelection];
       this.trackSelection = null;
       $(`#track-select option[name='${trackSelection}']`).remove();
-      localStorage.setItem("tracks", JSON.stringify(this.tracks));
+      app.storage.deleteTrack(trackSelection);
       this.emit("menu-cancel")
     },
 
@@ -3684,8 +3872,11 @@ $.targets({
           this.emit("generate-keyboard");
           break;
         case "temperaments":
-          $("#commas").dataset.upperBound = 100;
+          cancelEl = $.load("menu-action", "#menu-actions")[0][0];
+          Object.assign(cancelEl, { innerText: "Close", id: "temperaments-close" });
+          $.queries({ "#temperaments-close": { click () { app.emit("menu-cancel") } } });
           $.all("#commas > .comma").forEach(el => el.remove());
+          this.keyboard.scale.mapping.resetCommas();
           $.all("#chords > .chord").forEach(el => el.remove());
           this.menuState[1] = { keyboard: this.keyboard };
           // this.menuState[1] = prevMenu[0] === "keyboard-settings" ? prevMenu[1] : { keyboard: this.keyboard };

@@ -11,7 +11,7 @@ Temperaments!
   * Order chords by adicity vs symmetry vs simplest internal interval
   * Gesture drag through chord inversions? Allow selection of pivot position other than the root
     => Setting a key for the keyboard and transposing note names through the key
-  * Generate commas and chords off the main thread; UI for moving a computation to a jobs list (Important!)
+  * Generate chords off the main thread; UI for moving a computation to a jobs list (Important!)
     => Provide real time logs during computation to display in job area
     => Group chords by adicity/stack and return partial results
     => Pausing/resuming etc (may require a different approach/algorithm)
@@ -33,7 +33,7 @@ Relabelling keys while playing: relative to lowest note, relative to chosen key
 Giving musical objects ungeneralisable proper names or symbols
 
 > Bugs
-* !! Save/load commas per edo and limit, chords per edo, limit and comma
+* !! Save/load chords per edo, limit and comma
 * What triggers the 2/1 bug?
 * Keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
 * Separate black/white key colours for ghost keys?
