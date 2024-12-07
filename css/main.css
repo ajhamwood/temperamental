@@ -1,0 +1,487 @@
+@font-face {
+  font-family: HEJI2;
+  src: url('../fonts/HEJI2Text.woff2') format('woff2');
+  font-weight: normal;
+  font-synthesis-weight: none;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+E260-E266, U+E2C0-E2FA, U+EE50-EE59;
+  size-adjust: 150%;
+  ascent-override: 0%;
+  descent-override: 0% }
+@font-face {
+  font-family: Ratafly;
+  src: url('../fonts/Ratafly-Extrabold.woff2') format('woff2');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 100%; }
+@font-face {
+  font-family: Ratafly;
+  src: url('../fonts/Ratafly-Medium.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap }
+@font-face {
+  font-family: Netto;
+  src: url('../fonts/NettoIcons.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+  ascent-override: 0%;
+  descent-override: 0% }
+
+
+
+@media (min-aspect-ratio: 1) {
+  body.menuActive { grid: "nav nav" auto "menu main" 1fr / min-content 1fr }
+  menu { max-width: 50dvw }
+  #track-editor > form > textarea {
+    width: 20em;
+    min-width: 10em }
+  .interval-display, #mapping { max-width: calc(50dvw - 3.4em - 4px) }
+  #temperament-list, #chord-list { max-width: calc(50dvw - 3.4em - 4px) } }
+@media (max-aspect-ratio: 1) {
+  body.menuActive { grid: "nav" auto "menu" minmax(auto, 1fr) "main" 1fr / 100dvw }
+  #track-editor > form > textarea {
+    width: 100% !important;
+    resize: vertical }
+  .interval-display, #mapping { max-width: calc(100dvw - 3.4em - 4px) }
+  #temperament-list, #chord-list { max-width: calc(100dvw - 3.4em - 4px) } }
+
+html, body {
+  height: 100dvh }
+body, button, select, input, textarea { font: min(16px, 2.7dvw) HEJI2, Ratafly, Netto }
+body {
+  margin: 0;
+  background-color: #222;
+  color: #ddd;
+  display: grid;
+  grid: "nav" auto "main" 1fr / 100dvw;
+  overflow: hidden;
+  position: relative }
+  nav {
+    background-color: #222;
+    grid-area: nav;
+    display: flex;
+    flex-flow: column;
+    user-select: none }
+    nav > * {
+      padding: .5em;
+      flex-flow: row;
+      justify-content: space-between;
+      align-items: center }
+    nav:not(:focus-within) { cursor: pointer }
+    #controls {
+      display: grid;
+      grid-template-columns: auto auto 1fr repeat(3, auto);
+      grid-gap: 0 .5em }
+      #controls > * { flex: max-content 0 }
+      #controls > :nth-last-child(n+2),
+        #volume > * { vertical-align: middle }
+      #volume > input { max-width: 20dvw }
+      #info {
+        width: 100%;
+        min-width: max-content;
+        text-align: center }
+        #edo-info::after { content: "EDO" }
+        #limit-info::after { content: "-limit" }
+      #fullscreen.active::before { content: "🗕" }
+      #fullscreen:not(.active)::before { content: "🗖" }
+    #controls:has(.activeControls) { grid-template-columns: auto auto 1fr repeat(4, auto) }
+    #track-controls {
+      display: none;
+      align-items: center }
+      #track-controls > * {
+        margin-right: .5em;
+        width: max-content }
+      #track-controls.activeControls { display: flex }
+        #track-play:not(.trackPlaying)::before { content: "Play ⏵" }
+        #track-play.trackPlaying::before { content: "Pause ⏸" }
+    nav:focus-within:not(:has(.non-focus:focus)) > #dropdown, .menuActive.copying #dropdown { display: flex}
+    #dropdown {
+      display: none;
+      background-color: #000 }
+      #dropdown > :nth-last-child(n+2) { margin-right: 2em }
+        #dropdown > * > * { vertical-align: middle }
+        #keyboard-select option[disabled]:not(:nth-last-child(3)) { display: none }
+      #clipboard-item-select:has(#clipboard-peek:empty) { color: #666 }
+      .menuActive.copying #clipboard-item-select {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: calc(100% - 4px);
+        min-height: calc(var(--nav-height) - 4px);
+        text-align: center;
+        line-height: calc(var(--nav-height) - 4px);
+        background-color: #000;
+        border: 2px dashed #ddd8;
+        z-index: 1 }
+      .copying #clipboard-item-select.active {
+        color: #ddd !important;
+        background-color: #222 }
+        #clipboard-peek {
+          display: none;
+          line-height: normal }
+        #clipboard-item-select > #clipboard-peek:not(:empty) { display: inline-block }
+        #clipboard-peek {
+          border: 1px solid #333;
+          margin: -1px }
+        #clipboard-peek:hover {
+          border: 1px solid #ddd8;
+          cursor: pointer }
+        #clipboard-peek.active { background-color: #333 }
+        body.copying #clipboard-peek:hover {
+          border: 2px dashed #ddd8;
+          margin: -2px }
+          #clipboard-peek > * {
+            display: flex;
+            gap: .3em;
+            padding: .1em .3em;
+            align-items: baseline }
+          .item-colour {
+            background-color: var(--colour);
+            height: 1em;
+            width: 1em;
+            display: inline-block }
+          .split-colours.item-colour {
+            background: linear-gradient(to bottom right, var(--colour-1) 50%, var(--colour-2) 50%) }
+      #track-select { flex: 1 }
+  menu {
+    background-color: #222;
+    padding: 0;
+    margin: 0;
+    min-height: 0;
+    display: none }
+  body.menuActive > menu { display: block }
+    menu > li { padding: .5em }
+    menu > li:not(#breadcrumbs) {
+      overflow-y: scroll;
+      height: calc(100% - 3.6em);
+      display: none }
+    menu > li.activeMenu { display: list-item !important }
+    #breadcrumbs {
+      background-color: #ddd;
+      color: #222;
+      display: flex;
+      flex-flow: row;
+      justify-content: space-between;
+      align-items: center }
+      #breadcrumb-text { font-size: .8em }
+      #breadcrumb-text::before { content: "// " }
+      #breadcrumb-text > :nth-last-child(n+2) { cursor: pointer }
+      #breadcrumb-text > :nth-last-child(n+2)::after { content: " › " }
+        #menu-actions > :nth-last-child(n+2) { margin-right: .5em }
+      #breadcrumb-text > :last-child { user-select: none }
+    form {
+      display: flex;
+      flex-flow: row wrap;
+      gap: 0 .6em }
+      #track-editor > form > * { width: 100% }
+      #keyboard-file {
+        flex-basis: 100%;
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: .3em }
+        #keyboard-name-field { width: calc(100% - 1em) }
+      fieldset {
+        display: flex;
+        flex-flow: column }
+        fieldset > * { padding: .3em }
+          :is(#scale, #mapping) > * {
+            display: block;
+            margin-left: 1em }
+            :is(.harmonic, .interval-cell) > button { cursor: pointer }
+          #mapping {
+            display: grid;
+            gap: .3em;
+            width: fit-content }
+            .harmonic {
+              grid-template-columns: subgrid;
+              display: grid !important;
+              grid-column: span 20;
+              gap: .3em;
+              align-items: center;
+              white-space: nowrap }
+              .harmonic > span { user-select: none }
+              .harm-obj::after { content: " harmonic" }
+              .subharm-obj::after { content: " subharmonic" }
+              .harmonic > .harmonic-spelling { text-align: start }
+              .harmonic > :not(input) { text-align: end }
+              .harmonic:not(.basis) > input, .harmonic.basis > span.steps,
+                .harmonic.prime.power:not(.basis) > input.hcolour  { display: none }
+              .hcolour {
+                max-height: 6dvw;
+                height: 100% }
+              #error::after { content: "¢" }
+          .interval-display { display: none }
+          .choice:has(label#diamond-choice > input[type="radio"]:checked) ~ #diamond-wrapper,
+            .choice:has(label#table-choice > input[type="radio"]:checked) ~ #ivtable-wrapper { display: block }
+          .interval-display, #mapping { overflow-x: scroll }
+            .interval-cell.activeEnharmonic {
+              border-bottom: 1px solid;
+              margin-bottom: -1px }
+          #diamond {
+            display: grid;
+            grid-template-columns: 1fr repeat(var(--size), auto);
+            grid-template-rows: repeat(var(--size), 2em);
+            justify-items: end;
+            width: max-content }
+        #harmonic-mapping:has(#table-choice > :checked)
+          { height: calc(var(--iv-offsetTop) + var(--iv-scrollHeight)) }
+          #ivtable-wrapper {
+            max-height: calc(var(--iv-height));
+            position: sticky;
+            top: -.5em;
+            overflow-y: hidden }
+          #interval-table {
+            display: grid;
+            grid-template-columns: repeat(2, auto) repeat(calc(var(--harms) - 1), 1px auto);
+            grid-template-rows: repeat(2, minmax(0, min-content)) repeat(calc(var(--edo) - 1), 1px minmax(0, min-content));
+            width: max-content }
+            #interval-table > :not(.table-border) { padding: .25em }
+              .interval-th.column-head.row-head { z-index: 3 }
+              .interval-th.column-head {
+                position: sticky;
+                top: 0;
+                background-color: #222;
+                z-index: 2;
+                border-bottom: 1px solid #ddd8 }
+              .interval-th.column-head:nth-child(n+2) {
+                border-left: 1px solid #ddd8;
+                margin-left: -1px }
+              .interval-th.row-head {
+                position: sticky;
+                left: 0;
+                background-color: #222;
+                z-index: 2;
+                border-right: 1px solid #ddd8 }
+            .interval-th {
+              position: relative;
+              display: grid;
+              place-items: center }
+              .table-border {
+                pointer-events: none }
+              .column-head:not(.row-head) > span::after { content: "-limit" }
+              .column-head + .table-border { border-right: 1px solid #ddd8 }
+              .row-head:not(.column-head) + .table-border,
+                .column-head.row-head + * + .table-border { border-bottom: 1px solid #ddd8 }
+            .interval-td {
+              display: flex;
+              flex-flow: column;
+              gap: .5em;
+              place-self: end / center;
+              align-items: end }
+            .interval { width: max-content }
+              #table-unison {
+                text-align: center;
+                margin: -.25em -1px -.25em 0;
+                background-color: #222;
+                width: calc(100% - .25em);
+                padding: .25em;
+                z-index: 1 }
+      #temperament-list {
+        width: calc(var(--tp-width) - 1.5em - 4px);
+        max-height: calc(var(--tp-height) - 2.2em) }
+        #commas {
+          display: grid;
+          grid-template-columns: max-content;
+          overflow-y: scroll;
+          max-width: inherit;
+          padding: 1em;
+          margin: -.5em -.7em }
+          #comma-info { line-height: 0 }
+          .comma {
+            line-height: 1.8em;
+            cursor: pointer;
+            width: max-content }
+          .comma:nth-child(2) { margin-top: -.8em }
+          .comma:hover, .comma.active {
+            border-bottom: 1px solid;
+            margin-bottom: -1px;
+            font-weight: bold }
+          #computing-commas {
+            min-height: 2em;
+            min-width: inherit;
+            order: 32767;
+            text-align: center;
+            line-height: 2em }
+          #computing-commas.active > .hourglass { display: inline }
+      #chord-list {
+        position: relative;
+        z-index: 1 }
+        .chord-settings {
+          position: sticky;
+          top: -.5em;
+          background-color: #222;
+          padding: .5em;
+          margin: -.5em;
+          display: flex;
+          flex-flow: row;
+          align-items: baseline;
+          gap: 2em }
+          .heading-border {
+            background-color: #ddd8;
+            height: 1px;
+            position: sticky;
+            top: calc(1.5em + 4px);
+            width: 100%;
+            z-index: -1;
+            padding: 0 }
+        #chords {
+          display: flex;
+          flex-flow: column;
+          gap: 2em 0;
+          margin-top: 1em;
+          max-width: inherit;
+          overflow-x: scroll }
+        #chords:has(.hourglass:last-child)::before { content: "To display chords, select a temperament" }
+        #chords:not(.computing):has(.hourglass:last-child) { color: #666 }
+        #chords.computing::before {
+          line-height: 0;
+          overflow: hidden }
+        #chords.computing > .hourglass {
+          display: inline;
+          margin-top: -2.3em;
+          align-self: center }
+          .chord {
+            display: grid;
+            width: fit-content;
+            gap: .5em .3em }
+            .chord-intervals, .chord-pitches, .chord-spelling {
+              grid-template-columns: subgrid;
+              display: grid;
+              grid-column: span 6;
+              align-items: baseline;
+              gap: .5em .3em }
+              .chord-spelling-intervals { grid-area: 1/2/span 1/span 4 }
+              .chord-spelling-pitches { grid-area: 2/2/span 1/span 4 }
+            .chord-controls { grid-column: span 7 }
+              .chord-interval-harmonic, .chord-pitches-harmonic,
+                .chord-interval-steps, .chord-pitches-steps,
+                .chord-spelling-intervals, .chord-spelling-pitches {
+                justify-self: right;
+                width: max-content }
+              :is(.chord-interval-harmonic, .chord-pitches-harmonic,
+                .chord-interval-steps, .chord-pitches-steps)::before { content: "[" }
+              :is(.chord-interval-harmonic, .chord-pitches-harmonic,
+                .chord-interval-steps, .chord-pitches-steps)::after { content: "]" }
+              .play-chord { cursor: pointer }
+              #chords:not(.cycling) .play-chord::before { content: "⏵" }
+              #chords.cycling .play-chord:not(.active)::before { content: "Play ⏵" }
+              #chords.cycling .play-chord.active::before { content: "Pause ⏸" }
+      #track-file {
+        display: flex;
+        flex-flow: row;
+        margin-bottom: .5em }
+        #track-file > :nth-last-child(n+2) { margin-right: .5em }
+        #track-name { flex: 1 }
+        #track-file:not(.saved) > :is(#track-savestate, #track-delete) { display: none }
+        #track-savestate.saving::before {
+          content: "...";
+          color: orange }
+        #track-savestate:not(.saving)::before {
+          content: "✓";
+          color: lawngreen }
+      #track-edit {
+        max-width: calc(100dvw - 1.5em);
+        height: 10em }
+      #insert-accidental {
+        display: none;
+        margin-top: .5em;
+        grid-template-columns: repeat(auto-fill, 3em);
+        text-align: center;
+        line-height: 3em;
+        gap: .5em;
+        justify-content: space-evenly }
+      #insert-accidental.activeSelect {
+        display: grid;
+        height: 6.5em;
+        overflow: scroll }
+        #insert-accidental > * {
+          display: inline-block;
+          background-color: #fff2;
+          border-radius: .5em;
+          cursor: pointer }
+  main {
+    touch-action: none;
+    background-color: #000;
+    overflow: hidden }
+    main.hover { cursor: pointer }
+    canvas {
+      transform: scale(.5);
+      transform-origin: 0 0;
+      /* mix-blend-mode: lighten; */
+      background-size: cover;
+      background-position-y: center;
+      pointer-events: none }
+  dialog { padding: 1em 0 }
+    .dialog-prompt { padding: 0 1em }
+    dialog > form { justify-content: space-evenly }
+    #reset-dialog button[data-action="Reset"] {
+      border-color: red;
+      border-radius: 4px }
+input[type="number"] { min-width: calc(var(--size) * .8rem) }
+.choice {
+  display: flex;
+  flex-flow: row;
+  gap: .5em }
+.choice input[type="radio"] { display: none }
+.choice > label {
+  display: block;
+  cursor: pointer }
+.choice > label:active {
+  background-color: #ddd;
+  color: #222 }
+.choice > label:has(input[type="radio"]:checked) { border-bottom: 1px solid }
+.switch {
+  position: relative;
+  display: inline-block;
+  height: calc(1em + 4px);
+  width: calc(2em + 4px);
+  border-radius: .7em;
+  background-color: #666;
+  vertical-align: bottom;
+  cursor: pointer }
+.switch:has(input:checked) { background-color: #ddd }
+  .switch input { display: none }
+  .slider {
+    position: absolute;
+    top: 0;
+    left: 0 }
+  .slider::before {
+    position: absolute;
+    content: "";
+    top: 2px;
+    left: 2px;
+    height: 1em;
+    width: 1em;
+    border-radius: 50%;
+    background-color: #222 }
+    input:checked + .slider::before { transform: translateX(1em) }
+.copyable { user-select: none }
+body.copying .copyable:hover:not([data-active]) {
+  border: 2px dashed #ddd8;
+  padding: 2px;
+  margin: -4px;
+  cursor: cell }
+  #drag-feedback {
+    position: absolute;
+    opacity: 50%;
+    z-index: 10 }
+.editable > * { display: none }
+.editable > span {
+  cursor: text;
+  padding: .2em;
+  line-height: 1.6em }
+.editable > span:empty::before {
+  color: #666;
+  content: "..." }
+.editable:not(.editing) > span,
+  .editable.editing > input { display: inline }
+.editable > input.invalid { outline: 1px solid red }
+#hourglass-template, .hourglass {
+  display: none;
+  fill: #ddd;
+  width: 2em }
+#hourglass text { font: 10px Netto }

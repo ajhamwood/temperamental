@@ -4,6 +4,8 @@ Make work in Chrome and Safari
 * User-editable wheel sensitivity => app settings menu?
 * Limit notes to frequencies between 10 and 40000 Hz; shade echo notes according to octave difference
 * Refactor keyboard data lifecycle
+* let -> const in main.js
+* Persist keys ln, ld => decomp + BigInt n, d
 Temperaments!
   * Copyable Key (changes key of keyboard)
   * Group otonal and utonal variants; How to classify chords of the same temperament?
@@ -33,6 +35,7 @@ Relabelling keys while playing: relative to lowest note, relative to chosen key
 Giving musical objects ungeneralisable proper names or symbols
 
 > Bugs
+* Enumerate chords based on tempered intervals
 * !! Save/load chords per edo, limit and comma
 * What triggers the 2/1 bug?
 * Keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1

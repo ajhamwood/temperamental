@@ -1,5 +1,5 @@
 // Utilities
-var $ = (() => { let wm = new WeakMap(), v = Object.values, r = Promise.resolve.bind(Promise),
+const $ = (() => { let wm = new WeakMap(), v = Object.values, r = Promise.resolve.bind(Promise),
   test = (obj, con) => obj.constructor === con || con.prototype.isPrototypeOf(obj),
   add = (k, t, p, fn, es = wm.get(k) ?? {}) => { remove(k, t, fn.name);
     k.addEventListener(t, (es[t] ??= {})[fn.name] = fn, ...([{"*": { passive: !p }, "#": { capture: !p }}[p]] ?? [])); wm.set(k, es) },
@@ -47,3 +47,4 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
   loadWc (tag, { constructor: c, ...methods }, attrs = []) { class El extends HTMLElement { static get observedAttributes () { return attrs }
     constructor(...args) { super(); this.attachShadow({mode: 'open'}).appendChild($('#' + tag).content.cloneNode(true)); c.apply(this, args) } };
     Object.assign(El.prototype, methods); customElements.define(tag, El) } }) })();
+export default $
