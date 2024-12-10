@@ -1,5 +1,10 @@
 import Common from "./common.js";
 
+// Finds multiplicative decompositions of rational numbers using a given set of divisors
+class HarmonicLattice {
+  constructor () {}
+}
+
 class IntervalSet {
   stepsBasis; edo; #rawMap // Map([ denominator, Map([ numerator, interval ]) ])
   constructor ({ stepsBasis, edo, intervalSet, intervalList = [] }) {
@@ -14,7 +19,8 @@ class IntervalSet {
     return (dMap.has(n) ? dMap : dMap.set(n, interval)).get(n)
   }
   addRatio (n, d) {
-    return this.add(new Interval({ intervalSet: this, n: Number(n), d: Number(d) }))
+    return this.add(new Interval({ intervalSet: this, n, d }))
+    // return this.add(new Interval({ intervalSet: this, n: Number(n), d: Number(d) }))
   }
   has (interval) {
     const { n, d } = interval;
@@ -45,13 +51,13 @@ class Interval {
     d = d / c;
     if (intervalSet.hasRatio(n, d)) return intervalSet.getRatio(n, d).withOctave(0); // TODO remove withOctave here
     this.#intervalSet = intervalSet;
-    this.n = Common.non2(n);
-    this.d = Common.non2(d);
+    this.n = n = Common.non2(n);
+    this.d = d = Common.non2(d);
     const
       isBig = typeof n === "bigint",
       log2 = isBig ? Common.bigLog2 : Math.log2,
       decomp = Common[isBig ? "decompBig" : "decomp"];
-    this.octave = Math.floor(log2(this.n) - log2(this.d));
+    this.octave = Math.floor(log2(n) - log2(d));
     const octave = this.octave = isBig ? BigInt(this.octave) : this.octave;
     this.octaveAdjust = octave;
     this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
@@ -85,4 +91,4 @@ class Interval {
   inverse () { return this.#intervalSet.addRatio(this.d, this.n) }
 }
 
-export { IntervalSet, Interval }
+export { HarmonicLattice, IntervalSet, Interval }

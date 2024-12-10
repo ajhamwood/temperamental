@@ -459,6 +459,19 @@ input[type="number"] { min-width: calc(var(--size) * .8rem) }
     border-radius: 50%;
     background-color: #222 }
     input:checked + .slider::before { transform: translateX(1em) }
+input[type="checkbox"].ternary {
+  appearance: none;
+  width: 1em;
+  height: 1em;
+  vertical-align: -.3em;
+  font-family: Ratafly;
+  cursor: pointer;
+  position: relative }
+input[type="checkbox"].ternary::before {
+  content: "☐";
+  position: absolute }
+input[type="checkbox"].ternary.active:checked::before { content: "☑" }
+input[type="checkbox"].ternary.active:not(:checked)::before { content: "☒" }
 .copyable { user-select: none }
 body.copying .copyable:hover:not([data-active]) {
   border: 2px dashed #ddd8;
