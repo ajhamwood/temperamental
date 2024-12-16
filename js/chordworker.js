@@ -1,13 +1,14 @@
 import Common from "./common.js";
-import { IntervalSet } from "./interval.js";
+import { HarmonicLattice, IntervalSet } from "./interval.js";
 
 class ChordWorker {
-  edo; stepsBasis; hdecomp; ivSet; properIvSet; batchSize
+  edo; stepsBasis; hdecomp; ivSet; properIvSet; lattice; batchSize
   constructor ({ edo, stepsBasis, hdecomp, intervalList, batchSize }) {
     const
-      ivSet = new IntervalSet({ edo, stepsBasis, intervalList }),
-      properIvSet = new IntervalSet({ edo, stepsBasis, intervalList });
-    Object.assign(this, { edo, stepsBasis, hdecomp, ivSet, properIvSet, batchSize })
+      ivSet = new IntervalSet({ intervalList }),
+      properIvSet = new IntervalSet({ intervalList }),
+      lattice = new HarmonicLattice({ harmsRaw: hdecomp.map(([h]) => h) });
+    Object.assign(this, { edo, stepsBasis, hdecomp, ivSet, properIvSet, lattice, batchSize })
   }
 
   #harmCombs = (dec, acc = [], cur = 0) => this.hdecomp
@@ -65,7 +66,7 @@ class ChordWorker {
 
   #partitionComma (iv, { octaves = 1 } = {}) {
     const
-      { edo, properIvSet } = this,
+      { edo, stepsBasis, properIvSet, lattice } = this, decomp = lattice.decomp.bind(lattice),
       [ nCombs, dCombs ] = iv.splitDecomp.map(side => side.length ?
         this.#harmCombs(new Map(side)).map(p => Common.group(p)) : [[]]);
     let acc = [];
@@ -74,8 +75,8 @@ class ChordWorker {
         const
           partIvs = partition.map(([n, d]) => properIvSet.getRatio(n, d).withOctave(0)),
           invIvs = partition.map(([d, n]) => properIvSet.getRatio(n, d).withOctave(0));
-        if (partIvs.reduce((a, iv) => a + iv.steps(), 0) === octaves * edo) acc.push(partIvs);
-        if (invIvs.reduce((a, iv) => a + iv.steps(), 0) === octaves * edo) acc.push(invIvs)
+        if (partIvs.reduce((a, iv) => a + Common.steps({ edo, stepsBasis, iv, decomp }), 0) === octaves * edo) acc.push(partIvs);
+        if (invIvs.reduce((a, iv) => a + Common.steps({ edo, stepsBasis, iv, decomp }), 0) === octaves * edo) acc.push(invIvs)
       }
     return acc
   }

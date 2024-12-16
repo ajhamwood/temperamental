@@ -283,23 +283,43 @@ body {
       #temperament-list {
         width: calc(var(--tp-width) - 1.5em - 4px);
         max-height: calc(var(--tp-height) - 2.2em) }
+        #harmonic-filter {
+          margin: -.5em -.5em 0;
+          padding: .5em }
+          .harmonic-checkbox {
+            display: inline-block;
+            padding-right: .5em }
         #commas {
           display: grid;
-          grid-template-columns: max-content;
+          grid-template-columns: repeat(2, max-content);
           overflow-y: scroll;
           max-width: inherit;
           padding: 1em;
-          margin: -.5em -.7em }
+          margin: 0 -.7em -.5em }
           #comma-info { line-height: 0 }
           .comma {
             line-height: 1.8em;
             cursor: pointer;
-            width: max-content }
+            width: max-content;
+            display: grid;
+            grid-template-columns: subgrid;
+            grid-column: span 2 }
           .comma:nth-child(2) { margin-top: -.8em }
           .comma:hover, .comma.active {
             border-bottom: 1px solid;
             margin-bottom: -1px;
             font-weight: bold }
+            .hcolour-diagram {
+              display: grid;
+              font-size: xx-small;
+              line-height: 0em;
+              align-items: center;
+              justify-items: center;
+              align-self: center;
+              height: 2em }
+          .filtered {
+            color: #666;
+            font-weight: normal !important }
           #computing-commas {
             min-height: 2em;
             min-width: inherit;

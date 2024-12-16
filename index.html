@@ -133,7 +133,9 @@
       <form>
         <fieldset id="temperament-list">
           <legend>Temperaments</legend>
-          <div id="harmonic-search"></div>
+          <div id="harmonic-filter">
+            <span>Filter harmonics:</span>
+          </div>
           <div id="commas">
             <div id="computing-commas">
               <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
@@ -255,9 +257,18 @@
   </template>
   <template id="comma">
     <div class="comma">
-      1 ≅ <span class="comma-ratio"></span> (<span class="numerator-decomp"></span>/<span class="denominator-decomp"></span>),
-        size <span class="comma-size"></span>¢, spelling C ≅ <span class="comma-spelling"></span>
+      <div class="hcolour-diagram">
+        <div class="hcolour-upper"></div>
+        <div class="hcolour-lower"></div>
+      </div>
+      <div>
+        1 ≅ <span class="comma-ratio"></span> (<span class="numerator-decomp"></span>/<span class="denominator-decomp"></span>),
+          size <span class="comma-size"></span>¢, spelling C ≅ <span class="comma-spelling"></span>
+      </div>
     </div>
+  </template>
+  <template id="hcolour-disc">
+    <span class="hcolour-disc">●</span>
   </template>
   <template id="chord">
     <div class="chord copyable" draggable="true">

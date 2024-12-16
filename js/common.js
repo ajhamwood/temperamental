@@ -50,12 +50,23 @@ class Common {
     return res
   })
 
+  static colourMix = (hc1, hc2, t) => {
+    if (![hc1, hc2].every(hc => hc.match(/#\p{Hex_Digit}{6}/ug))) return null;
+    const [r1, g1, b1] = hc1.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+    const [r2, g2, b2] = hc2.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
+    return "#" + [[r1, r2], [g1, g2], [b1, b2]].reduce((a, [l, r]) => a + Math.round(Common.lerp(l, r, t)).toString(16).padStart(2, "0"), "")
+  }
+
   static scaleVolume = value => value && 10 ** (2 * (value / 100 - 1))
   static ordinal = (() => {
     const rule = new Intl.PluralRules("en-AU", { type: "ordinal" }),
           suf = new Map([ ["one", "st"], ["two", "nd"], ["few", "rd"], ["other", "th"] ]);
     return n => `${n}${suf.get(rule.select(n))}`
   })()
+
+  static steps ({ edo, stepsBasis, iv, params = [], decomp }) {
+    return decomp(...iv.fraction)(...params).reduce((acc, [h, r]) => acc + stepsBasis.get(h) * r, edo * -Number(iv.octave))
+  }
 
   static noteFromFactors = (() => {  // Any way to generalise? Use u/e26c and u/e26d ?
     const degree = [["F", "IV", 4], ["C", "I", 1], ["G", "V", 5], ["D", "II", 2],
