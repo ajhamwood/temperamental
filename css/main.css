@@ -355,15 +355,17 @@ body {
           margin-top: 1em;
           max-width: inherit;
           overflow-x: scroll }
-        #chords:has(.hourglass:last-child)::before { content: "To display chords, select a temperament" }
-        #chords:not(.computing):has(.hourglass:last-child) { color: #666 }
-        #chords.computing::before {
+        #chord-list:not(.computing) > #chords:empty::before { content: "To display chords, select a temperament" }
+        #chord-list:not(.computing) > #chords:empty { color: #666 }
+        #chord-list.computing > #chords::before {
           line-height: 0;
           overflow: hidden }
-        #chords.computing > .hourglass {
+        #chord-list.computing .hourglass {
           display: inline;
-          margin-top: -2.3em;
+          height: 1.6em;
+          margin-top: -.3em;
           align-self: center }
+        #chord-list.computing .hourglass:nth-last-child(n+2) { margin-top: 0 }
           .chord {
             display: grid;
             width: fit-content;
@@ -371,11 +373,11 @@ body {
             .chord-intervals, .chord-pitches, .chord-spelling {
               grid-template-columns: subgrid;
               display: grid;
-              grid-column: span 6;
+              grid-column: span 7;
               align-items: baseline;
               gap: .5em .3em }
-              .chord-spelling-intervals { grid-area: 1/2/span 1/span 4 }
-              .chord-spelling-pitches { grid-area: 2/2/span 1/span 4 }
+              .chord-spelling-intervals { grid-area: 1/2/span 1/span 1 }
+              .chord-spelling-pitches { grid-area: 1/4/span 1/span 4 }
             .chord-controls { grid-column: span 7 }
               .chord-interval-harmonic, .chord-pitches-harmonic,
                 .chord-interval-steps, .chord-pitches-steps,

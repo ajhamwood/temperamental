@@ -1,5 +1,7 @@
 import Common from "./common.js";
 
+
+
 // Finds multiplicative decompositions of rational numbers using a given set of divisors
 class HarmonicLattice { // is commas on the lattice??
 
@@ -203,6 +205,8 @@ class HarmonicLattice { // is commas on the lattice??
   }
 }
 
+
+
 class Harmonic {
   // countingFn counts the number of this harmonic required to form the given product, in this lattice
   #lattice; order; isBasis; countingFn = null; decomp; primeDecomp
@@ -246,6 +250,8 @@ class Harmonic {
   }
 }
 
+
+
 class IntervalSet {
   #rawMap // Map([ denominator, Map([ numerator, interval ]) ])
   constructor ({ intervalSet, intervalList = [] } = {}) {
@@ -284,6 +290,8 @@ class IntervalSet {
   }
   * [ Symbol.iterator ] () { for (const s of this.#rawMap.values()) for (const iv of s.values()) yield iv }
 }
+
+
 
 class Interval {
   #intervalSet; #isBig; n; d; octave; fraction; decomp; noteSpelling
@@ -330,5 +338,7 @@ class Interval {
   }
   inverse () { return this.#intervalSet.addRatio(this.d, this.n) }
 }
+
+
 
 export { HarmonicLattice, Harmonic, IntervalSet, Interval }

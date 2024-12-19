@@ -10,7 +10,7 @@ Temperaments!
   * Copyable Key (changes key of keyboard)
   * Group otonal and utonal variants; How to classify chords of the same temperament?
   * Colour coding on temperaments?
-  * Order chords by adicity vs symmetry vs simplest internal interval
+  * Order chords by adicity vs symmetry vs simplest internal interval vs most complex internal interval (limit)
   * Gesture drag through chord inversions? Allow selection of pivot position other than the root
     => Setting a key for the keyboard and transposing note names through the key
   * Generate chords off the main thread; UI for moving a computation to a jobs list (Important!)
@@ -25,6 +25,7 @@ MenuState class
 Scales
   * Moment-of-symmetry (related to orientations); compute all orientations on edo change?
   * Compute motion between chords; Threshhold to include a scale?
+  * Non-EDO scales? Load/save scala files?
 
 > Would be nice
 Grid vertical origin dragger

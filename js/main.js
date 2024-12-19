@@ -4,6 +4,11 @@ import { HarmonicLattice, Harmonic, IntervalSet, Interval } from "./interval.js"
 
 
 
+// TODO Unify experience across Chrome and Safari (minimum)
+if (/Firefox/.exec(navigator.userAgent) === null) $("#browser-advice").showModal();
+
+
+
 // Harmonic mapping
 
 class HarmonicMapping {
@@ -14,7 +19,7 @@ class HarmonicMapping {
   nonHarmonics = new Set() // TODO: Cached blacklist
   lattice; decomp; intervalSet = new IntervalSet()
   stepsBasis
-  #temperaments = new Map(); #temperament
+  commasBounds = new Map(); #temperaments = new Map(); #temperament
 
   constructor ({ keyboard, scale, hmap }) { // Map([ odd, number ])
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Mapping error: must provide Keyboard object");
@@ -27,7 +32,7 @@ class HarmonicMapping {
 
     // Generate steps
     const stepsBasis = new Map(hmap);
-    for (let [h, steps] of hmap) stepsBasis.set(h, steps + edo * Math.floor(Math.log2(h)));
+    for (const [h, steps] of hmap) stepsBasis.set(h, steps + edo * Math.floor(Math.log2(h)));
     this.stepsBasis = stepsBasis;
 
     const harmsRaw = [ ...hmap.keys() ], lattice = this.lattice = new HarmonicLattice({ harmsRaw });
@@ -40,7 +45,7 @@ class HarmonicMapping {
 
     // Generate all intervals
     const withUnison = [1].concat(harmsRaw);
-    for (let n of withUnison) for (let d of withUnison) this.intervalSet.addRatio(n, d);
+    for (const n of withUnison) for (const d of withUnison) this.intervalSet.addRatio(n, d);
 
     this.decomp = lattice.decomp.bind(lattice);
     this.lattice.ready = true // TODO replace with promise resolver
@@ -88,7 +93,7 @@ class HarmonicMapping {
         for (const value of batch) yield value
       } while (!done);
       [ ar, ap, br, bp, cr, cp ].map(m => m.delete(i));
-      cr.get(i + 1)();
+      cr.get(i + 1)()
     };
     return { fresh, setup: async () => fresh({ retrieve: false, params: { upperBound } }).next() }
   }
@@ -108,7 +113,8 @@ class HarmonicMapping {
   set waitForCommaGen (_) { return false }
 
   // Chords (in worker)
-  #chordsworker
+  // TODO: dynamically split large basicStack jobs across finished workers (use priority)
+  #chordsworkers = new Map()
   async #chords (iv) {
     const
       existing = this.#temperaments.get(iv), self = this,
@@ -122,60 +128,121 @@ class HarmonicMapping {
         throw new Error("Mapping error: comma to temper must be within error bounds");
       const
         { stepsBasis } = this, { edo } = this.#keyboard, { limit } = this.#scale,
-        hdecomp = [ ...this.lattice.harmonicList ].map(([ n, { primeDecomp } ]) => [ n, primeDecomp ]),
         { properIntervalSet } = this.lattice, intervalList = [ ...properIntervalSet ].map(iv => iv.withOctave(0).fraction),
-        worker = this.#chordsworker = new Worker("js/chordworker.js", { type: "module" }), self = this;
+        coreCount = navigator.hardwareConcurrency, workers = this.#chordsworkers, freeWorkers = Array(coreCount - 1).fill(0).map((_, i) => i);
 
-      let id = 0, ar = new Map(), ap = new Map(), // Resolve data
+      let ar = new Map(), ap = new Map(), // Resolve data
           br = new Map(), bp = new Map(), // Wait for yields
-          sr, sp = new Promise(r => sr = r); // Setup callback
-      $.targets({ async message ({ data }) {
-        const { enharmsRaw, i } = data;
-        if (enharmsRaw !== undefined) return sr(enharmsRaw); // TODO save enharms with comma?
-        await bp.get(i).shift();
-        ar.get(i).shift()(data);
-        ap.get(i).push(new Promise(res => ar.get(i).push(res)));
-        bp.get(i).push(new Promise(res => br.get(i).push(res)));
-      } }, worker);
+          cr = new Map(), cp = new Map(), // Concatenate streams
+          id = 0, yieldQueue = new Map(); // Map([ job -> ord ])
 
-      worker.postMessage({ params: { edo, stepsBasis, hdecomp, intervalList, comma, batchSize } });
-
+      const stackJobs = new Map();
+      cp.set(0, new Promise(res => cr.set(0, res)));
+      cr.get(0)();
       return {
         setup: async () => {
           const
-            enharmsRaw = await sp,
-            enharms = new Map(enharmsRaw.map(ivp => ivp.map(([n, d]) => properIntervalSet.getRatio(n, d)))),
-            temperament = new Temperament({ keyboard: self.#keyboard, mapping: self, comma: iv, intervalSet: properIntervalSet, chords: [], enharms });
-
+            temperament = new Temperament({ keyboard: self.#keyboard, mapping: self, comma: iv, intervalSet: properIntervalSet }),
+            { hdecomp, basicStacks } = temperament;
           self.#temperaments.set(iv, temperament);
           self.temperament = comma;
+
+          const
+            ivOrder = (a, b) => {
+              const [ an, ad ] = a.fraction, [ bn, bd ] = b.fraction;
+              return an * bd > ad * bn
+            },
+            harms = [1].concat(hdecomp.map(([h]) => h)
+              .filter(h => Common.gcd(h, iv.n) > 1 || Common.gcd(h, iv.d) > 1)
+              .sort((a, b) => Math.log2(a) % 1 < Math.log2(b) % 1)),
+            taggedStacks = basicStacks.map(bstack => bstack.reduce((acc, iv) => {
+              const
+                ni = harms.indexOf(iv.n), di = harms.indexOf(iv.d),
+                divs = ni > di ?
+                  harms.slice(ni + 1).concat(harms.toSpliced(di)) :
+                  harms.slice(ni + 1, di),
+                ivPartitions = divs.reduce((acc, h) => acc.map(basePart => {
+                  const [ n, d ] = basePart.at(-1);
+                  return [ basePart, basePart.toSpliced(-1).concat([ [n, h], [h, d] ]) ]
+                }).flat(), [[ iv.fraction ]])
+                .map(ivs => ivs.map(([n, d]) => properIntervalSet.getRatio(n, d).withOctave(0)));
+              return acc.map(([pch]) => ivPartitions.map(ivpart => [ pch.concat(ivpart), bstack ])).flat()
+            }, [[ [], bstack ]])).flat()
+              .reduce((acc, [ ivs, bstack ]) => {
+                ivs.sort((a, b) => ivOrder(b, a)); // Ascending order
+                let low = 0, high = acc.length;
+                while (low < high) {
+                  const mid = (low + high) >>> 1, checkIvs = acc[mid][0];
+                  if (checkIvs.length < ivs.length || (checkIvs.length === ivs.length &&
+                    checkIvs.reduce((b, iv, i) => {
+                      if (b !== null) return b;
+                      const [ an, ad ] = iv.fraction, [ bn, bd ] = ivs[i].fraction, l = an * bd, r =  ad * bn;
+                      return l < r ? true : l > r ? false : null
+                    }, null))) low = mid + 1;  // Lex order
+                  else high = mid
+                }
+                if (acc[low]?.[0].every((iv, i) => iv === ivs[i])) return acc;
+                return acc.toSpliced(low, 0, [ ivs, bstack ])
+              }, []);
+          Common.group(taggedStacks, ([, a], [, b]) => a.length === b.length && a.every((v, i) => v === b[i]))
+            .forEach(job => stackJobs.set(job[0][1], job.map(([v]) => v)));
+
+          for (let identifier = 0; identifier < coreCount - 1; identifier++) {
+            const worker = new Worker("js/chordworker.js", { type: "module" })
+            workers.set(identifier, worker);
+            worker.postMessage({ params: { identifier, edo, stepsBasis, hdecomp, intervalList, comma, batchSize } });
+            $.targets({ async message ({ data }) { // TODO call as named function?
+              const { i } = data, ord = yieldQueue.has(i) ? yieldQueue.get(i) : (yieldQueue.set(i, id), id++);
+              await bp.get(ord).shift();
+              ar.get(ord).shift()(data);
+              ap.get(ord).push(new Promise(res => ar.get(ord).push(res)));
+              bp.get(ord).push(new Promise(res => br.get(ord).push(res)));
+            } }, worker);
+          }
         },
         fresh: async function * ({ retrieve, params }) {
-          const i = id++, { upperBoundCb } = params;
-          let batch = [], done;
-          ap.set(i, [ new Promise(res => ar.set(i, [ res ])) ]);
-          bp.set(i, [ new Promise(res => br.set(i, [ res ])) ]);
-          self.#chordsworker.postMessage({ upperBound: upperBoundCb(), retrieve, i }); // initialStack value?
-          do {
-            br.get(i).shift()();
-            ({ batch, done } = await ap.get(i).shift());
-            for (const { internalIntervalsRaw, ord } of batch) yield { edo, limit, ln, ld, internalIntervalsRaw, ord }
-          } while (!done);
+          const { upperBound } = params, jobKeys = [ ...stackJobs.keys() ];
+          (async () => {
+            for (let i = 0; i < jobKeys.length; i++) {
+              cp.set(i + 1, new Promise(res => cr.set(i + 1, res)));
+              const lowerIndex = Math.max(0, i - coreCount + 2);
+              await cp.get(lowerIndex);
+              ap.set(i, [ new Promise(res => ar.set(i, [ res ])) ]);
+              bp.set(i, [ new Promise(res => br.set(i, [ res ])) ]);
+              const
+                wid = freeWorkers.shift(),
+                stacks = stackJobs.get(jobKeys[i]).map(ivs => ivs.map(iv => iv.fraction));
+              self.#chordsworkers.get(wid).postMessage({ stacks, retrieve, upperBound, i });
+            }
+          })();
+          let batch, done, identifier, i;
+          for (let ord = 0; ord < jobKeys.length; ord++) {
+            await cp.get(ord);
+            do {
+              br.get(ord).shift()();
+              ({ batch, done, identifier, i } = await ap.get(ord).shift());
+              for (const { internalIntervalsRaw, ord } of batch) yield { edo, limit, ln, ld, internalIntervalsRaw, ord, done, i }
+            } while (!done);
+            [ ar, ap, br, bp ].map(m => m.delete(ord));
+            freeWorkers.push(identifier);
+            cr.get(ord + 1)();
+          }
         }
       }
     }
   }
   #chordGen
-  async * takeChords (upperBoundCb) { yield * await this.#chordGen({ upperBoundCb }) }
+  async * takeChords (upperBound) { yield * await this.#chordGen({ upperBound }) }
   async resetChords (iv) {
     const
       { edo } = this.#keyboard, { limit } = this.#scale,
       comma = iv.fraction, ln = Common.bigLog2(comma[0]), ld = Common.bigLog2(comma[1]);
-    this.#chordsworker?.terminate();
+    this.#chordsworkers.forEach(w => w.terminate());
+    this.#chordsworkers = new Map();
     this.#chordGen = Common.cacheAside({
       cacheGen: app.storage.yieldChords({ edo, limit, ln, ld }),
       ...await this.#chords(iv)
-    })  // BUG computes #chords every time
+    })
   }
 
   get temperaments () { return this.#temperaments }
@@ -199,17 +266,95 @@ class HarmonicMapping {
 // Temperaments
 
 class Temperament {
-  #keyboard; #mapping; comma; #intervalSet; #temperedIntervalSet = new Map(); enharms; #chords
-  constructor ({ keyboard, mapping, comma, intervalSet, chords, enharms }) {
+
+  #harmCombs = (dec, acc = [], cur = 0) => this.hdecomp
+    .reduce((ar, [ n, primeDecomp ], i) => {
+      if (cur > i) return ar;
+      const
+        newDec = primeDecomp.reduce((a, [ p, prad ]) => {
+          if (a === null) return null;
+          const rad = a.get(p);
+          return rad >= prad ? rad === prad ? (a.delete(p), a) : a.set(p, rad - prad) : null
+        }, new Map(dec));
+      return newDec === null ? ar : ar.concat([[n, newDec, i]])
+    }, [])
+    .reduce((ar, [n, newDec, cur]) => ar.concat(newDec.size === 0 ?
+      [ acc.concat([n]) ] : this.#harmCombs(newDec, acc.concat([n]), cur)), [])
+
+  #enumStacks (ots, uts) {
+    let flag = ots.flat().length > uts.flat().length;
+    if (flag) ([ots, uts] = [uts, ots]);  // ots lesser than uts
+    return ots.reduce((a, oharm) =>
+      oharm.reduce((b, h, i) => 
+        b.concat(a.map(([o, ivs]) => [
+          i === oharm.length - 1 ? o : o.concat([ oharm.toSpliced(oharm.length - 1 - i) ]),
+          ivs.concat(oharm.toSpliced(i + 1).map(h => [h, 1]))
+        ])), a.map(([o, ivs]) => [ o.concat([oharm]), ivs ])),
+      [[[], []]])
+      .reduce((a, [o, ivs]) =>
+        a.concat(o.reduce((b, oharm) => 
+          b.reduce((c, [puts, pivs]) =>
+            c.concat(puts.reduce((d, puharm, i) =>
+              d.reduce((e, [pputs, ppivs, poharm]) => {
+                const min = Math.max(0, poharm.length - pputs.slice(i + 1).flat().length)
+                return e.concat(
+                  poharm.slice(min, puharm.length)
+                    .map((oh, k) => [
+                      pputs.with(i, puharm.slice(min + k)),
+                      ppivs.concat(Array(min + k).fill([oh, puharm[0]])),
+                      poharm.slice(min + k)
+                    ])
+                    .concat([[
+                      pputs.with(i, puharm.slice(poharm.length)),
+                      ppivs.concat(poharm.toSpliced(puharm.length).fill([poharm[0], puharm[0]])),
+                      poharm.slice(puharm.length)
+                    ]])
+                )
+              }, []),
+              [[puts, pivs, oharm]])),
+            []),
+          [[uts, ivs]])),
+        [])
+      .map(([puts, pivs]) => flag ?
+        pivs.map(([u, o]) => [o, u]).concat(puts.flat().map(h => [h, 1])):
+        pivs.concat(puts.flat().map(h => [1, h])))
+  }
+
+  #partitionComma ({ octaves = 1 } = {}) {
+    const
+      { comma: iv } = this, { edo } = this.#keyboard, { stepsBasis, lattice } = this.#mapping,
+      { properIntervalSet } = lattice, decomp = lattice.decomp.bind(lattice),
+      [ nCombs, dCombs ] = iv.splitDecomp.map(side => side.length ?
+        this.#harmCombs(new Map(side)).map(p => Common.group(p)) : [[]]),
+      acc = [];
+    for (let otones of nCombs) for (let utones of dCombs)
+      for (let partition of this.#enumStacks(otones, utones)) {
+        const
+          partIvs = partition.map(([n, d]) => properIntervalSet.getRatio(n, d).withOctave(0)),
+          invIvs = partition.map(([d, n]) => properIntervalSet.getRatio(n, d).withOctave(0));
+        if (partIvs.reduce((a, iv) => a + Common.steps({ edo, stepsBasis, iv, decomp }), 0) === octaves * edo) acc.push(partIvs);
+        if (invIvs.reduce((a, iv) => a + Common.steps({ edo, stepsBasis, iv, decomp }), 0) === octaves * edo) acc.push(invIvs)
+      }
+    return acc
+  }
+
+  #keyboard; #mapping; comma; #intervalSet; #temperedIntervalSet = new Map()
+  basicStacks; enharms; #chords = []
+  constructor ({ keyboard, mapping, comma, intervalSet }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Temperament error: must provide Keyboard object");
     if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Temperament error: must provide HarmonicMapping object");
     this.#keyboard = keyboard;
     this.#mapping = mapping;
     this.#intervalSet = intervalSet;
     this.comma = comma;
-    this.enharms = enharms;
-    for (let iv of intervalSet) this.addInterval(iv);
-    this.#chords = chords; // Map by intervals?
+
+    this.hdecomp = [ ...mapping.lattice.harmonicList ].map(([ n, { primeDecomp } ]) => [ n, primeDecomp ]);
+    const { true: pairs = [], false: basicStacks } = Common.groupBy(this.#partitionComma(), ivs => ivs.length === 2);
+    this.basicStacks = basicStacks;
+    this.enharms = pairs.reduce((m, [a, b]) => a === b ?  // Could be a map
+      m.set(a, a.inverse()) : m.set(a, b.inverse()).set(b, a.inverse()), new Map());
+    
+    for (const iv of intervalSet) this.addInterval(iv);
   }
   addInterval (iv) {
     this.#intervalSet.add(iv);
@@ -232,7 +377,7 @@ class Temperament {
   getTemperedInterval (n, d) { return this.#temperedIntervalSet.get(this.#intervalSet.getRatio(n, d)) }
   getChordByIntervals (ivs) { // TODO make interval using method
     ivs = ivs.map(([n, d]) => new Interval({ intervalSet: this.#intervalSet, n, d }));
-    for (let chord of this.chords) {
+    for (const chord of this.chords) {
       const civs = chord.intervals, m = ivs.length;
       if (m !== civs.length) continue;
       const i = civs.findIndex((_, j) => ivs.every((iv, k) => iv === civs[(j + k) % m]));
@@ -439,7 +584,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   coordToRank (g, h) { return Common.mod(this.coordToSteps(g, h), this.#keyboard.edo) }
   coordToOctave (g, h) { return Math.floor(this.coordToSteps(g, h) / this.#keyboard.edo) }
 
-  * [Symbol.iterator] () { for (let row of this.#hexes.values()) for (let hex of row.values()) yield hex }
+  * [Symbol.iterator] () { for (const row of this.#hexes.values()) for (const hex of row.values()) yield hex }
 
   addToActiveClass(name, hex, id) {
     const activeClasses = this.#activeClasses, activeHexes = activeClasses.get(name) ?? new Map();
@@ -540,7 +685,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     });
 
     // Notes
-    for (let hex of this) if (!hex.isGhost) {
+    for (const hex of this) if (!hex.isGhost) {
       const { octave, rank } = hex, note = this.#keyboard.scale.addNote({ octave, rank });
       if (octave === 0) note.key.home = hex
     }
@@ -550,9 +695,9 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     let viewEdges = new Set([ ...this.#edges ]);
     while (viewEdges.size > 0) {
       let newViewEdges = new Map(), removeViewEdges = new Set(), newNotes = new Set();
-      for (let hex of viewEdges) {
+      for (const hex of viewEdges) {
         let remove = true;
-        for (let [g, h] of hex.neighbours()) {
+        for (const [g, h] of hex.neighbours()) {
           const thisHex = this.getHex(g, h);
           if (thisHex) { if (viewEdges.has(thisHex)) removeViewEdges.add(thisHex) }
           else if (candidate(g, h)) {
@@ -564,7 +709,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         if (remove) this.#edges.delete(hex)
       }
       filter([ ...(function * () {
-        for (let [g, s] of newViewEdges) for (let h of s) yield [g, h]
+        for (const [g, s] of newViewEdges) for (const h of s) yield [g, h]
       })() ]).forEach(([g, h]) => {
         const nextHex = this.#newHex(g, h, isGhost(g, h));
         this.#edges.add(nextHex);
@@ -609,7 +754,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     let i = edo - 1, full, prev, k = 0, result = Array(edo).fill(), prevResult,
         { properIntervals: ivset } = mapping, prevIvset;
     result[0] = [[[], []]];
-    for (let basis of bases) {
+    for (const basis of bases) {
       const [ pn, pd ] = basis.fraction.map(Common.non2), pstep = mapping.steps(basis);
       prevIvset = new IntervalSet({ intervalSet: ivset });
       full = i;
@@ -618,7 +763,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         full = null;
         prev = i;
         prevResult = structuredClone(result);
-        for (let iv of prevIvset) {
+        for (const iv of prevIvset) {
           const [ n, d ] = iv.fraction.map(Common.non2), step = mapping.steps(iv);
           let s = Common.mod(step + k * pstep, edo);
           if (prevResult[s] === undefined && mapping.decomp(n * pn ** k, d * pd ** k)()) {
@@ -638,9 +783,9 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       if (i <= 0) break;
       k = 1
     }
-    for (let iv of ivset) mapping.intervalSet.add(iv);
-    for (let key of scale) key.hexes.clear();
-    for (let hex of this) {
+    for (const iv of ivset) mapping.intervalSet.add(iv);
+    for (const key of scale) key.hexes.clear();
+    for (const hex of this) {
       const
         { octave, rank } = hex, labels = [],
         scaleKey = scale.getKey(rank),
@@ -666,7 +811,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.classifyKeys(force);
     gridctx.fillStyle = "#000000";
     gridctx.fillRect(0, 0, width, height);
-    for (let hex of this) hex.colour();  // Redraw by local hexes?
+    for (const hex of this) hex.colour();  // Redraw by local hexes?
     canvas.toBlob(blob => {
       const url = URL.createObjectURL(new Blob([blob]));
       canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache ?? url}')`;
@@ -750,7 +895,7 @@ class HexButton {
       drawHex = c => {
         ctx.beginPath();
         ctx.moveTo(...vertices[5]);
-        for (let [ x, y ] of vertices) ctx.lineTo(x, y);
+        for (const [ x, y ] of vertices) ctx.lineTo(x, y);
         ctx.strokeStyle = isGhost ? c : "#dddddd";
         ctx.fillStyle = isGhost ? "#00000000" : c;
         ctx.lineWidth = isGhost ? 6 : 1;
@@ -1251,7 +1396,7 @@ class Scale {
 
     for (let i = 0; i < edo; i++) this.#keys.set(i, new Key({ keyboard, scale: this, rank: i }))
   }
-  * [ Symbol.iterator ] () { for (let s of this.#keys.values()) yield s }
+  * [ Symbol.iterator ] () { for (const s of this.#keys.values()) yield s }
   #genRawHMap ({ edo, limit, maxError }) {
     let hmap = new Map();
     for (let i = 3; i <= limit; i += 2) {
@@ -1480,6 +1625,8 @@ $.targets({
     app.keyboard.hexGrid.redraw(true)
   } } },
 
+  blur () { $("body").classList.remove("copying") },
+
   "touchstart mousedown" () {
     if (this.audioctx) return;
     const audioctx = app.audioctx = new AudioContext(), masterVolume = app.masterVolume = audioctx.createGain();
@@ -1505,7 +1652,7 @@ $.targets({
     const nav = $("nav");
     if (e.type === "touchstart" && document.activeElement === nav && !e.composedPath().includes(nav)) nav.blur();
     const canvas = $("canvas");
-    if (e.target === $("main")) for (let { clientX, clientY, identifier } of e.changedTouches) {
+    if (e.target === $("main")) for (const { clientX, clientY, identifier } of e.changedTouches) {
       const
         x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop,
         { keyboard } = app, { hexGrid } = keyboard;
@@ -1946,7 +2093,7 @@ $.targets({
         scale = new Scale({ keyboard, limit, maxError, refNote, freqBasis }), { mapping } = scale,
         { rawHarmonicList, lattice, intervalSet } = mapping, { harmonicList, primes, indexPrimes } = lattice;
 
-      for (let [ harmonic, steps ] of rawHarmonicList) {
+      for (const [ harmonic, steps ] of rawHarmonicList) {
         const
           dec = Common.decomp(harmonic)[0],
           primeHarmonic = [ ...dec ][0][0],
@@ -2193,8 +2340,8 @@ $.targets({
       let boundN, hasFresh, upperBound = parseInt(commasEl.dataset.upperBound), prevn, prevd;
 
       const temperamentsLi = $("#temperaments"); // TODO flesh out
-      for (const h of lattice.primes)
-        temperamentsLi.style.setProperty(`--hcolour-${h}`, Common.colourMix(Keyboard.noteColours[h === 3 ? "white" : h], Keyboard.noteColours.black, .5));
+      for (const h of lattice.primes) temperamentsLi.style.setProperty(`--hcolour-${h}`,
+        Common.colourMix(Keyboard.noteColours[h === 3 ? "white" : h] ?? Keyboard.noteColours.default, Keyboard.noteColours.black, .5));
 
       if ($.all("#harmonic-filter > .harmonic-checkbox").length === 0) {
         for (const h of lattice.harmonicList.keys()) {
@@ -2213,7 +2360,7 @@ $.targets({
 
       await mapping.waitForCommaGen;
       const newCommas = [];
-      for await (const { source, value: { n, d, ln, ld } } of mapping.takeCommas(upperBound)) {
+      for await (const { source, value: { n, d, ln, ld, upperBound: chordBound } } of mapping.takeCommas(upperBound)) {
         if (n === prevn && d === prevd) continue;
         prevn = n; prevd = d;
         if (source === "worker") boundN = n;
@@ -2221,8 +2368,8 @@ $.targets({
         if (Common.mod(mapping.steps(iv), edo) === 0) {
           hasFresh = true;
           // debounce and batch? move into class?
-          if (source === "worker")
-            await storage.saveComma({ edo, limit, n, d, ln, ld });
+          if (source === "worker") await storage.saveComma({ edo, limit, n, d, ln, ld });
+          else if (chordBound) mapping.commasBounds.set(iv, chordBound);
           const
             commaEl = $.load("comma", "", commasEl)[0][0],
             [ diagramDiv, commaDataDiv ] = commaEl.children,
@@ -2258,14 +2405,11 @@ $.targets({
           .map(el => parseInt(el.parentElement.dataset.harmonic)),
         reqs = filterEls.filter(el => el.classList.contains("active") && el.checked)
           .map(el => parseInt(el.parentElement.dataset.harmonic)),
-        filterLattice = new HarmonicLattice({ harmsRaw });
-      const blockedCommaSet = new Map();
+        filterLattice = new HarmonicLattice({ harmsRaw }), blockedCommaSet = new Map();
       for (const el of (newCommas ?? $.all("#commas > .comma"))) {
         const [ n, d ] = el.dataset.comma.split(",");
         for (const h of [null].concat(reqs)) {
-          const
-            index = filterLattice.index.map(c => c === h ? 1 : 0),
-            dec = filterLattice.decomp(n, d)?.() ?? null;
+          const dec = filterLattice.decomp(n, d)?.() ?? null;
           if (dec === null || (h !== null && !~dec.findIndex(([c]) => c === h)))
             blockedCommaSet.set(n, (blockedCommaSet.get(n) ?? new Set()).add(d))
         }
@@ -2279,31 +2423,41 @@ $.targets({
       commaEl.classList.add("active");
       $.all(".chord").forEach(el => el.remove());
       const
-        [ n, d ] = commaEl.dataset.comma.split(",").map(x => parseInt(x)),
-        ln = Common.bigLog2(n), ld = Common.bigLog2(d),
-        { keyboard, storage } = this, { scale, edo } = keyboard, { mapping, limit } = scale,
-        tempsEl = $("#temperaments"), chordsEl = $("#chords"),
+        [ n, d ] = commaEl.dataset.comma.split(",").map(x => parseInt(x)),  // BUG: Big
+        ln = Math.log2(n), ld = Math.log2(d),
+        { keyboard, storage } = this, { edo, scale } = keyboard, { limit, mapping } = scale,
+        tempsEl = $("#temperaments"), chordsFieldsetEl = $("#chord-list"), chordsEl = $("#chords"),
         [ ratioSpan, numSpan, denSpan ] = commaEl.children[1].children;
       $("#comma-info").innerHTML = `${ratioSpan.innerHTML} (${numSpan.innerHTML}/${denSpan.innerHTML})`;
 
       await new Promise(requestAnimationFrame);
       tempsEl.scrollTo(0, 32767);
-      chordsEl.classList.add("computing");
+      chordsFieldsetEl.classList.add("computing");
       await new Promise(requestAnimationFrame);
       
-      await mapping.resetChords(mapping.intervalSet.addRatio(n, d));
-      let upperBound = [];
-      for await (const { source, value: chordRaw } of mapping.takeChords(() => upperBound)) {
-        chordsEl.classList.remove("computing");
-        if (source === "worker") await storage.saveChord(chordRaw);
-        if (Common.LTE(upperBound, chordRaw.ord)) upperBound = chordRaw.ord;
-        delete chordRaw.ord;
-        chordRaw.internalIntervalsRaw.forEach(ivs => ivs.unshift([1, 1]));
+      const iv = mapping.intervalSet.addRatio(n, d);
+      await mapping.resetChords(iv);
+      let cursor = 0, upperBound = mapping.commasBounds.get(iv) ?? new Map();
+      for await (const { source, value } of mapping.takeChords(upperBound)) {
+        const { done, i, ...ordChordRaw } = value;
+        if (source === "worker") {
+          await storage.saveChord(ordChordRaw);
+          upperBound.set(i, done ? null : ordChordRaw.ord);
+          await storage.saveComma({ edo, limit, n, d, ln, ld, upperBound });
+        }
+        ordChordRaw.internalIntervalsRaw.forEach(ivs => ivs.unshift([1, 1]));
+        const { ord, ...chordRaw } = ordChordRaw;
         await mapping.waitForTemperament;
         const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
         mapping.temperament.addChord(chord);
         const chordEl = $.load("chord", "#chords")[0][0], chordIvsEl = $(".chord-intervals", chordEl);
         chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction));
+        chordEl.dataset.ord = JSON.stringify(ord);
+        const chordEls = $.all(".chord", chordsEl);
+        const ix = chordEls.slice(cursor + 1).findIndex(el => Common.LTE(ord, JSON.parse(el.dataset.ord ?? "[]")));
+        cursor = ix === -1 ? chordEls.length - 1 : cursor + ix;
+        chordEls[cursor].insertAdjacentElement("afterend", chordEl) ?? chordsEl.append(chordEl);
+        if (done) cursor = 0;
 
         app.emit("display-chord", chord, chordEl);
         $.queries({
@@ -2350,7 +2504,7 @@ $.targets({
           }
         }, chordEl)
       }
-      chordsEl.classList.remove("computing");
+      chordsFieldsetEl.classList.remove("computing");
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
     },
 

@@ -149,13 +149,12 @@
           <div class="chord-settings">
             <div>Cycle inversions <label class="switch"><input type="checkbox"><span class="slider"></span></label></div>
             <div>Comma: <span id="comma-info"></span></div>
-          </div>
-          <div class="heading-border"></div>
-          <div id="chords">
             <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
               <use href="#hourglass"></use>
             </svg>
           </div>
+          <div class="heading-border"></div>
+          <div id="chords"></div>
         </fieldset>
       </form>
     </li>
@@ -200,6 +199,9 @@
   <main>
     <canvas id="hex"></canvas>
   </main>
+  <dialog id="browser-advice">
+    <div class="dialog-prompt">Temperamental is currently under active development, and as such for now is only available for viewing in Firefox Desktop or Firefox Mobile.</div>
+  </dialog>
   <dialog id="delete-keyboard-dialog">
     <div class="dialog-prompt">Delete keyboard "<span id="delete-keyboard-name"></span>"?</div>
     <form method="dialog">
