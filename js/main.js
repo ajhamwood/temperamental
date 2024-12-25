@@ -101,7 +101,7 @@ class Listeners {
 const
   app = self.app = new $.Machine({
   // Global
-    version: "0.0.6",
+    version: "0.0.7",
     storage: null,
     globalBatchSize: 10,
 
@@ -145,12 +145,21 @@ $.targets({
 
   blur () { $("body").classList.remove("copying") },
 
-  "touchstart mousedown" () {
-    if (this.audioctx) return;
+  async pointerdown (e) {
+    if (e.pointerType !== "mouse") {
+      const name = crypto.randomUUID();
+      await $.pipe("userActivate", () => new Promise(r => $.targets({
+        pointerup: ({ [name] () {
+          $.targets({ pointerup: name }, self);
+          r()
+        } })[name]
+      }, self))).then(() => $.pipe("userActivate"))
+    }
+    $.targets({ pointerdown: "pointerdown" }, self);
+    Keyboard.userActivate();
     const audioctx = app.audioctx = new AudioContext(), masterVolume = app.masterVolume = audioctx.createGain();
     masterVolume.connect(audioctx.destination);
     masterVolume.gain.value = Common.scaleVolume($("#volume > input").valueAsNumber);
-    $.targets({ "touchstart mousedown": "touchstart mousedown" }, self);
   },
 
   resize () {
@@ -369,7 +378,6 @@ $.targets({
     press (x, y, type, action, id) {
       id = type + "-" + id;
       const { keyboard } = this, coord = keyboard.hexGrid.getCoord(x, y), [ g, h ] = coord;
-      let hex, note;
       switch (action) {
         case "start": keyboard.play(g, h, id); break;
         case "move":
@@ -414,7 +422,6 @@ $.targets({
         text = JSON.stringify(data)
       }
       let
-        itemEl,
         data = {
           start: function (id) {
             this.classList.add("active");
@@ -442,7 +449,7 @@ $.targets({
           if (chord) data.item = chord;
           else { // TODO need to check getChordByIntervals
             data.item = this.keyboard.scale.mapping.temperament
-              .getChordByIntervals(JSON.parse($(".chord-intervals", node).dataset.intervals));
+              .getChordByIntervals(JSON.parse($(".chord-intervals", node).dataset.intervals).map(v => v.map(BigInt)));
             chord = data.item;
             text = JSON.stringify({ type, data: JSON.parse(chord.toString()) })
           }
@@ -711,7 +718,7 @@ $.targets({
           [ lowerInterval, lowerNote, lowerWidth, lowerButton ] = $.all(":scope > *", lowerCell),
           upperIv = intervalSet.getRatio(temperings[h - i + j][0], temperings[j - 1]?.[0] ?? 1).withOctave(0),
           lowerIv = intervalSet.getRatio(temperings[j - 1]?.[0] ?? 1, temperings[h - i + j][0]).withOctave(0),
-          [nUp, dUp] = upperIv.fraction, [nLo, dLo] = lowerIv.fraction;
+          [nUp, dUp] = upperIv.fraction.map(Number), [nLo, dLo] = lowerIv.fraction.map(Number);
         upperCell.style.gridArea = `${i}/${h - i + 2 + 2 * j}/span 1/span 2`;
         lowerCell.style.gridArea = `${2 * h + 2 - i}/${h - i + 2 + 2 * j}/span 1/span 2`;
         upperInterval.innerHTML = `<sup>${nUp}</sup>⁄<sub>${dUp}</sub>`;
@@ -756,7 +763,7 @@ $.targets({
       $.all(".column-head:last-of-type, .row-head:last-of-type")
       for (let steps = 0; steps < edo; steps++) scale.getKey(steps).labels
         .forEach(({ interval: iv, number, keyClass }) => {
-          const
+          const // TODO removable?
             [ n, d ] = iv.map(side => side.reduce(([big, log], [p, rad]) =>
               [big * BigInt(p) ** BigInt(rad), log + Math.log2(p) * rad], [1n, 0]))
               .reduce(([bn, ln], [bd, ld]) => {
@@ -809,7 +816,7 @@ $.targets({
               .forEach(el => el.parentElement.classList.add("activeEnharmonic"));
             if (this.closest("#interval-table")) {
               const
-                [n, d] = this.parentElement.dataset.interval.split("/").map(v => Common.non2(parseInt(v))),
+                [n, d] = this.parentElement.dataset.interval.split("/").map(v => Common.non2(BigInt(v))),
                 key = keyboard.scale.getKey(steps),
                 enhi = key.labels.findIndex(({ interval: iv }) => Common.comp(iv[0]) === n && Common.comp(iv[1]) === d);
               ~enhi && (key.label = enhi);
@@ -878,38 +885,40 @@ $.targets({
 
       await mapping.waitForCommaGen;
       const newCommas = [];
-      for await (const { source, value: { n, d, ln, ld, upperBound: chordBound } } of mapping.takeCommas(upperBound)) {
+      for await (const { source, value: { n, d, nd, dd, upperBound: chordBound } } of mapping.takeCommas(upperBound)) {
         if (n === prevn && d === prevd) continue;
         prevn = n; prevd = d;
         if (source === "worker") boundN = n;
-        const iv = mapping.intervalSet.addRatio(n, d); // better version?
+        const iv = mapping.commas.addRatio(n, d); // better version?
         if (Common.mod(mapping.steps(iv), edo) === 0) {
+          mapping.commas.addRatio(n, d);
           hasFresh = true;
           // debounce and batch? move into class?
-          if (source === "worker") await storage.saveComma({ edo, limit, n, d, ln, ld });
+          if (source === "worker") await storage.saveComma({ edo, limit, n, d, nd, dd });
           else if (chordBound) mapping.commasBounds.set(iv, chordBound);
           const
             commaEl = $.load("comma", "", commasEl)[0][0],
-            [ diagramDiv, commaDataDiv ] = commaEl.children,
-            [ ratioSpan, nDecompSpan, dDecompSpan, sizeSpan, spellingSpan ] = commaDataDiv.children;
+            [ , diagramDiv, ratioDiv, primesDiv, sizeDiv, spellingDiv ] = commaEl.children,
+            [ nDecompSpan, dDecompSpan ] = primesDiv.children;
           newCommas.push(commaEl);
           commaEl.dataset.comma = [ n, d ];
           commaEl.dataset.factors = JSON.stringify(iv.splitDecomp);
           for (const [ n ] of iv.splitDecomp[0]) $.load("hcolour-disc", ".hcolour-upper", diagramDiv)[0][0].style.setProperty("color", `var(--hcolour-${n})`);
           for (const [ d ] of iv.splitDecomp[1]) $.load("hcolour-disc", ".hcolour-lower", diagramDiv)[0][0].style.setProperty("color", `var(--hcolour-${d})`);
-          ratioSpan.innerText = `${n}/${d}`;
+          ratioDiv.innerText = `${n}/${d}`;
           const t1 = Common.bigLog2(n & -n), t2 = Common.bigLog2(d & -d);
           nDecompSpan.innerHTML = (t1 > 0 ? [[2, t1]] : []).concat(iv.splitDecomp[0])
             .map(([p, rad]) => p + (rad > 1 ? `<sup>${rad}</sup>` : "")).join(".");
           dDecompSpan.innerHTML = (t2 > 0 ? [[2, t2]] : []).concat(iv.splitDecomp[1])
             .map(([p, rad]) => p + (rad > 1 ? `<sup>${rad}</sup>` : "")).join(".");
-          sizeSpan.innerText = `${((ln - ld) * 1200).toFixed(2)}`;
-          spellingSpan.innerText = iv.noteSpelling.letter;
+          sizeDiv.innerText = `${((Common.bigLog2(n) - Common.bigLog2(d)) * 1200).toFixed(2)}`;
+          spellingDiv.innerText = iv.noteSpelling.letter;
           $.queries({ "": { click () { app.emit("generate-chords", this) } } }, commaEl)
         }
       }
       this.emit("update-temperament-filter", newCommas);
       if (!boundN) return;
+      // TODO fix!
       if (hasFresh) commasEl.scrollTo(0, $("#computing-commas").offsetTop - commasEl.offsetTop - commasEl.offsetHeight - 1)
       commasEl.dataset.upperBound = upperBound = (1n + boundN / 100n) * 100n;
       await storage.saveScale({ edo, limit, upperBound }) // commaBuffer?
@@ -937,23 +946,33 @@ $.targets({
     },
 
     async "generate-chords" (commaEl) {
+
       $(".comma.active")?.classList.remove("active");
       commaEl.classList.add("active");
+      $.all(".comma.factor").forEach(el => el.classList.remove("factor"));
       $.all(".chord").forEach(el => el.remove());
       const
-        [ n, d ] = commaEl.dataset.comma.split(",").map(x => parseInt(x)),  // BUG: Big
-        ln = Math.log2(n), ld = Math.log2(d),
+        [ n, d ] = commaEl.dataset.comma.split(",").map(x => BigInt(x)),
+        [ nd, dd ] = JSON.parse(commaEl.dataset.factors),
         { keyboard, storage } = this, { edo, scale } = keyboard, { limit, mapping } = scale,
+        { commas, temperaments } = mapping,
         tempsEl = $("#temperaments"), chordsFieldsetEl = $("#chord-list"), chordsEl = $("#chords"),
-        [ ratioSpan, numSpan, denSpan ] = commaEl.children[1].children;
-      $("#comma-info").innerHTML = `${ratioSpan.innerHTML} (${numSpan.innerHTML}/${denSpan.innerHTML})`;
+        [ ,, ratioDiv, primesDiv ] = commaEl.children, [ numSpan, denSpan ] = primesDiv.children;
+
+      (async () => {
+        mapping.resetWaitForTemperament();
+        await mapping.waitForTemperament;
+        temperaments.get(commas.getRatio(...commaEl.dataset.comma.split(",").map(h => parseInt(h)))).factors
+          .forEach(({ fraction }) => $(`.comma[data-comma="${fraction}"]`)?.classList.add("factor"));
+      })();
+      $("#comma-info").innerHTML = `${ratioDiv.innerHTML} (${numSpan.innerHTML}/${denSpan.innerHTML})`;
 
       await new Promise(requestAnimationFrame);
       tempsEl.scrollTo(0, 32767);
       chordsFieldsetEl.classList.add("computing");
       await new Promise(requestAnimationFrame);
       
-      const iv = mapping.intervalSet.addRatio(n, d);
+      const iv = commas.getRatio(n, d);
       await mapping.resetChords(iv);
       let cursor = 0, upperBound = mapping.commasBounds.get(iv) ?? new Map();
       for await (const { source, value } of mapping.takeChords(upperBound)) {
@@ -961,7 +980,7 @@ $.targets({
         if (source === "worker") {
           await storage.saveChord(ordChordRaw);
           upperBound.set(i, done ? null : ordChordRaw.ord);
-          await storage.saveComma({ edo, limit, n, d, ln, ld, upperBound });
+          await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
         }
         ordChordRaw.internalIntervalsRaw.forEach(ivs => ivs.unshift([1, 1]));
         const { ord, ...chordRaw } = ordChordRaw;
@@ -969,12 +988,15 @@ $.targets({
         const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
         mapping.temperament.addChord(chord);
         const chordEl = $.load("chord", "#chords")[0][0], chordIvsEl = $(".chord-intervals", chordEl);
-        chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction));
+        chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
         chordEl.dataset.ord = JSON.stringify(ord);
         const chordEls = $.all(".chord", chordsEl);
-        const ix = chordEls.slice(cursor + 1).findIndex(el => Common.LTE(ord, JSON.parse(el.dataset.ord ?? "[]")));
-        cursor = ix === -1 ? chordEls.length - 1 : cursor + ix;
-        chordEls[cursor].insertAdjacentElement("afterend", chordEl) ?? chordsEl.append(chordEl);
+        const ix = chordEls.slice(cursor).findIndex(el => Common.LTE(ord, JSON.parse(el.dataset.ord ?? "[]")));
+        if (ix === -1) {
+          cursor = chordEls.length - 1;
+          chordsEl.append(chordEl)
+        } else chordEls[cursor += ix].insertAdjacentElement("beforebegin", chordEl);
+        cursor++;
         if (done) cursor = 0;
 
         app.emit("display-chord", chord, chordEl);
@@ -1001,7 +1023,7 @@ $.targets({
 
           "button.inversion": { click () {
             chord.inversion++;
-            chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction));
+            chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
             app.emit("display-chord", chord, chordEl)
           } },
 
@@ -1022,6 +1044,7 @@ $.targets({
           }
         }, chordEl)
       }
+      const chordEls = $.all(".chord", chordsEl);
       chordsFieldsetEl.classList.remove("computing");
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
     },

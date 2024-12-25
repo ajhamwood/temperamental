@@ -53,7 +53,7 @@ class Persist {
       // Create comma store
       async evt => {
         const
-          createCommaStore = evt.target.result.createObjectStore("commas", { keyPath: ["edo", "limit", "ln", "ld"] }),
+          createCommaStore = evt.target.result.createObjectStore("commas", { keyPath: ["edo", "limit", "nd", "dd"] }),
           createCommasTx = Persist.#txWait(createCommaStore.transaction);
         createCommaStore.createIndex("commas", ["edo", "limit"]);
         await createCommasTx;
@@ -62,9 +62,9 @@ class Persist {
       // Create chord store
       async evt => {  
         const
-          createChordStore = evt.target.result.createObjectStore("chords", { keyPath: ["edo", "limit", "ln", "ld", "ord"] }),
+          createChordStore = evt.target.result.createObjectStore("chords", { keyPath: ["edo", "limit", "nd", "dd", "ord"] }),
           createChordsTx = Persist.#txWait(createChordStore.transaction);
-        createChordStore.createIndex("chords", ["edo", "limit", "ln", "ld"]);
+        createChordStore.createIndex("chords", ["edo", "limit", "nd", "dd"]);
         await createChordsTx
       },
 
@@ -75,8 +75,7 @@ class Persist {
           createTracksTx = Persist.#txWait(createTrackStore.transaction);
         await createTracksTx
       }
-
-      // TODO: comma and chord: ln, ld => decomp + BigInt n, d
+      
     ])
   }
 
@@ -152,8 +151,9 @@ class Persist {
     const
       commaStore = this.#db.transaction("commas").objectStore("commas"),
       csr = commaStore.index("commas").openCursor(IDBKeyRange.only([ edo, limit ])),
-      yieldCommaCsr = Persist.#cursorWait(csr);
-    for await (const value of yieldCommaCsr) yield value
+      yieldCommaCsr = Persist.#cursorWait(csr),
+      values = (await Array.fromAsync(yieldCommaCsr)).sort(({ n: a }, { n: b }) => a > b);
+  for (const value of values) yield value
   }
   async saveComma (comma) {
     const
@@ -163,10 +163,10 @@ class Persist {
   }
 
   // Chords
-  async * yieldChords ({ edo, limit, ln, ld }) {
+  async * yieldChords ({ edo, limit, nd, dd }) {
     const
       chordStore = this.#db.transaction("chords").objectStore("chords"),
-      csr = chordStore.index("chords").openCursor(IDBKeyRange.only([ edo, limit, ln, ld ])),
+      csr = chordStore.index("chords").openCursor(IDBKeyRange.only([ edo, limit, nd, dd ])),
       yieldChordCsr = Persist.#cursorWait(csr);
     for await (const value of yieldChordCsr) yield value
   }

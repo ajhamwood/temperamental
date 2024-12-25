@@ -218,7 +218,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         { properIntervals: ivset } = mapping, prevIvset;
     result[0] = [[[], []]];
     for (const basis of bases) {
-      const [ pn, pd ] = basis.fraction.map(Common.non2), pstep = mapping.steps(basis);
+      const [ pn, pd ] = basis.fraction.map(Number).map(Common.non2), pstep = mapping.steps(basis);
       prevIvset = new IntervalSet({ intervalSet: ivset });
       full = i;
       prev = null;
@@ -227,7 +227,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         prev = i;
         prevResult = structuredClone(result);
         for (const iv of prevIvset) {
-          const [ n, d ] = iv.fraction.map(Common.non2), step = mapping.steps(iv);
+          const [ n, d ] = iv.fraction.map(Number).map(Common.non2), step = mapping.steps(iv);
           let s = Common.mod(step + k * pstep, edo);
           if (prevResult[s] === undefined && mapping.decomp(n * pn ** k, d * pd ** k)()) {
             const newIv = intervalSet.addRatio(n * pn ** k, d * pd ** k);

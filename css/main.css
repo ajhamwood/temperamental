@@ -291,24 +291,38 @@ body {
             padding-right: .5em }
         #commas {
           display: grid;
-          grid-template-columns: repeat(2, max-content);
+          grid-template-columns: repeat(6, max-content);
           overflow-y: scroll;
           max-width: inherit;
-          padding: 1em;
-          margin: 0 -.7em -.5em }
+          padding: 0;
+          margin: 0 }
           #comma-info { line-height: 0 }
+          #comma-headings {
+            display: grid;
+            grid-template-columns: subgrid;
+            grid-column: span 6;
+            position: sticky;
+            top: 0;
+            left: 0;
+            background: #222 }
+            #comma-headings > :first-child { grid-column: 3/3 }
+            #comma-headings > * { margin-left: .2em }
           .comma {
             line-height: 1.8em;
             cursor: pointer;
             width: max-content;
             display: grid;
             grid-template-columns: subgrid;
-            grid-column: span 2 }
+            grid-column: span 6;
+            grid-gap: .3em;
+            align-items: baseline }
           .comma:nth-child(2) { margin-top: -.8em }
-          .comma:hover, .comma.active {
-            border-bottom: 1px solid;
-            margin-bottom: -1px;
-            font-weight: bold }
+          .comma:hover, .comma.active { font-weight: bold }
+          .comma > .comma-selection-factors::before {
+            content: "●";
+            color: transparent }
+          .comma:is(.active, .factor) > .comma-selection-factors::before { color: inherit }
+          .comma.factor > .comma-selection-factors::before { content: "✻" }
             .hcolour-diagram {
               display: grid;
               font-size: xx-small;
@@ -317,6 +331,9 @@ body {
               justify-items: center;
               align-self: center;
               height: 2em }
+            .comma-ratio::before { content: "1 ≅ " }
+            .comma-size::after { content: "¢," }
+            .comma-spelling::before { content: "C ≅ " }
           .filtered {
             color: #666;
             font-weight: normal !important }

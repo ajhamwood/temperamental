@@ -5,20 +5,16 @@ Make work in Chrome and Safari
 * Limit notes to frequencies between 10 and 40000 Hz; shade echo notes according to octave difference
 * Refactor keyboard data lifecycle
 * let -> const in main.js
-* Persist keys ln, ld => decomp + BigInt n, d
 Temperaments!
   * Copyable Key (changes key of keyboard)
   * Group otonal and utonal variants; How to classify chords of the same temperament?
-  * Colour coding on temperaments?
+  * Colour coding on harmonic mapping?
   * Order chords by adicity vs symmetry vs simplest internal interval vs most complex internal interval (limit)
   * Gesture drag through chord inversions? Allow selection of pivot position other than the root
     => Setting a key for the keyboard and transposing note names through the key
-  * Generate chords off the main thread; UI for moving a computation to a jobs list (Important!)
+  * UI for moving a computation to a jobs list
     => Provide real time logs during computation to display in job area
-    => Group chords by adicity/stack and return partial results
     => Pausing/resuming etc (may require a different approach/algorithm)
-  * Splitting commas
-BigInt Interval (Important!)
 Render pipeline (hex grid then labels), redraw by hex whitelist (black hex to clear then source-over with neighbours)
 Track class
 MenuState class
@@ -37,7 +33,6 @@ Giving musical objects ungeneralisable proper names or symbols
 
 > Bugs
 * Enumerate chords based on tempered intervals
-* What triggers the 2/1 bug?
 * Keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
 * Separate black/white key colours for ghost keys?
 
@@ -45,4 +40,12 @@ Giving musical objects ungeneralisable proper names or symbols
 * Explain chord names in relation to inversions, eg IV 6/4 becomes IV 3:4:5, II 2 becomes II 7:8:10:12, etc
 
 > Misc
-What would "Mary had a little lamb" sound like expressed as beats subdividing a repeating duration? Eg. 12 equal polyrhythms which stack to a halving/doubling of time
+* What would "Mary had a little lamb" sound like expressed as beats subdividing a repeating duration? Eg. 12 equal polyrhythms which stack to a halving/doubling of time
+
+current goals:
+* [x] Persist keys for commas and chords use prime decomp instead of logarithms
+* [x] Intervals now use BigInt for "product" values, Number for "component" values
+* [ ] Unify treatment of harmonic and essentially tempered chords
+* [ ] Chords now use TemperedInterval for all intervals
+* [ ] Chords are "owned" by a fundamental temperament, "borrowable" by temperaments having that as a factor
+* [ ] Chord search trie (prefix tree structure) / something else?

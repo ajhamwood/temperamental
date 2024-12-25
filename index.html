@@ -137,6 +137,12 @@
             <span>Filter harmonics:</span>
           </div>
           <div id="commas">
+            <div id="comma-headings">
+              <div>Interval</div>
+              <div>Primes</div>
+              <div>Size</div>
+              <div>Spelling</div>
+            </div>
             <div id="computing-commas">
               <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
                 <use href="#hourglass"></use>
@@ -259,14 +265,15 @@
   </template>
   <template id="comma">
     <div class="comma">
+      <div class="comma-selection-factors"></div>
       <div class="hcolour-diagram">
         <div class="hcolour-upper"></div>
         <div class="hcolour-lower"></div>
       </div>
-      <div>
-        1 ≅ <span class="comma-ratio"></span> (<span class="numerator-decomp"></span>/<span class="denominator-decomp"></span>),
-          size <span class="comma-size"></span>¢, spelling C ≅ <span class="comma-spelling"></span>
-      </div>
+      <div class="comma-ratio"></div>
+      <div>(<span class="numerator-decomp"></span>/<span class="denominator-decomp"></span>),</div>
+      <div class="comma-size"></div>
+      <div class="comma-spelling"></div>
     </div>
   </template>
   <template id="hcolour-disc">

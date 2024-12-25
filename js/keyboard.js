@@ -79,6 +79,9 @@ class Keyboard {
   }
 
   static ready = false
+  static #userResolver
+  static userIsActive = new Promise(r => this.#userResolver = r);
+  static userActivate () { this.#userResolver() }
 
   // Instance
   name; edo; hexGrid; scale; instrument = "triangle"
@@ -192,7 +195,7 @@ class Keyboard {
   }
 
   stop (id) {
-    const { hexGrid, scale, touches } = this, touch = touches.get(id);
+    const { hexGrid, touches } = this, touch = touches.get(id);
     if (!touch) return;
     if (touch.cb()) return clearTimeout(touch.to);
     touch.hexes.forEach(hex => hexGrid.removeFromActiveClasses(hex, id)); // remove from single class?
@@ -239,7 +242,7 @@ class Scale {
   mapping; refNote; freqBasis; maxError
   #keys = new Map() // Map([ rank, key ])
   #active = new Map() // Map([ note, Set(id) ])
-  constructor ({ keyboard, limit, hmap, refNote, freqBasis, maxError }) {
+  constructor ({ keyboard, limit, refNote, freqBasis, maxError }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Scale error: must provide Keyboard object");
     this.#keyboard = keyboard;
     const { edo } = keyboard;
@@ -339,10 +342,11 @@ class Note {
     this.octave = octave
   }
   get key () { return this.#scale.getKey(this.rank) }
-  start () {
+  async start () {
     if (this.#note) return;
+    await Keyboard.userIsActive;
     const
-      { audioctx, masterVolume } = app.state(),
+      { audioctx, masterVolume } = app,
       { rank, octave } = this, { freqBasis, refNote } = this.#scale, { edo } = this.#keyboard,
       osc = audioctx.createOscillator(),
       volume = audioctx.createGain(),
@@ -357,10 +361,11 @@ class Note {
     this.#note = { osc, volume, t0: now };
     osc.start(now);
   }
-  stop () {
+  async stop () {
+    await Keyboard.userIsActive;
     if (!this.#note) return;
     const
-      { audioctx } = app.state(), now = audioctx.currentTime,
+      { audioctx } = app, now = audioctx.currentTime,
       { osc, volume, t0 } = this.#note, dt = now - t0, decay = this.#decay;
     this.#note = null;
     volume.gain.cancelScheduledValues(now);

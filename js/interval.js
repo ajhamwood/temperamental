@@ -8,7 +8,7 @@ class HarmonicLattice { // is commas on the lattice??
   // Static
   static #isPrime (pdec) {
     let sum = 0;
-    for (let rad of pdec.values()) sum += rad;
+    for (const rad of pdec.values()) sum += rad;
     return sum === 1
   }
   static #transp = mat => Array(mat[0].length).fill()
@@ -80,7 +80,7 @@ class HarmonicLattice { // is commas on the lattice??
         compositeDecs.map(([ h, pdec ]) => [ h, [...pdec].filter(([p]) => !~primeDecs.findIndex(([q]) => q === p)) ]),
         ([ , pp ]) => pp.length === 0, ([p]) => compositeDecs.find(([q]) => q === p)),
       ps = [ ...residueDecs.reduce((acc, [, pdec]) => {
-        for (let [p] of pdec) acc.add(p);
+        for (const [p] of pdec) acc.add(p);
         return acc
       }, new Set()).values() ].sort((a, b) => a > b),
       { true: residuePrimeDecs = [], false: simplePrimeDecs = [] } = Common.groupBy(
@@ -106,9 +106,9 @@ class HarmonicLattice { // is commas on the lattice??
     if (residue.length) {
       let system, best = 0, dims = -1;
       const cols = ps.length;
-      for (let hs of HarmonicLattice.#subsets(residue)) { // TODO: memoise?
+      for (const hs of HarmonicLattice.#subsets(residue)) { // TODO: memoise?
         const mat = [], rows = hs.length;
-        for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
+        for (const [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
         if (rows < cols) mat.splice(Infinity, Infinity, ...Array(cols - rows).fill().map(() => mat.at(-1).slice()));
         if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
           Array(rows - cols).fill(0).with(i - cols, -1))));
@@ -125,7 +125,7 @@ class HarmonicLattice { // is commas on the lattice??
           return acc
         }, residue),
         rows = hs.length, mat = [];
-      for (let [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
+      for (const [, pdec] of hs) mat.push(ps.map(p => pdec.get(p) ?? 0));
       if (rows > cols) mat.forEach((row, i) => row.splice(Infinity, Infinity, ...(i < cols ? Array(rows - cols).fill(0) :
         Array(rows - cols).fill(0).with(i - cols, -1))));
 
@@ -170,7 +170,7 @@ class HarmonicLattice { // is commas on the lattice??
     }
 
     const withUnison = [1].concat(harmsRaw);
-    for (let n of withUnison) for (let d of withUnison) {
+    for (const n of withUnison) for (const d of withUnison) {
       this.properIntervalSet.addRatio(n, d);
       if (d === 1 && n !== 1) this.harmonicList.get(n).withQuality("harmonic", true)
     }
@@ -178,23 +178,24 @@ class HarmonicLattice { // is commas on the lattice??
   }
 
   decomp (n, d) { //Null is failure
-    const decomp = typeof n === "bigint" ? Common.decompBig : Common.decomp;
-    const pdec = decomp(n)[0], dec = [];
+    n = BigInt(n);
+    const pdec = Common.decompBig(n)[0], dec = [];
     if (d) {
-      for (let [p, rad] of decomp(d)[0]) if (pdec.has(p)) {
+      d = BigInt(d);
+      for (const [p, rad] of Common.decompBig(d)[0]) if (pdec.has(p)) {
         const nrad = pdec.get(p);
         if (nrad === rad) pdec.delete(p);
         else pdec.set(p, nrad - rad)
       } else pdec.set(p, -rad)
     }
     const { index, indexPrimes, primes, harmonicList, verify } = this;
-    for (let p of primes) {
+    for (const p of primes) {
       if (!pdec.has(p)) continue;
       else dec.push([ p, pdec.get(p) ]);
       pdec.delete(p)
     }
     const primeVec = indexPrimes.map(p => pdec.get(p) ?? 0);
-    for (let [p] of pdec) if (!indexPrimes.includes(p)) return null;
+    for (const [p] of pdec) if (!indexPrimes.includes(p)) return null;
     if (!verify(...primeVec)) return null;
     return index.reduce((fn, h) => (...params) => {
       const acc = fn(...params);
@@ -225,7 +226,7 @@ class Harmonic {
         { /*nonHarmonics,*/ index, primes } = lattice;
         // doErr = () => { throw new Error("Harmonic not in mapping") };
       if (lattice.ready) {
-        let decomp = mapping.decomp(order);
+        let decomp = mapping.decomp(order); // lattice.decomp
         // if (nonHarmonics.has(order) || decomp === null) doErr();
         this.isBasis = false;
         this.decomp = decomp
@@ -253,9 +254,8 @@ class Harmonic {
 
 
 class IntervalSet {
-  #rawMap // Map([ denominator, Map([ numerator, interval ]) ])
+  #rawMap = new Map() // Map([ denominator, Map([ numerator, interval ]) ])
   constructor ({ intervalSet, intervalList = [] } = {}) {
-    this.#rawMap = new Map();
     if (intervalSet) for (const interval of intervalSet) this.add(interval);
     else for (const [ n, d ] of intervalList) this.addRatio(n, d)
   }
@@ -264,6 +264,7 @@ class IntervalSet {
     return (dMap.has(n) ? dMap : dMap.set(n, interval)).get(n)
   }
   addRatio (n, d) {
+    n = BigInt(n); d = BigInt(d);
     return this.add(new Interval({ intervalSet: this, n, d }))
     // return this.add(new Interval({ intervalSet: this, n: Number(n), d: Number(d) }))
   }
@@ -272,21 +273,20 @@ class IntervalSet {
     return Boolean(this.#rawMap.get(d)?.has(n))
   }
   hasRatio (n, d) {
+    n = BigInt(n); d = BigInt(d);
     const c = Common.gcd(n, d);
-    return Boolean(this.#rawMap.get(Common.non2(d / c))?.has(Common.non2(n / c)))
+    return this.#rawMap.get(Common.non2(d / c))?.has(Common.non2(n / c)) ?? false
   }
-  get (interval) {
+  get (interval) { // TODO remove?
     const { n, d } = interval;
     return this.#rawMap.get(d)?.get(n)
   }
   getRatio (n, d) {
+    n = BigInt(n); d = BigInt(d);
     const
-      c = Common.gcd(n, d), _n = Common.non2(d / c), _d = Common.non2(n / c), max = Number.MAX_SAFE_INTEGER,
-      isBig = typeof _n === "bigint",
-      log2 = isBig ? Common.bigLog2 : Math.log2,
-      iv = this.#rawMap.get(_n)?.get(_d) ?? isBig ? _n <= max && _d <= max ?
-        this.#rawMap.get(Number(_n))?.get(Number(_d)) : null : this.#rawMap.get(BigInt(_n))?.get(BigInt(_d));
-    return iv?.withOctave(Math.floor(log2(n) - log2(d)))
+      c = Common.gcd(n, d), _n = Common.non2(d / c), _d = Common.non2(n / c),
+      iv = this.#rawMap.get(_n)?.get(_d);
+    return iv?.withOctave(Math.floor(Common.bigLog2(n) - Common.bigLog2(d)))
   }
   * [ Symbol.iterator ] () { for (const s of this.#rawMap.values()) for (const iv of s.values()) yield iv }
 }
@@ -294,12 +294,11 @@ class IntervalSet {
 
 
 class Interval {
-  #intervalSet; #isBig; n; d; octave; fraction; decomp; noteSpelling
+  #intervalSet; n; d; octave; fraction; decomp; noteSpelling
   octaveAdjust; splitDecomp
-  constructor ({ intervalSet, n, d}) {
+  constructor ({ intervalSet, n, d }) {
     if (!(IntervalSet.prototype.isPrototypeOf(intervalSet))) throw new Error("Interval error: must provide IntervalSet object");
-    if (typeof n !== typeof d) throw new Error("Interval error: numerator and denominator type must match");
-    const isBig = this.#isBig = typeof n === "bigint";
+    if (typeof n !== "bigint" || typeof d !== "bigint") throw new Error("Interval error: numerator and denominator type must be BigInt");
     const c = Common.gcd(n, d);
     n = n / c;
     d = d / c;
@@ -307,36 +306,33 @@ class Interval {
     this.#intervalSet = intervalSet;
     this.n = n = Common.non2(n);
     this.d = d = Common.non2(d);
-    const
-      log2 = isBig ? Common.bigLog2 : Math.log2,
-      decomp = Common[isBig ? "decompBig" : "decomp"];
-    this.octave = Math.floor(log2(n) - log2(d));
-    const octave = this.octave = isBig ? BigInt(this.octave) : this.octave;
+    this.octave = Math.floor(Common.bigLog2(n) - Common.bigLog2(d));
+    const octave = this.octave = BigInt(this.octave);
     this.octaveAdjust = octave;
     this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
 
-    const pdec = decomp(n).concat([ new Map() ]);
+    const pdec = Common.decompBig(n).concat([ new Map() ]);
     if (d) {
-      for (const [ p, rad ] of decomp(d)[0]) if (pdec[0].has(p)) {
+      for (const [ p, rad ] of Common.decompBig(d)[0]) if (pdec[0].has(p)) {
         const nrad = pdec[0].get(p);
         if (nrad <= rad) pdec[0].delete(p);
         if (nrad > rad) pdec[0].set(p, nrad - rad);
         else if (nrad < rad) pdec[1].set(p, rad - nrad);
       } else pdec[1].set(p, rad)
     }
-    this.splitDecomp = pdec.map(m => [ ...m ].sort(([a], [b]) => a > b));
+    this.splitDecomp = pdec.map(m => [ ...m ].map(v => v.map(Number)).sort(([a], [b]) => a > b));
     this.decomp = this.splitDecomp.reduce((n, d) => n.concat(d.map(([ p, rad ]) => [p, -rad])))
       .sort(([a], [b]) => a > b);
     this.noteSpelling = Common.noteFromFactors(this.splitDecomp)
   }
   withOctave (o, mutate = false) {
     const
-      octave = this.octaveAdjust = this.octave - (this.#isBig ? BigInt : Number)(o),
+      octave = this.octaveAdjust = this.octave - BigInt(o),
       { n, d } = this;
     this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
     return this
   }
-  inverse () { return this.#intervalSet.addRatio(this.d, this.n) }
+  inverse () { return this.#intervalSet.addRatio(this.d, this.n).withOctave(0) }
 }
 
 

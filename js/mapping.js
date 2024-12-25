@@ -16,7 +16,9 @@ class HarmonicMapping {
   nonHarmonics = new Set() // TODO: Cached blacklist
   lattice; decomp; intervalSet = new IntervalSet()
   stepsBasis
+  #commasworker; #commas = new IntervalSet();
   commasBounds = new Map(); #temperaments = new Map(); #temperament
+  #chordsworkers = new Map(); #chordGen
 
   constructor ({ keyboard, scale, hmap }) { // Map([ odd, number ])
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Mapping error: must provide Keyboard object");
@@ -44,12 +46,17 @@ class HarmonicMapping {
     const withUnison = [1].concat(harmsRaw);
     for (const n of withUnison) for (const d of withUnison) this.intervalSet.addRatio(n, d);
 
+    // The neutral temperament
+    const unison = this.intervalSet.getRatio(1, 1);
+    this.#temperaments.set(unison, new Temperament({ keyboard, mapping: this, comma: unison, intervalSet: lattice.properIntervalSet }));
+
     this.decomp = lattice.decomp.bind(lattice);
     this.lattice.ready = true // TODO replace with promise resolver
   }
 
   steps (iv, params = []) { // This kind of sucks
     const { stepsBasis, lattice } = this, decomp = lattice.decomp.bind(lattice), { edo } = this.#keyboard;
+    if (TemperedInterval.prototype.isPrototypeOf(iv)) iv = iv.enharmonicSet.values().next().value;
     return Common.steps({ edo, stepsBasis, iv, params, decomp })
   }
 
@@ -57,8 +64,7 @@ class HarmonicMapping {
   addInterval (interval) { this.intervalSet.add(interval) }
 
   // Temperaments (in worker)
-  #commasworker
-  #commas (upperBound) {
+  #genCommas (upperBound) {
     const
       worker = this.#commasworker = new Worker("js/commaworker.js", { type: "module" }), self = this,
       { primes, index } = this.lattice, { edo } = this.#keyboard, { limit, maxError } = this.#scale,
@@ -101,18 +107,20 @@ class HarmonicMapping {
     this.#commasworker?.terminate();
     this.#commaGen = Common.cacheAside({
       cacheGen: app.storage.yieldCommas({ edo, limit }),
-      ...this.#commas(upperBound)
+      ...this.#genCommas(upperBound)
     });
     this.#resolveCommaGen()
   }
   #resolveCommaGen; #promiseCommaGen = new Promise(res => this.#resolveCommaGen = res);
   get waitForCommaGen () { return this.#promiseCommaGen }
   set waitForCommaGen (_) { return false }
+  get commas () { return this.#commas }
+  set commas (_) {}
 
   // Chords (in worker)
   // TODO: dynamically split large basicStack jobs across finished workers (use priority)
-  #chordsworkers = new Map()
-  async #chords (iv) {
+  
+  async #genChords (iv) {
     const
       existing = this.#temperaments.get(iv), self = this,
       { globalBatchSize: batchSize } = app;
@@ -120,8 +128,8 @@ class HarmonicMapping {
       this.temperament = existing.comma.fraction;
       return { setup: () => {}, fresh: function * () {} }
     } else {
-      const comma = iv.fraction, ln = Common.bigLog2(comma[0]), ld = Common.bigLog2(comma[1]);
-      if (ln - ld >= this.#scale.maxError / 400)
+      const comma = iv.fraction, [ nd, dd ] = iv.splitDecomp;
+      if (Common.bigLog2(comma[0]) - Common.bigLog2(comma[1]) >= this.#scale.maxError / 400)
         throw new Error("Mapping error: comma to temper must be within error bounds");
       const
         { stepsBasis } = this, { edo } = this.#keyboard, { limit } = this.#scale,
@@ -139,9 +147,10 @@ class HarmonicMapping {
       return {
         setup: async () => {
           const
-            temperament = new Temperament({ keyboard: self.#keyboard, mapping: self, comma: iv, intervalSet: properIntervalSet }),
+            temperament = self.temperaments.get(iv) ??
+              new Temperament({ keyboard: self.#keyboard, mapping: self, comma: iv, intervalSet: properIntervalSet }),
             { hdecomp, basicStacks } = temperament;
-          self.#temperaments.set(iv, temperament);
+          self.addTemperament(temperament);
           self.temperament = comma;
 
           const
@@ -149,9 +158,9 @@ class HarmonicMapping {
               const [ an, ad ] = a.fraction, [ bn, bd ] = b.fraction;
               return an * bd > ad * bn
             },
-            harms = [1].concat(hdecomp.map(([h]) => h)
+            harms = [1n].concat(hdecomp.map(([h]) => BigInt(h))
               .filter(h => Common.gcd(h, iv.n) > 1 || Common.gcd(h, iv.d) > 1)
-              .sort((a, b) => Math.log2(a) % 1 < Math.log2(b) % 1)),
+              .sort((a, b) => Common.bigLog2(a) % 1 < Common.bigLog2(b) % 1)),
             taggedStacks = basicStacks.map(bstack => bstack.reduce((acc, iv) => {
               const
                 ni = harms.indexOf(iv.n), di = harms.indexOf(iv.d),
@@ -218,7 +227,7 @@ class HarmonicMapping {
             do {
               br.get(ord).shift()();
               ({ batch, done, identifier, i } = await ap.get(ord).shift());
-              for (const { internalIntervalsRaw, ord } of batch) yield { edo, limit, ln, ld, internalIntervalsRaw, ord, done, i }
+              for (const { internalIntervalsRaw, ord } of batch) yield { edo, limit, nd, dd, internalIntervalsRaw, ord, done, i }
             } while (!done);
             [ ar, ap, br, bp ].map(m => m.delete(ord));
             freeWorkers.push(identifier);
@@ -228,23 +237,23 @@ class HarmonicMapping {
       }
     }
   }
-  #chordGen
   async * takeChords (upperBound) { yield * await this.#chordGen({ upperBound }) }
   async resetChords (iv) {
     const
       { edo } = this.#keyboard, { limit } = this.#scale,
-      comma = iv.fraction, ln = Common.bigLog2(comma[0]), ld = Common.bigLog2(comma[1]);
+      comma = iv.fraction, [ nd, dd ] = iv.splitDecomp;
     this.#chordsworkers.forEach(w => w.terminate());
     this.#chordsworkers = new Map();
     this.#chordGen = Common.cacheAside({
-      cacheGen: app.storage.yieldChords({ edo, limit, ln, ld }),
-      ...await this.#chords(iv)
+      cacheGen: app.storage.yieldChords({ edo, limit, nd, dd }),
+      ...await this.#genChords(iv)
     })
   }
 
   get temperaments () { return this.#temperaments }
   set temperament ([ n, d ]) {
-    const temp = this.#temperaments.get(this.intervalSet.getRatio(n, d));
+    // TODO test within bounds
+    const temp = this.#temperaments.get(this.#commas.getRatio(n, d));
     if (temp) {
       this.#temperament = temp;
       this.#resolveTemperament();
@@ -252,9 +261,16 @@ class HarmonicMapping {
     } else return false
   }
   get temperament () { return this.#temperament }
-  #resolveTemperament; #promiseTemperament = new Promise(res => this.#resolveTemperament = res);
+  resetWaitForTemperament () { this.#promiseTemperament = new Promise(res => this.#resolveTemperament = res) }
+  #resolveTemperament; #promiseTemperament
   get waitForTemperament () { return this.#promiseTemperament }
   set waitForTemperament (_) { return false }
+  addTemperament (temp) { // TODO test that it is supported?
+    if (!Temperament.prototype.isPrototypeOf(temp) || this.#temperaments.has(temp.comma)) return false;
+    this.#commas.add(temp.comma);
+    this.#temperaments.set(temp.comma, temp)
+  }
+  hasTemperament (iv) { return this.#temperaments.has(iv) }
 
 }
 
@@ -324,8 +340,8 @@ class Temperament {
       [ nCombs, dCombs ] = iv.splitDecomp.map(side => side.length ?
         this.#harmCombs(new Map(side)).map(p => Common.group(p)) : [[]]),
       acc = [];
-    for (let otones of nCombs) for (let utones of dCombs)
-      for (let partition of this.#enumStacks(otones, utones)) {
+    for (const otones of nCombs) for (const utones of dCombs)
+      for (const partition of this.#enumStacks(otones, utones)) {
         const
           partIvs = partition.map(([n, d]) => properIntervalSet.getRatio(n, d).withOctave(0)),
           invIvs = partition.map(([d, n]) => properIntervalSet.getRatio(n, d).withOctave(0));
@@ -335,64 +351,120 @@ class Temperament {
     return acc
   }
 
-  #keyboard; #mapping; comma; #intervalSet; #temperedIntervalSet = new Map()
-  basicStacks; enharms; #chords = []
+  #keyboard; #mapping; comma; intervalSet; #temperedIntervalSet
+  basicStacks; enharms//; #chords = new Map() // Trie with Interval symbols: Map([ iv, Map | chord ])
+  #chords = new Set(); factors
   constructor ({ keyboard, mapping, comma, intervalSet }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Temperament error: must provide Keyboard object");
-    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Temperament error: must provide HarmonicMapping object");
     this.#keyboard = keyboard;
+    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Temperament error: must provide HarmonicMapping object");
     this.#mapping = mapping;
-    this.#intervalSet = intervalSet;
+    const { harmonicList, properIntervalSet } = mapping.lattice;
+    if (!(Interval.prototype.isPrototypeOf(comma))) throw new Error("Temperament error: comma must be Interval object");
     this.comma = comma;
+    if (!(IntervalSet.prototype.isPrototypeOf(intervalSet))) throw new Error("Temperament error: intervalSet must be IntervalSet object");
+    this.intervalSet = intervalSet;
 
-    this.hdecomp = [ ...mapping.lattice.harmonicList ].map(([ n, { primeDecomp } ]) => [ n, primeDecomp ]);
-    const { true: pairs = [], false: basicStacks } = Common.groupBy(this.#partitionComma(), ivs => ivs.length === 2);
+    this.hdecomp = [ ...harmonicList ].map(([ n, { primeDecomp } ]) => [ n, primeDecomp ]);
+    const { true: pairs = [], false: basicStacks = [] } = Common.groupBy(this.#partitionComma(), ivs => ivs.length === 2);
     this.basicStacks = basicStacks;
-    this.enharms = pairs.reduce((m, [a, b]) => a === b ?  // Could be a map
+    this.enharms = pairs.reduce((m, [a, b]) => a === b ?
       m.set(a, a.inverse()) : m.set(a, b.inverse()).set(b, a.inverse()), new Map());
     
-    for (const iv of intervalSet) this.addInterval(iv);
-  }
-  addInterval (iv) {
-    this.#intervalSet.add(iv);
-    const enh = this.enharms.get(iv);
-    if (enh) {
-      const existing = this.#temperedIntervalSet.get(enh);
-      if (existing) this.#temperedIntervalSet.set(iv, existing);
-      else this.#temperedIntervalSet.set(iv, new TemperedInterval({
-        keyboard: this.#keyboard, temperament: this, enharmonicSet: new Set([ iv, enh ])
-      }))
-    } else this.#temperedIntervalSet.set(iv, new TemperedInterval({
-      keyboard: this.#keyboard, temperament: this, enharmonicSet: new Set([ iv ])
-    }))
-  }
-  get chords () { return this.#chords.map(ch => ch.withInversion(0, true)) }
-  addChord (chord) {
-    for (let i = 0; i < chord.adicity; i++) for (const iv of chord.withInversion(i).internalIntervals) this.addInterval(iv);
-    this.#chords.push(chord) // Set?
-  }
-  getTemperedInterval (n, d) { return this.#temperedIntervalSet.get(this.#intervalSet.getRatio(n, d)) }
-  getChordByIntervals (ivs) { // TODO make interval using method
-    ivs = ivs.map(([n, d]) => new Interval({ intervalSet: this.#intervalSet, n, d }));
-    for (const chord of this.chords) {
-      const civs = chord.intervals, m = ivs.length;
-      if (m !== civs.length) continue;
-      const i = civs.findIndex((_, j) => ivs.every((iv, k) => iv === civs[(j + k) % m]));
-      if (~i) return chord.withInversion(i)
+    for (const iv of intervalSet) this.intervalSet.add(iv);
+    this.#temperedIntervalSet = new TemperedIntervalSet({ temperament: this })
+
+    // Splittable?
+    const { splitDecomp } = comma, factors = this.factors = new Map();
+    mapping.addTemperament(this);
+    for (const iv of mapping.commas) { // TODO also test whether this comma is a factor of each
+      if (iv.decomp.length === 0 || iv === comma) continue;
+      const
+        [n, d] = Common.splitMult(splitDecomp, iv.splitDecomp.toReversed()).map(dec => Common.comp(dec)),
+        div = mapping.commas.getRatio(n, d)?.withOctave(0);
+        
+      if (div) {
+        factors.set(iv, div);
+        factors.set(div, iv);
+        if (!mapping.hasTemperament(iv)) new Temperament({ keyboard, mapping, comma: iv, intervalSet: properIntervalSet });
+        if (!mapping.hasTemperament(div)) new Temperament({ keyboard, mapping, comma: div, intervalSet: properIntervalSet })
+      }
     }
   }
+
+  // // TODO index chord trie by tempered interval! x
+  // // Use a regular Map, but use tempered intervals in these chords
+  // * #yieldFromChordTrie (subtrie = this.#chords) {
+  //   if (!Map.prototype.isPrototypeOf(subtrie)) new Error("Temperament error: must yield from Map object");
+  //   for (const value of subtrie.values()) {
+  //     if (Chord.prototype.isPrototypeOf(value)) yield value;
+  //     else if (Map.prototype.isPrototypeOf(value)) yield * this.#yieldFromChordTrie(value);
+  //     else throw new Error("Temperament error: Chords trie must have only either Map nodes or Chord leaves");
+  //   }
+  // }
+  // get chords () { return [ ...this.#yieldFromChordTrie() ] }
+  // set chords (_) {}
+  
+  get chords () { return [ ...this.#chords.values() ] }
+  set chords (_) {}
+  // #addChordToSubtrie (i, subtrie, chord) {
+  //   const iv = chord.intervals[i], curLevel = subtrie.get(iv);
+  //   if (curLevel === undefined) subtrie.set(iv, chord);
+  //   else if (Map.prototype.isPrototypeOf(curLevel)) this.#addChordToSubtrie(i + 1, curLevel, chord);
+  //   else if (curLevel !== chord) {
+  //     // TODO compute the correct index
+  //     const newSubtrie = new Map([[curLevel.withInversion(0).intervals[i + 1], curLevel]]);
+  //     subtrie.set(iv, newSubtrie);
+  //     this.#addChordToSubtrie(i + 1, newSubtrie, chord)
+  //   }
+  // }
+
+  addChord (chord) { return this.#chords.add(chord) }
+  // addChord (chord) {
+  //   if (!Chord.prototype.isPrototypeOf(chord)) new Error("Temperament error: this method only accepts Chords");
+  //   const { inversion: i } = chord;
+  //   this.#addChordToSubtrie(0, this.#chords, chord.withInversion(0, true))
+  //   return chord.withInversion(i, true)
+  // }
+  // #findChordInSubtrie (i, subtrie, chord) {
+  //   const iv = chord.intervals[i], curLevel = subtrie.get(iv);
+  //   if (curLevel === chord) return true;
+  //   else if (Map.prototype.isPrototypeOf(curLevel)) return this.#findChordInSubtrie(i + 1, curLevel, chord);
+  //   else return false
+  // } 
+  // hasChord (chord) { // Also has chord by ratios?
+  //   if (!Chord.prototype.isPrototypeOf(chord)) new Error("Temperament error: this method only accepts Chords");
+  //   const { inversion: i } = chord, result = this.#findChordInSubtrie(0, this.#chords, chord.withInversion(0, true))
+  //   chord.withInversion(i, true);
+  //   return result
+  // }
+  // // BUG use getTemperedInterval
+  // getChordByIntervals (ivs) {
+  //   for (let i = 0, subtrie = this.#chords; i < ivs.length; i++) {
+  //     const mbIv = subtrie.keys().find(({ fraction: [n, d] }) => ivs[i][0] === n && ivs[i][1] === d);
+  //     console.log(mbIv, i);
+  //     if (!mbIv) return false;
+  //     const curLevel = subtrie.get(mbIv);
+  //     if (Chord.prototype.isPrototypeOf(curLevel)) {
+  //       const // BUG octave...
+  //         { inversion: i } = curLevel, { intervals } = curLevel.withInversion(0, true),
+  //         matches = ivs.slice(i).every((frac, j) => intervals[i + j].fraction.every((h, k) => h === frac[k]));
+  //       curLevel.withInversion(i, true);
+  //       return matches ? curLevel : false
+  //     }
+  //   }
+  // }
+
+  getTemperedInterval (n, d) { return this.#temperedIntervalSet.getRatio(n, d) }
 }
 
 
 
 class TemperedInterval {
-  #keyboard; #temperament; enharmonicSet
-  constructor ({ keyboard, temperament, enharmonicSet }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("TemperedInterval error: must provide Keyboard object");
+  #temperament; enharmonicSet // Enharmonies are like tempered dyadic chords...
+  constructor ({ temperament, enharmonicSet }) {
     if (!(Temperament.prototype.isPrototypeOf(temperament))) throw new Error("TemperedInterval error: must provide Temperament object");
-    if (!(Set.prototype.isPrototypeOf(enharmonicSet)) || !Common.between(1, 2, enharmonicSet.size))
-      throw new Error("Bad enharmonic set");
-    this.#keyboard = keyboard;
+    if (!(Set.prototype.isPrototypeOf(enharmonicSet)) || !Common.between(1, 2, enharmonicSet.size)) throw new Error("Bad enharmonic set");
     this.#temperament = temperament;
     this.enharmonicSet = enharmonicSet;
     const [ number, roman, romanlow, letter, fraction ] = [ ...enharmonicSet ]
@@ -405,23 +477,66 @@ class TemperedInterval {
 
 
 
+class TemperedIntervalSet {
+  #rawMap = new Map() // Map([ denominator, Map([ numerator, temperedInterval ]) ])
+  constructor ({ temperament, temperedIntervalSet }) {
+    if (!(Temperament.prototype.isPrototypeOf(temperament))) throw new Error("TemperedIntervalSet error: must provide Temperament object");
+    this.temperament = temperament;
+    if (temperedIntervalSet) for (const tiv of temperedIntervalSet) this.add(tiv);
+    else {
+      const { intervalSet, enharms } = temperament;
+      for (const iv of intervalSet) {
+        const enh = enharms.get(iv);
+        if (enh) this.add(new TemperedInterval({ temperament, enharmonicSet: new Set([ iv, enh ]) }));
+        else this.add(new TemperedInterval({ temperament, enharmonicSet: new Set([ iv ]) }))
+      }
+    }
+  }
+  add (tiv) {
+    for (const iv of tiv.enharmonicSet) {
+      const { n, d } = iv, dMap = this.#rawMap.get(d) ?? this.#rawMap.set(d, new Map()).get(d);
+      dMap.has(n) || dMap.set(n, tiv)
+    }
+    return tiv
+  }
+  has (tiv) {
+    const { n, d } = tiv.enharmonicSet.values().next().value;
+    return this.#rawMap.get(d)?.get(n).enharmonicSet.symmetricDifference(tiv.enharmonicSet).size === 0
+  }
+  hasRatio (n, d) {
+    n = BigInt(n); d = BigInt(d);
+    const c = Common.gcd(n, d);
+    return this.#rawMap.get(Common.non2(d / c))?.has(Common.non2(n / c)) ?? false
+  }
+  getRatio (n, d) {
+    n = BigInt(n); d = BigInt(d);
+    const c = Common.gcd(n, d);
+    return this.#rawMap.get(Common.non2(d / c))?.get(Common.non2(n / c))
+  }
+}
+
+
+
 class Chord {  // TODO BigNum
-   // TODO { harmonicSeries: { harmonics, bass, isSubharm } } | { essentiallyTempered: { internalIntervals } }
+  // A tempered chord has a natural temperament, but is compatible with any temperament with it as a factor
+  // * Should factor temperaments be added to mapping.temperaments?
+  // TODO { harmonicSeries: { harmonics, bass, isSubharm } } | { essentiallyTempered: { internalIntervals } }
   static types = [ "harmonic series", "essentially tempered" ]
-  static fromRepr = ({ keyboard, mapping, type, chordRaw: { edo, limit, ln, ld, internalIntervalsRaw } }) => {
+  static fromRepr = ({ keyboard, mapping, type, chordRaw: { edo, limit, nd, dd, internalIntervalsRaw } }) => {
     if (keyboard.edo !== edo) throw new Error("Unhandled - chord edo different to current edo");
     if (keyboard.scale.limit !== limit) throw new Error("Unhandled - chord limit different to current limit");
-    const ivset = mapping.intervalSet, intervalsRaw = internalIntervalsRaw.map(ivs => ivs[1]);
-    let iv = ivset.addRatio(...intervalsRaw.reduce(([a, b], [c, d]) => [a * c, b * d], [1, .5]));
+    const intervalsRaw = internalIntervalsRaw.map(ivs => ivs[1]);
+    const frac = intervalsRaw.reduce(([a, b], [c, d]) => [a * c, b * d], [1n, 2n]);
+    if (Common.bigLog2(frac[0]) < Common.bigLog2(frac[1])) frac.reverse();
+    const iv = mapping.commas.addRatio(...frac).withOctave(0);
     if (Common.mod(mapping.steps(iv), edo) !== 0) throw new Error("Unhandled - chord comma not tempered");
-    if (mapping.steps(iv) === edo) iv = iv.inverse();
-    // console.log(iv);
     if (!mapping.temperaments.has(iv)) throw new Error("Unhandled - chord temperament not yet loaded");
-    const [n, d] = iv.fraction;
-    if (Common.bigLog2(n) !== ln || Common.bigLog2(d) !== ld) throw new Error("Unhandled - comma / interval mismatch");
+    const ivset = mapping.intervalSet, { n, d } = iv;
+    if (n !== Common.comp(nd) || d !== Common.comp(dd)) throw new Error("Unhandled - comma / interval mismatch");
     return new Chord({ keyboard, mapping, type, internalIntervals: internalIntervalsRaw.map(ivs => ivs.map(iv => ivset.addRatio(...iv))) })
   }
   #keyboard; #mapping; type; adicity; #intervals; #internalIntervals
+  #temperedIntervals; #internalTemperedIntervals
   harmonics; #harmonicIntervals; isSubHarm; #inversion
   voicing
   constructor ({ keyboard, mapping, type, harmonics, bass, isSubHarm = false, internalIntervals, voicing }) {
@@ -432,6 +547,7 @@ class Chord {  // TODO BigNum
     if (typeof type !== "string" && !Chord.types.includes(type)) throw new Error("Chord error: unknown type");
     this.type = type;
     switch (type) {
+      // Harmonic chords temper the unison
       case "harmonic series":
       if (typeof bass !== "number" || !harmonics.includes(bass) || !("length" in harmonics) || harmonics.length < 2 ||
         harmonics.some(h => typeof h !== "number" || !mapping.decomp(h, bass)()))
@@ -459,11 +575,22 @@ class Chord {  // TODO BigNum
       this.voicing = voicing ?? Array(this.adicity).fill(0);
       this.#inversion = 0;
       this.#internalIntervals = internalIntervals;
-      this.#intervals = internalIntervals.map(ivs => ivs[1])
+      const
+        { temperament } = mapping,
+        internalTemperedIntervals = this.#internalTemperedIntervals = internalIntervals
+          .map(ivs => ivs.map(({ fraction: [n, d] }) => temperament.getTemperedInterval(n, d)));
+      this.#intervals = internalIntervals.map(ivs => ivs[1]);
+      this.#temperedIntervals = internalTemperedIntervals.map(ivs => ivs[1]);
+
+      // Check if symmetric
+      const sym = false;
+      if (sym) this.dual = this
     }
   }
+
   get inversion () { return this.#inversion }
   set inversion (i) { this.#inversion = Common.mod(i, this.adicity) }
+
   get intervals () {
     const
       inv = this.#inversion, { type } = this,
@@ -471,21 +598,33 @@ class Chord {  // TODO BigNum
         type === "essentially tempered" ? this.#intervals : []
     return ivs.toSpliced(0, inv).concat(ivs.toSpliced(inv))
   }
+  set intervals (_) {}
+
+  get temperedIntervals () {
+    if (this.type === "harmonic series") return null;
+    const inv = this.#inversion, ivs = this.#temperedIntervals;
+    return ivs.toSpliced(0, inv).concat(ivs.toSpliced(inv))
+  }
+  set temperedIntervals (_) {}
+
   get intervalNames () {
     const { temperament } = this.#mapping;
     return this.intervals.map(({ fraction }) => temperament.getTemperedInterval(...fraction).noteSpelling)
   }
+  set intervalNames (_) {}
   get internalIntervals () {
     const mapping = this.#mapping
     return this.type === "harmonic series" ?
       this.#internalIntervals[this.#inversion].map(iv => mapping.intervalSet.getRatio(...iv)) :
       this.type === "essentially tempered" ? this.#internalIntervals[this.#inversion].slice() : []
   }
+  set internalIntervals (_) {}
   get internalIntervalNames () {
     const { temperament } = this.#mapping;
     return this.internalIntervals.map(iv => temperament.getTemperedInterval(...iv.fraction).noteSpelling)
   }
-  get chordName () {}
+  set internalIntervalNames (_) {}
+  // get chordName () {}
   get #repr () {
     const { type, harmonics, voicing } = this;
     let opts = { type, inversion: this.#inversion, voicing }
@@ -493,6 +632,8 @@ class Chord {  // TODO BigNum
     else if (type === "essentially tempered") opts.internalIntervals = this.#internalIntervals;
     return opts
   }
+  set #repr (_) {}
+
   toString () {
     const { internalIntervals, ...opts } = this.#repr;
     if (internalIntervals) opts.internalIntervals = internalIntervals.map(ivs => ivs.map(iv => iv.fraction));
@@ -522,6 +663,16 @@ class Chord {  // TODO BigNum
     this.#inversion = adicity - this.#inversion - 1;
     return this
   }
+
+  #dual
+  get dual () { return this.#dual }
+  set dual (chord) {
+    if (chord.adicity !== this.adicity) return false;
+    const { inversion } = chord, { intervals } = chord.withInversion(0, true);
+    if (this.#intervals.some((iv, i) => iv !== intervals[i ? intervals.length - i : 0])) return false;
+    this.#dual = chord.withInversion(inversion, true)
+  }
+
   start (id) {
     const
       { voicing } = this, keyboard = this.#keyboard, mapping = this.#mapping,
@@ -543,4 +694,4 @@ class Chord {  // TODO BigNum
 
 
 
-export { HarmonicMapping, Temperament, TemperedInterval, Chord }
+export { HarmonicMapping, Temperament, TemperedInterval, TemperedIntervalSet, Chord }

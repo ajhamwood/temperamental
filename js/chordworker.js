@@ -53,7 +53,7 @@ class ChordWorker {
                 [ ch.slice(i).concat(ch.toSpliced(i + j - ch.length)), ch.slice(i + j - ch.length, i) ] :
                 [ ch.slice(i, i + j), ch.slice(i + j).concat(ch.toSpliced(i)) ]).map(subch => subch.toSorted(ivOrder)),
               facts = subchs.map(subch => {
-                const [ n, d ] = subch.reduce(([ ao, au ], iv) => [ ao * iv.n, au * iv.d ], [1, 1]);
+                const [ n, d ] = subch.reduce(([ ao, au ], iv) => [ ao * iv.n, au * iv.d ], [1n, 1n]);
                 return ivSet.addRatio(n, d)
               }),
               natural = facts.reduce((res, fact, p) => res || (properIvSet.has(fact) &&
@@ -84,7 +84,12 @@ self.onmessage = ({ data: { params, stacks, upperBound, retrieve, i } }) => {
     const { batchSize } = chordGen, batch = [];
     if (upperBound.get(i) !== null)
       for (const value of chordGen.chords(comma, stacks.map(ivs => ivs.map(iv => chordGen.properIvSet.getRatio(...iv))))) {
-        const ord = [ value.length, ...[[ value[0][0] ]].concat(value.slice(1).reverse()).map(([ [n, d] ]) => n / d) ];
+        const
+          ord = [ value.length, ...value
+            .map(([ [n, d] ], i) => {
+              const v = 2 ** (Common.bigLog2(n) - Common.bigLog2(d));
+              return i ? 2 - v : v
+            }) ];
         if (upperBound.has(i) && Common.LTE(ord, upperBound.get(i))) continue;
         if (batch.length < batchSize) batch.push({ internalIntervalsRaw: value, ord });
         else postMessage({ batch: batch.splice(0), done: false, identifier, i })

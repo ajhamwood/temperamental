@@ -9,14 +9,14 @@ class CommaWorker {
   }
   * #mults () { // Not correct for indexed mappings
     const
-      ps = this.primes.concat([2], this.index).sort((a, b) => a > b),
-      lps = ps.map(Math.log2), bps = ps.map(BigInt), list = [[ 1n, 0 ]];  // TODO: persist list
+      ps = [2].concat(this.primes, this.index).sort((a, b) => a > b),
+      bps = ps.map(BigInt), list = [[ 1n, Array(ps.length).fill(0) ]];  // TODO: persist list
     let len = 1;
     while (true) {
-      const [ k, l ] = list.splice(0, 1)[0];
+      const [ k, d ] = list.splice(0, 1)[0];
       len--;
       for (let i = 0, low = 0; i < ps.length; i++) {
-        const val = k * bps[i], log = l + lps[i];
+        const val = k * bps[i], dec = d.with(i, d[i] + 1);
         let high = len;
         while (low < high) {
           const mid = (low + high) >>> 1;
@@ -24,20 +24,25 @@ class CommaWorker {
           else high = mid
         }
         if (list[low]?.[0] === val) continue;
-        list.splice(low, 0, [ val, log ]);
+        list.splice(low, 0, [ val, dec ]);
         len++
       }
-      yield [ k, l ]
+      yield [ k, d ]
     }
+  }
+
+  #withPrimes (ar) {
+    const ps = this.primes.concat(this.index);
+    return ar.slice(1).reduce((acc, rad, i) => rad === 0 ? acc : acc.concat([[ ps[i], rad ]]), [])
   }
 
   * #commas () {
     let prev = [];
-    const lps = this.primes.concat([2], this.index).map(Math.log2).sort((a, b) => a > b); // Fix this...
-    for (const [ n, ln ] of this.#mults()) {
-      prev = prev.filter(([ , ld ]) => ln - ld < this.maxError / 400);
-      for (const [ d, ld ] of prev) if (Common.gcd(n, d) === 1n) yield { n, d, ln, ld };
-      prev.push([ n, ln ])
+    // const lps = this.primes.concat([2], this.index).map(Math.log2).sort((a, b) => a > b); // Fix this...
+    for (const [ n, nd ] of this.#mults()) {
+      prev = prev.filter(([ d ]) => Common.bigLog2(n) - Common.bigLog2(d) < this.maxError / 400);
+      for (const [ d, dd ] of prev) if (Common.gcd(n, d) === 1n) yield { n, d, nd: this.#withPrimes(nd), dd: this.#withPrimes(dd) };
+      prev.push([ n, nd ])
     }
   }
 

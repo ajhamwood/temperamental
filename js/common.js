@@ -33,7 +33,24 @@ class Common {
     for (const [ k, v ] of this.mapBy(raw)) res.set(parseInt(k), v.length)
     return res
   })
-  static comp = ar => ar.reduce((n, [p, rad]) => n * p ** rad, 1)
+  static comp = ar => ar.reduce((n, [p, rad]) => n * BigInt(p) ** BigInt(rad), 1n)
+  static splitMult = (a, b) => {
+    const acc = b.map(side => side.map(f => f.slice()));
+    for (let side = 0; side <= 1; side++) for (const [p, rad] of a[side]) {
+      const i = acc[side].findIndex(([q]) => p === q),
+            j = acc[1 - side].findIndex(([q]) => p === q);
+      if (~i) acc[side][i][1] += rad;
+      else if (~j) {
+        const r = rad - acc[1 - side][j][1];
+        if (r > 0) {
+          acc[side].push([p, r]);
+          acc[1 - side].splice(j, 1)
+        } else if (r === 0) acc[1 - side].splice(j, 1);
+        else if (r < 0) acc[1 - side][j][1] = -r
+      } else acc[side].push([p, rad]);
+    }
+    return acc
+  }
   static bigLog2 = x => {
     const str = x.toString(16), d = str.slice(0, 13);
     return Math.log2(parseInt(d, 16) / 16 ** d.length) + 4 * str.length

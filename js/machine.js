@@ -12,7 +12,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
 
 //   $.Machine creates state machines for the page
   Machine: class { constructor (s) { let state = Object.seal(s); wm.set(this, { es: {}, state: Object.seal(s) });
-      for (let k in state) Object.defineProperty(this, k, { get: () => state[k], set: v => state[k] = v }); return Object.seal(this) }
+      for (const k in state) Object.defineProperty(this, k, { get: () => state[k], set: v => state[k] = v }); return Object.seal(this) }
     state () { return wm.get(this).state }
     on (t, fn) { (wm.get(this).es[t] ??= new Map()).set(fn.name, fn); return this }
     stop (t, fname = t) { let {es} = wm.get(this); es[t]?.delete(fname) && (es[t].size || delete es[t]); return this }
@@ -26,16 +26,16 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
 
 //   $.targets recursively adds event listeners to objects and removes them by name, indexed by regex
   targets (obj, target = window) {
-    for (let ts in obj) if (test(obj[ts], Function)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.on(t, obj[ts]));
+    for (const ts in obj) if (test(obj[ts], Function)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.on(t, obj[ts]));
       else if (test(target, EventTarget)) ts.split(' ').forEach(t => add(target, ...t.match(/([^*#]*)(\*|#)?/).slice(1), obj[ts].bind(target))) }
     else if (test(obj[ts], String)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.stop(t, obj[ts]));
       else if (test(target, EventTarget)) ts.split(' ').forEach(t => remove(target, t, 'bound ' + obj[ts])) }
     else if (ts in target) $.targets(obj[ts], target[ts]);
-    else for (let k in target) if (k.match(new RegExp(`^${ts}$`))) $.targets(obj[ts], target[k]) },
+    else for (const k in target) if (k.match(new RegExp(`^${ts}$`))) $.targets(obj[ts], target[k]) },
 
 //   $.queries adds event listeners to DOM nodes and removes them by name, indexed by selector
   queries (obj, root) {
-    for (let q in obj) { let ns = q === "" ? [root] : $.all(q, root); if (ns.length) for (let ts in obj[q])
+    for (const q in obj) { let ns = q === "" ? [root] : $.all(q, root); if (ns.length) for (const ts in obj[q])
       if (test(obj[q][ts], Function)) ts.split(' ').forEach(t => ns.forEach(n => add(n, t, false, obj[q][ts].bind(n))));
       else if (test(obj[q][ts], String)) ts.split(' ').forEach(t => ns.forEach(n => remove(n, t, 'bound ' + obj[q][ts]))) } },
 
