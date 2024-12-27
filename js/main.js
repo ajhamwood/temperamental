@@ -57,7 +57,7 @@ class Listeners {
       img.id = "drag-feedback";
       img.style.setProperty("left", pageX - dx + 40 + "px");
       img.style.setProperty("top", pageY - dy + 40 + "px")
-      document.appendChild(img);
+      document.body.appendChild(img);
       if (this.classList.contains("chord")) this.dataset.active = ""
     },
     touchmove ({ changedTouches: [ { pageX, pageY } ] }) {
@@ -143,7 +143,7 @@ $.targets({
     app.keyboard.hexGrid.redraw(true)
   } } },
 
-  blur () { $("body").classList.remove("copying") },
+  // blur () { $("body").classList.remove("copying") },
 
   async pointerdown (e) {
     if (e.pointerType !== "mouse") {
@@ -447,9 +447,10 @@ $.targets({
           break
         case "chord":
           if (chord) data.item = chord;
-          else { // TODO need to check getChordByIntervals
+          else {
             data.item = this.keyboard.scale.mapping.temperament
               .getChordByIntervals(JSON.parse($(".chord-intervals", node).dataset.intervals).map(v => v.map(BigInt)));
+            // Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw: { edo, limit, nd, dd, internalIntervalsRaw } })
             chord = data.item;
             text = JSON.stringify({ type, data: JSON.parse(chord.toString()) })
           }
@@ -502,8 +503,9 @@ $.targets({
         }
         ratioEl.innerHTML = `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>`;
         spellingEl.innerText = data.item.noteSpelling.number
-      } else if (Chord.prototype.isPrototypeOf(data.item))
-        $.load("clipboard-item-chord", "#clipboard-peek")[0][0].innerText = data.item.internalIntervalNames.map(({ letter }) => letter).join(" ")
+      } else if (Chord.prototype.isPrototypeOf(data.item)) {
+        $.load("clipboard-item-chord", "#clipboard-peek")[0][0].innerText = data.item.chordName[1].values().next().value.join(", ")
+      }
     },
 
     panic () {
@@ -864,7 +866,7 @@ $.targets({
         ps = lattice.primes.concat(lattice.index).sort((a, b) => a > b), commasEl = $("#commas");
       let boundN, hasFresh, upperBound = parseInt(commasEl.dataset.upperBound), prevn, prevd;
 
-      const temperamentsLi = $("#temperaments"); // TODO flesh out
+      const temperamentsLi = $("#temperaments");
       for (const h of lattice.primes) temperamentsLi.style.setProperty(`--hcolour-${h}`,
         Common.colourMix(Keyboard.noteColours[h === 3 ? "white" : h] ?? Keyboard.noteColours.default, Keyboard.noteColours.black, .5));
 
@@ -972,92 +974,100 @@ $.targets({
       chordsFieldsetEl.classList.add("computing");
       await new Promise(requestAnimationFrame);
       
-      const iv = commas.getRatio(n, d);
-      await mapping.resetChords(iv);
+      const iv = commas.getRatio(n, d), test = mapping.temperaments.has(iv);
+      mapping.resetChords(iv);
       let cursor = 0, upperBound = mapping.commasBounds.get(iv) ?? new Map();
-      for await (const { source, value } of mapping.takeChords(upperBound)) {
-        const { done, i, ...ordChordRaw } = value;
+      if (test) {
+        mapping.temperament = [n, d];
+        for (const chord of mapping.temperament.chords) this.emit("populate-chord", chord, chordsEl)["populate-chord"]
+      } else for await (const { source, value } of mapping.takeChords(upperBound)) {
+        const { done, i, ...ordChordRaw } = value, { internalIntervalsRaw, ...chordRaw } = ordChordRaw;
+        chordRaw.internalIntervalsRaw = internalIntervalsRaw.map(ivs => [[1n, 1n]].concat(ivs));
+        await mapping.waitForTemperament;
+        const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
+
+        if (chord !== mapping.temperament.addChord(chord)) continue;
         if (source === "worker") {
           await storage.saveChord(ordChordRaw);
           upperBound.set(i, done ? null : ordChordRaw.ord);
           await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
         }
-        ordChordRaw.internalIntervalsRaw.forEach(ivs => ivs.unshift([1, 1]));
-        const { ord, ...chordRaw } = ordChordRaw;
-        await mapping.waitForTemperament;
-        const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
-        mapping.temperament.addChord(chord);
-        const chordEl = $.load("chord", "#chords")[0][0], chordIvsEl = $(".chord-intervals", chordEl);
-        chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
-        chordEl.dataset.ord = JSON.stringify(ord);
-        const chordEls = $.all(".chord", chordsEl);
-        const ix = chordEls.slice(cursor).findIndex(el => Common.LTE(ord, JSON.parse(el.dataset.ord ?? "[]")));
-        if (ix === -1) {
-          cursor = chordEls.length - 1;
-          chordsEl.append(chordEl)
-        } else chordEls[cursor += ix].insertAdjacentElement("beforebegin", chordEl);
-        cursor++;
-        if (done) cursor = 0;
-
-        app.emit("display-chord", chord, chordEl);
-        $.queries({
-
-          "button.play-chord": {
-            pointerdown ({ pointerId }) {
-              this.setPointerCapture(pointerId);
-              if ($(".switch input:checked")) IntervalManager.set("pointerdown", () => {
-                chord.stop("pointer-" + pointerId);
-                chord.inversion++;
-                app.emit("display-chord", chord, chordEl);
-                setTimeout(() => chord.start("pointer-" + pointerId), 50)
-              }, 1000);
-              chord.start("pointer-" + pointerId)
-            },
-            "pointerup lostpointercapture" ({ pointerId }) {
-              if (!this.hasPointerCapture(pointerId)) return;
-              IntervalManager.clear("pointerdown");
-              chord.stop("pointer-" + pointerId);
-              this.releasePointerCapture(pointerId)
-            }
-          },
-
-          "button.inversion": { click () {
-            chord.inversion++;
-            chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
-            app.emit("display-chord", chord, chordEl)
-          } },
-
-          button: { "touchstart touchmove touchend" (e) { e.stopPropagation() } },
-          
-          "": {
-            dragstart (e) {
-              $("body").classList.add("copying");
-              e.dataTransfer.effectAllowed = "copy";
-              this.dataset.active = "";
-              e.dataTransfer.setData("text/plain", "{ \"type\": \"chord\" }")
-            },
-            dragend () {
-              $("body").classList.remove("copying");
-              delete this.dataset.active
-            },
-            ...Listeners.dragDropTouch
-          }
-        }, chordEl)
+        cursor = this.emit("populate-chord", chord, chordsEl, cursor, done)["populate-chord"]
       }
-      const chordEls = $.all(".chord", chordsEl);
       chordsFieldsetEl.classList.remove("computing");
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
+    },
+
+    "populate-chord" (chord, chordsEl, cursor = 0, done = false) {
+      const
+        chordEl = $.load("chord", "#chords")[0][0], chordEls = $.all(".chord", chordsEl),
+        chordIvsEl = $(".chord-intervals", chordEl);
+      chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
+      chordEl.dataset.ord = JSON.stringify(chord.ord);
+      const ix = chordEls.slice(cursor).findIndex(el => Common.LTE(chord.ord, JSON.parse(el.dataset.ord ?? "[]")));
+      if (ix === -1) {
+        cursor = chordEls.length - 1;
+        chordsEl.append(chordEl)
+      } else chordEls[cursor += ix].insertAdjacentElement("beforebegin", chordEl);
+      cursor++;
+      if (done) cursor = 0;
+
+      app.emit("display-chord", chord, chordEl);
+      $.queries({
+
+        "button.play-chord": {
+          pointerdown ({ pointerId }) {
+            this.setPointerCapture(pointerId);
+            if ($(".switch input:checked")) IntervalManager.set("pointerdown", () => {
+              chord.stop("pointer-" + pointerId);
+              chord.inversion++;
+              app.emit("display-chord", chord, chordEl);
+              setTimeout(() => chord.start("pointer-" + pointerId), 50)
+            }, 1000);
+            chord.start("pointer-" + pointerId)
+          },
+          "pointerup lostpointercapture" ({ pointerId }) {
+            if (!this.hasPointerCapture(pointerId)) return;
+            IntervalManager.clear("pointerdown");
+            chord.stop("pointer-" + pointerId);
+            this.releasePointerCapture(pointerId)
+          }
+        },
+
+        "button.inversion": { click () {
+          chord.inversion++;
+          app.emit("display-chord", chord, chordEl)
+        } },
+
+        button: { "touchstart touchmove touchend" (e) { e.stopPropagation() } },
+        
+        "": {
+          dragstart (e) {
+            $("body").classList.add("copying");
+            e.dataTransfer.effectAllowed = "copy";
+            this.dataset.active = "";
+            e.dataTransfer.setData("text/plain", "{ \"type\": \"chord\" }")
+          },
+          dragend () {
+            $("body").classList.remove("copying");
+            delete this.dataset.active
+          },
+          ...Listeners.dragDropTouch
+        }
+      }, chordEl);
+      return cursor
     },
 
     "display-chord" (chord, chordEl) {
       const
         { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
-        [ chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
+        [ chNameEl, chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
         [ chIvHarmonicEl, chIvStepsEl ] = chIntervalsEl.children,
         [ chPcHarmonicEl, chPcStepsEl ] = chPitchesEl.children,
         [ chIvSpellingEl, chPcSpellingEl ] = chSpellingEl.children,
         [ chIsSymmetricEl, chNextInvBtn, chPlayChordBtn ] = chControlsEl.children;
       $.all(".chord-edo", chordEl).forEach(el => el.innerText = edo);
+      chNameEl.children[0].innerHTML = chord.chordName[1].values().next().value.join(", "); // Obviously, to be improved
       chIvHarmonicEl.innerHTML = chord.intervalNames.map(({ fraction }) => fraction).join(" ");
       chIvStepsEl.innerText = chord.intervals.map(iv => mapping.steps(iv)).join(" ");
       chPcHarmonicEl.innerHTML = chord.internalIntervalNames.map(({ fraction }) => fraction).join(" – ");
@@ -1402,8 +1412,8 @@ $.queries({
           }
         }
       },
-      "pointerup lostpointercapture" ({ pointerId }) {
-        if (!this.hasPointerCapture(pointerId)) return;
+      "pointerup lostpointercapture" ({ type, pointerId }) {
+        if (type === "pointerup" && !this.hasPointerCapture(pointerId)) return;
         const { clipboard, clipboardPeekIndex } = app.keyboard;
         clipboard[clipboardPeekIndex]?.stop(pointerId);
         this.releasePointerCapture(pointerId)

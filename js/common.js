@@ -8,6 +8,7 @@ class Common {
   static mod = (n, m) => ((n % m) + m) % m
   static non2 = h => h / (h & (~--h))
   static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
+  static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
   static groupBy = (ar, groupFn = x => x, mapFn = x => x) => ar.reduce((a, v) => {
     const k = groupFn(v);
@@ -51,6 +52,12 @@ class Common {
     }
     return acc
   }
+  static splitLCM = (...ns) => ns.reduce((acc, val) => acc.map((m, i) => val[i]
+    .reduce((acc, [p, rad]) => acc.get(p) > rad ? acc : acc.set(p, rad), m)),
+    [new Map(), new Map()]).map(m => [ ...m ])
+  // static splitGCD = (n, ...ns) => ns.map(nn => nn.map(side => new Map(side)))
+  //   .reduce((acc, ms) => acc.map((side, i) => side.reduce((acc, [p, rad]) =>
+  //     ms[i].get(p) >= rad ? acc.concat([[p, rad]]) : acc, [])), n)
   static bigLog2 = x => {
     const str = x.toString(16), d = str.slice(0, 13);
     return Math.log2(parseInt(d, 16) / 16 ** d.length) + 4 * str.length

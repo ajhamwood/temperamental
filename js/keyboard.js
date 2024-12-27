@@ -228,6 +228,7 @@ class Keyboard {
   refresh () {
     this.touches = new Map();
     this.scale.refresh();
+    this.hexGrid.clearActiveClasses();
     this.hexGrid.redraw(true)
   }
 

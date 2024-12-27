@@ -120,7 +120,7 @@ class HarmonicMapping {
   // Chords (in worker)
   // TODO: dynamically split large basicStack jobs across finished workers (use priority)
   
-  async #genChords (iv) {
+  #genChords (iv) {
     const
       existing = this.#temperaments.get(iv), self = this,
       { globalBatchSize: batchSize } = app;
@@ -238,7 +238,7 @@ class HarmonicMapping {
     }
   }
   async * takeChords (upperBound) { yield * await this.#chordGen({ upperBound }) }
-  async resetChords (iv) {
+  resetChords (iv) {
     const
       { edo } = this.#keyboard, { limit } = this.#scale,
       comma = iv.fraction, [ nd, dd ] = iv.splitDecomp;
@@ -246,7 +246,7 @@ class HarmonicMapping {
     this.#chordsworkers = new Map();
     this.#chordGen = Common.cacheAside({
       cacheGen: app.storage.yieldChords({ edo, limit, nd, dd }),
-      ...await this.#genChords(iv)
+      ...this.#genChords(iv)
     })
   }
 
@@ -352,8 +352,7 @@ class Temperament {
   }
 
   #keyboard; #mapping; comma; intervalSet; #temperedIntervalSet
-  basicStacks; enharms//; #chords = new Map() // Trie with Interval symbols: Map([ iv, Map | chord ])
-  #chords = new Set(); factors
+  basicStacks; enharms; factors; #chords = new Map() // Trie with Interval symbols: Map([ iv, Map | chord ])
   constructor ({ keyboard, mapping, comma, intervalSet }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Temperament error: must provide Keyboard object");
     this.#keyboard = keyboard;
@@ -392,68 +391,65 @@ class Temperament {
     }
   }
 
-  // // TODO index chord trie by tempered interval! x
-  // // Use a regular Map, but use tempered intervals in these chords
-  // * #yieldFromChordTrie (subtrie = this.#chords) {
-  //   if (!Map.prototype.isPrototypeOf(subtrie)) new Error("Temperament error: must yield from Map object");
-  //   for (const value of subtrie.values()) {
-  //     if (Chord.prototype.isPrototypeOf(value)) yield value;
-  //     else if (Map.prototype.isPrototypeOf(value)) yield * this.#yieldFromChordTrie(value);
-  //     else throw new Error("Temperament error: Chords trie must have only either Map nodes or Chord leaves");
-  //   }
-  // }
-  // get chords () { return [ ...this.#yieldFromChordTrie() ] }
-  // set chords (_) {}
-  
-  get chords () { return [ ...this.#chords.values() ] }
+  * #yieldFromChordTrie (subtrie = this.#chords) {
+    if (!Map.prototype.isPrototypeOf(subtrie)) new Error("Temperament error: must yield from Map object");
+    for (const value of subtrie.values()) {
+      if (Chord.prototype.isPrototypeOf(value)) yield value;
+      else if (Map.prototype.isPrototypeOf(value)) yield * this.#yieldFromChordTrie(value);
+      else throw new Error("Temperament error: Chords trie must have only either Map nodes or Chord leaves");
+    }
+  }
+  get chords () { return [ ...this.#yieldFromChordTrie() ] }
   set chords (_) {}
-  // #addChordToSubtrie (i, subtrie, chord) {
-  //   const iv = chord.intervals[i], curLevel = subtrie.get(iv);
-  //   if (curLevel === undefined) subtrie.set(iv, chord);
-  //   else if (Map.prototype.isPrototypeOf(curLevel)) this.#addChordToSubtrie(i + 1, curLevel, chord);
-  //   else if (curLevel !== chord) {
-  //     // TODO compute the correct index
-  //     const newSubtrie = new Map([[curLevel.withInversion(0).intervals[i + 1], curLevel]]);
-  //     subtrie.set(iv, newSubtrie);
-  //     this.#addChordToSubtrie(i + 1, newSubtrie, chord)
-  //   }
-  // }
+  
+  #addChordToSubtrie (i, subtrie, chord) {
+    const tiv = chord.temperedIntervals[i], curLevel = subtrie.get(tiv);
+    if (curLevel === undefined) {
+      subtrie.set(tiv, chord);
+      return chord
+    } else if (Map.prototype.isPrototypeOf(curLevel)) return this.#addChordToSubtrie(i + 1, curLevel, chord);
+    else if (curLevel !== chord) {
+      if (chord.temperedIntervals.every((tiv, i) => tiv === curLevel.temperedIntervals[i])) return curLevel;
+      // TODO compute the correct index
+      const newSubtrie = new Map([[curLevel.withInversion(0).temperedIntervals[i + 1], curLevel]]);
+      subtrie.set(tiv, newSubtrie);
+      return this.#addChordToSubtrie(i + 1, newSubtrie, chord)
+    }
+  }
+  addChord (chord) {
+    if (!Chord.prototype.isPrototypeOf(chord)) new Error("Temperament error: this method only accepts Chords");
+    const { inversion: i } = chord;
+    return this.#addChordToSubtrie(0, this.#chords, chord.withInversion(0, true)).withInversion(i, true)
+  }
 
-  addChord (chord) { return this.#chords.add(chord) }
-  // addChord (chord) {
-  //   if (!Chord.prototype.isPrototypeOf(chord)) new Error("Temperament error: this method only accepts Chords");
-  //   const { inversion: i } = chord;
-  //   this.#addChordToSubtrie(0, this.#chords, chord.withInversion(0, true))
-  //   return chord.withInversion(i, true)
-  // }
-  // #findChordInSubtrie (i, subtrie, chord) {
-  //   const iv = chord.intervals[i], curLevel = subtrie.get(iv);
-  //   if (curLevel === chord) return true;
-  //   else if (Map.prototype.isPrototypeOf(curLevel)) return this.#findChordInSubtrie(i + 1, curLevel, chord);
-  //   else return false
-  // } 
-  // hasChord (chord) { // Also has chord by ratios?
-  //   if (!Chord.prototype.isPrototypeOf(chord)) new Error("Temperament error: this method only accepts Chords");
-  //   const { inversion: i } = chord, result = this.#findChordInSubtrie(0, this.#chords, chord.withInversion(0, true))
-  //   chord.withInversion(i, true);
-  //   return result
-  // }
-  // // BUG use getTemperedInterval
-  // getChordByIntervals (ivs) {
-  //   for (let i = 0, subtrie = this.#chords; i < ivs.length; i++) {
-  //     const mbIv = subtrie.keys().find(({ fraction: [n, d] }) => ivs[i][0] === n && ivs[i][1] === d);
-  //     console.log(mbIv, i);
-  //     if (!mbIv) return false;
-  //     const curLevel = subtrie.get(mbIv);
-  //     if (Chord.prototype.isPrototypeOf(curLevel)) {
-  //       const // BUG octave...
-  //         { inversion: i } = curLevel, { intervals } = curLevel.withInversion(0, true),
-  //         matches = ivs.slice(i).every((frac, j) => intervals[i + j].fraction.every((h, k) => h === frac[k]));
-  //       curLevel.withInversion(i, true);
-  //       return matches ? curLevel : false
-  //     }
-  //   }
-  // }
+  #findChordInSubtrie (i, subtrie, chord) {
+    const tiv = chord.temperedIntervals[i], curLevel = subtrie.get(tiv);
+    if (curLevel === chord) return true;
+    else if (Map.prototype.isPrototypeOf(curLevel)) return this.#findChordInSubtrie(i + 1, curLevel, chord);
+    else return false
+  } 
+  hasChord (chord) { // Also has chord by ratios?
+    if (!Chord.prototype.isPrototypeOf(chord)) new Error("Temperament error: this method only accepts Chords");
+    const { inversion: i } = chord, result = this.#findChordInSubtrie(0, this.#chords, chord.withInversion(0, true))
+    chord.withInversion(i, true);
+    return result
+  }
+  // BUG use getTemperedInterval
+  getChordByIntervals (ivs) {
+    for (let i = 0, subtrie = this.#chords; i < ivs.length; i++) {
+      const mbIv = this.getTemperedInterval(...ivs[i]);
+      if (!mbIv) return false;
+      const curLevel = subtrie.get(mbIv);
+      if (Chord.prototype.isPrototypeOf(curLevel)) {
+        const // BUG octave...
+          { inversion: i } = curLevel, { intervals } = curLevel.withInversion(0, true),
+          matches = ivs.slice(i).every((frac, j) => intervals[i + j].fraction.every((h, k) => h === frac[k]));
+        curLevel.withInversion(i, true);
+        return matches ? curLevel : false
+      }
+      subtrie = curLevel
+    }
+  }
 
   getTemperedInterval (n, d) { return this.#temperedIntervalSet.getRatio(n, d) }
 }
@@ -517,12 +513,11 @@ class TemperedIntervalSet {
 
 
 
-class Chord {  // TODO BigNum
+class Chord {
   // A tempered chord has a natural temperament, but is compatible with any temperament with it as a factor
   // * Should factor temperaments be added to mapping.temperaments?
-  // TODO { harmonicSeries: { harmonics, bass, isSubharm } } | { essentiallyTempered: { internalIntervals } }
   static types = [ "harmonic series", "essentially tempered" ]
-  static fromRepr = ({ keyboard, mapping, type, chordRaw: { edo, limit, nd, dd, internalIntervalsRaw } }) => {
+  static fromRepr = ({ keyboard, mapping, type, voicing, chordRaw: { edo, limit, nd, dd, internalIntervalsRaw } }) => {
     if (keyboard.edo !== edo) throw new Error("Unhandled - chord edo different to current edo");
     if (keyboard.scale.limit !== limit) throw new Error("Unhandled - chord limit different to current limit");
     const intervalsRaw = internalIntervalsRaw.map(ivs => ivs[1]);
@@ -533,13 +528,14 @@ class Chord {  // TODO BigNum
     if (!mapping.temperaments.has(iv)) throw new Error("Unhandled - chord temperament not yet loaded");
     const ivset = mapping.intervalSet, { n, d } = iv;
     if (n !== Common.comp(nd) || d !== Common.comp(dd)) throw new Error("Unhandled - comma / interval mismatch");
-    return new Chord({ keyboard, mapping, type, internalIntervals: internalIntervalsRaw.map(ivs => ivs.map(iv => ivset.addRatio(...iv))) })
+    return new Chord({ keyboard, mapping, type, voicing, internalIntervals: internalIntervalsRaw.map(ivs => ivs.map(iv => ivset.addRatio(...iv))) })
   }
   #keyboard; #mapping; type; adicity; #intervals; #internalIntervals
   #temperedIntervals; #internalTemperedIntervals
   harmonics; #harmonicIntervals; isSubHarm; #inversion
   voicing
-  constructor ({ keyboard, mapping, type, harmonics, bass, isSubHarm = false, internalIntervals, voicing }) {
+  ord
+  constructor ({ keyboard, mapping, type, harmonics, bass, isSubHarm = false, internalIntervals, voicing, ord }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Chord error: must provide Keyboard object");
     if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Chord error: must provide HarmonicMapping object");
     this.#keyboard = keyboard;
@@ -579,12 +575,19 @@ class Chord {  // TODO BigNum
         { temperament } = mapping,
         internalTemperedIntervals = this.#internalTemperedIntervals = internalIntervals
           .map(ivs => ivs.map(({ fraction: [n, d] }) => temperament.getTemperedInterval(n, d)));
-      this.#intervals = internalIntervals.map(ivs => ivs[1]);
+      const intervals = this.#intervals = internalIntervals.map(ivs => ivs[1]);
+      this.ord = ord ?? [ intervals.length, ...intervals
+        .map(({ fraction: [n, d] }, i) => {
+          const v = 2 ** (Common.bigLog2(n) - Common.bigLog2(d));
+          return i ? 2 - v : v
+        }) ];
       this.#temperedIntervals = internalTemperedIntervals.map(ivs => ivs[1]);
 
       // Check if symmetric
       const sym = false;
-      if (sym) this.dual = this
+      if (sym) this.dual = this;
+
+      this.#genNames()
     }
   }
 
@@ -607,7 +610,7 @@ class Chord {  // TODO BigNum
   }
   set temperedIntervals (_) {}
 
-  get intervalNames () {
+  get intervalNames () { // TODO use temperedIntervals etc
     const { temperament } = this.#mapping;
     return this.intervals.map(({ fraction }) => temperament.getTemperedInterval(...fraction).noteSpelling)
   }
@@ -624,7 +627,87 @@ class Chord {  // TODO BigNum
     return this.internalIntervals.map(iv => temperament.getTemperedInterval(...iv.fraction).noteSpelling)
   }
   set internalIntervalNames (_) {}
-  // get chordName () {}
+
+  #names
+  #genNames () {
+    // TODO Chord internal intervals should all be harmonics within the temperament, so coerce to Number
+    if (this.type === "harmonic series") return; // later, temperedIntervals for all chords
+    const
+      { intervalSet } = this.#mapping, // TODO temperament.getTemperedInterval ?
+      internalTivs = this.#internalTemperedIntervals,
+      interpInvs = internalTivs.map(tivs => tivs.reduce((ar, tiv) => [ ...tiv.enharmonicSet ]
+        .map(iv => ar.map(ivs => ivs.concat([ iv ]))).flat(), [[]])),
+        // interps = this.temperedIntervals.reduce((ar, tiv) => [ ...tiv.enharmonicSet ]
+        //   .map(iv => ar.map(ivs => ivs.concat([ iv ]))).flat(), [[]]),
+        // { intervalSet } = this.#mapping,
+        // temperedInterps = interps.map(ivs => {
+        //   const
+        //     frac = ivs.reduce((acc, { splitDecomp }) => Common.splitMult(acc, splitDecomp), [[], []]).map(Common.comp),
+        //     ln = Common.bigLog2(frac[0]) - Common.bigLog2(frac[1]);
+        //   console.log(frac.slice());
+        //   return [ ivs, intervalSet.addRatio(...(ln - Math.floor(ln) > .5 ? frac.reverse() : frac)).withOctave(0) ]
+        // });
+      reductions = interpInvs.map(interps => interps.map(ivs => {
+        const fracs = ivs.map(({ splitDecomp }) => splitDecomp), lcms = Common.splitLCM(...fracs);
+        return lcms.map((lcm, i) => fracs.map(frac => Common.comp(Common.splitMult(i ? frac : frac.toReversed(), [ lcm, [] ])[0])))
+      })),
+      tonalities = this.adicity === 3 ?
+        reductions.map(interps => interps.map(sides => {
+          const [o, u] = sides.map(Common.bigMax);
+          return [ o > u ? 1 : o < u ? -1 : 0, [], [] ]
+        })) :
+        reductions.map(interps => interps.map(sides => {
+          const [ [ov, op], [uv, up] ] = sides.map(reduction => {
+            const candidates = [];
+            for (let i = 1; i < this.adicity; i++) {
+              const subchRed = reduction.toSpliced(i, 1), gcd = subchRed.reduce(Common.gcd);
+              candidates.push([i, Common.bigMax(subchRed.map(v => v / gcd))])
+            }
+            return candidates.reduce(([v, a], [i, m]) => m < v ? [ m, [i] ] : m > v ? [v, a] : [ v, a.concat([i]) ],
+              [ Common.bigMax(reduction), [] ])
+          });
+          return [ ov > uv ? 1 : ov < uv ? -1 : 0, op, up ]
+        })),
+      names = interpInvs.map((interps, inv) => interps.map((ivs, int) => {
+        const
+          [ q, oadd, uadd ] = tonalities[inv][int], ns = new Set(),
+          genNames = (i, q) => {
+            const
+              subch = ivs.toSpliced(i, 1).map(({ splitDecomp }) => splitDecomp), splitAdj = Common.splitLCM(...subch.slice(1)).with(q, []),
+              root = intervalSet.addRatio(...splitAdj.map(Common.comp)), harmSeq = subch.map(frac => Common.splitMult(frac, splitAdj.toReversed()))
+                .map(frac => frac.map(h => Number(Common.comp(h))))
+                .reduce((acc, frac) => {
+                  let n = frac[q], ln = Math.log2(n), lf = Math.log2(acc.at(-1) ?? 1);
+                  if (q) {
+                    if (ln > lf) acc = acc.map(v => v * 2 ** Math.ceil(ln - lf));
+                    else n *= 2 ** Math.max(0, Math.floor(lf - ln))
+                  } else {
+                    if (lf > ln) n *= 2 ** Math.ceil(lf - ln);
+                    else acc = acc.map(v => v * 2 ** Math.max(0, Math.floor(ln - lf)))
+                  }
+                  return acc.concat([n])
+                }, []);
+            return [root, harmSeq, ivs[i]]
+          };
+        if (q !== -1 && uadd.length) ns.add(uadd.map(i => {
+          const [ root, harms, add ] = genNames(i, 0);
+          return `${root.noteSpelling.roman} ${harms.join(":")} ${add ? "add" + add.noteSpelling.number : ""}`
+        }));
+        if (q !== 1 && oadd.length) ns.add(oadd.map(i => {
+          const // Utonal root note is perfect 5th lower for historical reasons
+            [ root, harms, add ] = genNames(i, 1),
+            { fraction } = root, utonalRoot = intervalSet.addRatio(fraction[0], 3n * fraction[1]);
+          return `${utonalRoot.noteSpelling.romanlow} ${harms.join(":")} ${add ? "add" + add.noteSpelling.number : ""}`
+        }));
+        if (ns.size === 0) ns.add([ivs.map(iv => iv.noteSpelling.letter).join(" ")])
+        return [ivs, ns]
+      }));
+    this.#names = names
+  }
+  get chordName () {
+    if (this.type === "essentially tempered") return this.#names[this.#inversion][0] // TODO other interps
+  }
+
   get #repr () {
     const { type, harmonics, voicing } = this;
     let opts = { type, inversion: this.#inversion, voicing }
@@ -636,7 +719,7 @@ class Chord {  // TODO BigNum
 
   toString () {
     const { internalIntervals, ...opts } = this.#repr;
-    if (internalIntervals) opts.internalIntervals = internalIntervals.map(ivs => ivs.map(iv => iv.fraction));
+    if (internalIntervals) opts.internalIntervals = internalIntervals.map(ivs => ivs.map(iv => iv.fraction.map(String)));
     return JSON.stringify(opts)
   }
   withInversion (i, mutate = false) {

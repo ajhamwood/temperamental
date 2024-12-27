@@ -387,7 +387,7 @@ body {
             display: grid;
             width: fit-content;
             gap: .5em .3em }
-            .chord-intervals, .chord-pitches, .chord-spelling {
+            .chord-name, .chord-intervals, .chord-pitches, .chord-spelling {
               grid-template-columns: subgrid;
               display: grid;
               grid-column: span 7;

@@ -154,7 +154,7 @@
           <legend>Chords</legend>
           <div class="chord-settings">
             <div>Cycle inversions <label class="switch"><input type="checkbox"><span class="slider"></span></label></div>
-            <div>Comma: <span id="comma-info"></span></div>
+            <div>Tempering <span id="comma-info"></span></div>
             <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
               <use href="#hourglass"></use>
             </svg>
@@ -281,6 +281,9 @@
   </template>
   <template id="chord">
     <div class="chord copyable" draggable="true">
+      <div class="chord-name">
+        Name:<span></span>
+      </div>
       <div class="chord-intervals">
         Intervals:<span class="chord-interval-harmonic"></span>=<span class="chord-interval-steps"></span>⧹<span class="chord-edo"></span>
       </div>

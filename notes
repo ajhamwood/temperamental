@@ -48,4 +48,4 @@ current goals:
 * [ ] Unify treatment of harmonic and essentially tempered chords
 * [ ] Chords now use TemperedInterval for all intervals
 * [ ] Chords are "owned" by a fundamental temperament, "borrowable" by temperaments having that as a factor
-* [ ] Chord search trie (prefix tree structure) / something else?
+* [x] Chord search trie (prefix tree structure)

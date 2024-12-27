@@ -49,11 +49,11 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
 
   * [Symbol.iterator] () { for (const row of this.#hexes.values()) for (const hex of row.values()) yield hex }
 
-  addToActiveClass(name, hex, id) {
+  addToActiveClass (name, hex, id) {
     const activeClasses = this.#activeClasses, activeHexes = activeClasses.get(name) ?? new Map();
     activeClasses.set(name, activeHexes.set(hex, (activeHexes.get(hex) ?? new Set()).add(id)))
   }
-  removeFromActiveClasses(hex, id) {
+  removeFromActiveClasses (hex, id) {
     for (const [ name, activeHexes ] of this.#activeClasses) {
       const ids = activeHexes.get(hex);
       if (!ids) return;
@@ -62,6 +62,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       if (activeHexes.size === 0) this.#activeClasses.delete(name)
     }
   }
+  clearActiveClasses () { this.#activeClasses.clear() }
 
   genOrientations () {
     const { gstep, hstep } = this, { edo } = this.#keyboard, res = [];
