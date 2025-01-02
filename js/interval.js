@@ -309,7 +309,7 @@ class Interval {
     this.octave = Math.floor(Common.bigLog2(n) - Common.bigLog2(d));
     const octave = this.octave = BigInt(this.octave);
     this.octaveAdjust = octave;
-    this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
+    const fraction = this.fraction = [ octave < 0 ? n << -octave : n, octave > 0 ? d << octave : d ];
 
     const pdec = Common.decompBig(n).concat([ new Map() ]);
     if (d) {
@@ -323,7 +323,7 @@ class Interval {
     this.splitDecomp = pdec.map(m => [ ...m ].map(v => v.map(Number)).sort(([a], [b]) => a > b));
     this.decomp = this.splitDecomp.reduce((n, d) => n.concat(d.map(([ p, rad ]) => [p, -rad])))
       .sort(([a], [b]) => a > b);
-    this.noteSpelling = Common.noteFromFactors(this.splitDecomp)
+    this.noteSpelling = { ...Common.noteFromFactors(this.splitDecomp), fraction: `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>` }
   }
   withOctave (o, mutate = false) {
     const

@@ -504,7 +504,7 @@ $.targets({
         ratioEl.innerHTML = `<sup>${fraction[0]}</sup>⁄<sub>${fraction[1]}</sub>`;
         spellingEl.innerText = data.item.noteSpelling.number
       } else if (Chord.prototype.isPrototypeOf(data.item)) {
-        $.load("clipboard-item-chord", "#clipboard-peek")[0][0].innerText = data.item.chordName[1].values().next().value.join(", ")
+        $.load("clipboard-item-chord", "#clipboard-peek")[0][0].innerText = data.item.chordName.values().next().value
       }
     },
 
@@ -980,19 +980,26 @@ $.targets({
       if (test) {
         mapping.temperament = [n, d];
         for (const chord of mapping.temperament.chords) this.emit("populate-chord", chord, chordsEl)["populate-chord"]
-      } else for await (const { source, value } of mapping.takeChords(upperBound)) {
-        const { done, i, ...ordChordRaw } = value, { internalIntervalsRaw, ...chordRaw } = ordChordRaw;
-        chordRaw.internalIntervalsRaw = internalIntervalsRaw.map(ivs => [[1n, 1n]].concat(ivs));
-        await mapping.waitForTemperament;
-        const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
+      } else {
+        for await (const { source, value } of mapping.takeChords(upperBound)) {
+          const { done, i, ...ordChordRaw } = value, { internalIntervalsRaw, ...chordRaw } = ordChordRaw;
+          chordRaw.internalIntervalsRaw = [ internalIntervalsRaw.map(ivs => [[1n, 1n]].concat(ivs)) ];
+          await mapping.waitForTemperament;
+          const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
 
-        if (chord !== mapping.temperament.addChord(chord)) continue;
-        if (source === "worker") {
-          await storage.saveChord(ordChordRaw);
-          upperBound.set(i, done ? null : ordChordRaw.ord);
-          await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
+          const existingChord = mapping.temperament.addChord(chord);
+          if (chord !== existingChord) {
+            existingChord.addInterpretation(chord);
+            continue;
+          }
+          if (source === "worker") {
+            await storage.saveChord(ordChordRaw);
+            upperBound.set(i, done ? null : ordChordRaw.ord);
+            await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
+          }
+          cursor = this.emit("populate-chord", chord, chordsEl, cursor, done)["populate-chord"]
         }
-        cursor = this.emit("populate-chord", chord, chordsEl, cursor, done)["populate-chord"]
+        mapping.temperament.genChordGraph()
       }
       chordsFieldsetEl.classList.remove("computing");
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
@@ -1000,7 +1007,7 @@ $.targets({
 
     "populate-chord" (chord, chordsEl, cursor = 0, done = false) {
       const
-        chordEl = $.load("chord", "#chords")[0][0], chordEls = $.all(".chord", chordsEl),
+        chordEls = $.all(".chord", chordsEl), chordEl = $.load("chord", "#chords")[0][0],
         chordIvsEl = $(".chord-intervals", chordEl);
       chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
       chordEl.dataset.ord = JSON.stringify(chord.ord);
@@ -1067,13 +1074,13 @@ $.targets({
         [ chIvSpellingEl, chPcSpellingEl ] = chSpellingEl.children,
         [ chIsSymmetricEl, chNextInvBtn, chPlayChordBtn ] = chControlsEl.children;
       $.all(".chord-edo", chordEl).forEach(el => el.innerText = edo);
-      chNameEl.children[0].innerHTML = chord.chordName[1].values().next().value.join(", "); // Obviously, to be improved
-      chIvHarmonicEl.innerHTML = chord.intervalNames.map(({ fraction }) => fraction).join(" ");
-      chIvStepsEl.innerText = chord.intervals.map(iv => mapping.steps(iv)).join(" ");
-      chPcHarmonicEl.innerHTML = chord.internalIntervalNames.map(({ fraction }) => fraction).join(" – ");
+      chNameEl.children[0].innerHTML = chord.chordName.values().next().value; // Obviously, to be improved
+      chIvHarmonicEl.innerHTML = chord.intervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" ");
+      chIvStepsEl.innerText = chord.temperedIntervals.map(tiv => mapping.steps(tiv)).join(" ");
+      chPcHarmonicEl.innerHTML = chord.internalIntervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" – ");
       chPcStepsEl.innerText = `${chord.internalIntervals.map(iv => mapping.steps(iv)).join("-")}-${edo}`;
-      chIvSpellingEl.innerText = chord.intervalNames.map(({ number }) => number).join(" – ");
-      chPcSpellingEl.innerText = chord.internalIntervalNames.map(({ letter }) => letter).join(" – ");
+      chIvSpellingEl.innerText = chord.intervals.map(({ noteSpelling }) => noteSpelling.number).join(" ");
+      chPcSpellingEl.innerText = chord.internalIntervals.map(({ noteSpelling }) => noteSpelling.letter).join(" – ");
     },
 
 

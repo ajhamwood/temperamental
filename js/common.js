@@ -8,6 +8,7 @@ class Common {
   static mod = (n, m) => ((n % m) + m) % m
   static non2 = h => h / (h & (~--h))
   static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
+  static lcm = (a, b) => a * b / this.gcd(a, b)
   static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
   static groupBy = (ar, groupFn = x => x, mapFn = x => x) => ar.reduce((a, v) => {
