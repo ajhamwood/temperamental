@@ -7,7 +7,6 @@ Make work in Chrome and Safari
 * let -> const in main.js
 Temperaments!
   * Copyable Key (changes key of keyboard)
-  * Group otonal and utonal variants; How to classify chords of the same temperament?
   * Colour coding on harmonic mapping?
   * Order chords by adicity vs symmetry vs simplest internal interval vs most complex internal interval (limit)
   * Gesture drag through chord inversions? Allow selection of pivot position other than the root
@@ -32,7 +31,6 @@ Relabelling keys while playing: relative to lowest note, relative to chosen key
 Giving musical objects ungeneralisable proper names or symbols
 
 > Bugs
-* Enumerate chords based on tempered intervals
 * Keep track of 2s..., eg to identify intervals that function as lower than 1/1 or over 2/1
 * Separate black/white key colours for ghost keys?
 
@@ -46,6 +44,6 @@ current goals:
 * [x] Persist keys for commas and chords use prime decomp instead of logarithms
 * [x] Intervals now use BigInt for "product" values, Number for "component" values
 * [ ] Unify treatment of harmonic and essentially tempered chords
-* [ ] Chords now use TemperedInterval for all intervals
+* [x] Chords now use TemperedInterval for all intervals
 * [ ] Chords are "owned" by a fundamental temperament, "borrowable" by temperaments having that as a factor
 * [x] Chord search trie (prefix tree structure)

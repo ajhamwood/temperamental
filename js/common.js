@@ -1,4 +1,5 @@
 class Common {
+
   static #allPrimes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ]
   static #allPrimesBig = this.#allPrimes.map(BigInt)
   
@@ -11,6 +12,11 @@ class Common {
   static lcm = (a, b) => a * b / this.gcd(a, b)
   static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
+  static bagEq = (a1, a2) => a1.length === a2.length && a1.reduce(([ b, rem ], v) => {
+    if (!b) return [ false ];
+    const i = rem.findIndex(u => u === v);
+    return ~i ? [ true, rem.toSpliced(i, 1) ] : [ false ]
+  }, [ true, a2 ])[0]
   static groupBy = (ar, groupFn = x => x, mapFn = x => x) => ar.reduce((a, v) => {
     const k = groupFn(v);
     a[k] = (a[k] ?? []).concat([mapFn(v)]);
@@ -196,6 +202,7 @@ class Common {
       };
     }
   })()
+
   static cacheAside = ({ setup, cacheGen, fresh }) => {
     const ready = setup();
     let cacheDone = false, value;
@@ -214,5 +221,6 @@ class Common {
       }
     }
   }
+
 }
 export default Common

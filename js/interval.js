@@ -269,8 +269,8 @@ class IntervalSet {
     // return this.add(new Interval({ intervalSet: this, n: Number(n), d: Number(d) }))
   }
   has (interval) {
-    const { n, d } = interval;
-    return Boolean(this.#rawMap.get(d)?.has(n))
+    const { n, d } = interval, result = this.#rawMap.get(d)?.get(n);
+    return interval === result
   }
   hasRatio (n, d) {
     n = BigInt(n); d = BigInt(d);
@@ -278,8 +278,8 @@ class IntervalSet {
     return this.#rawMap.get(Common.non2(d / c))?.has(Common.non2(n / c)) ?? false
   }
   get (interval) { // TODO remove?
-    const { n, d } = interval;
-    return this.#rawMap.get(d)?.get(n)
+    const { n, d } = interval, result = this.#rawMap.get(d)?.get(n);
+    return interval === result && interval
   }
   getRatio (n, d) {
     n = BigInt(n); d = BigInt(d);

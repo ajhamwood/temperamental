@@ -41,7 +41,7 @@ class ChordWorker {
         .filter(([iv, ch], i, ar) => {
           if (i === 0) return true;
           const [ iv0, ch0 ] = ar[i - 1];
-          return iv.n !== iv0.n || iv.d !== iv0.d || !ch.every((iv, i) => iv === ch0[i])
+          return iv.n !== iv0.n || iv.d !== iv0.d || ch.some((iv, i) => iv !== ch0[i])
         }), ([a]) => a, ([ , b ]) => b),
       chords = stacks.map(ivs => [ ...this.#enumChords(ivs) ]).flat()
         .reduce((acc, ch) => {
@@ -56,8 +56,8 @@ class ChordWorker {
                 const [ n, d ] = subch.reduce(([ ao, au ], iv) => [ ao * iv.n, au * iv.d ], [1n, 1n]);
                 return ivSet.addRatio(n, d)
               }),
-              natural = facts.reduce((res, fact, p) => res || (properIvSet.has(fact) &&
-                ((n % fact.n && d % fact.d) || (n % fact.d && d % fact.n)) &&
+              natural = facts.reduce((res, fact, p) => res || (properIvSet.hasRatio(fact.n, fact.d) &&
+                ((n % fact.n === 0n && d % fact.d === 0n) || (n % fact.d === 0n && d % fact.n === 0n)) &&
                 (p ? fact.inverse() : fact)), false),
               tempered = subchs.reduce((b, subch, p) => {
                 if (b) return b;

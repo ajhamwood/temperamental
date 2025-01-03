@@ -982,7 +982,7 @@ $.targets({
         for (const chord of mapping.temperament.chords) this.emit("populate-chord", chord, chordsEl)["populate-chord"]
       } else {
         for await (const { source, value } of mapping.takeChords(upperBound)) {
-          const { done, i, ...ordChordRaw } = value, { internalIntervalsRaw, ...chordRaw } = ordChordRaw;
+          const { done, ...ordChordRaw } = value, { internalIntervalsRaw, i, ...chordRaw } = ordChordRaw;
           chordRaw.internalIntervalsRaw = [ internalIntervalsRaw.map(ivs => [[1n, 1n]].concat(ivs)) ];
           await mapping.waitForTemperament;
           const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
@@ -992,12 +992,28 @@ $.targets({
             existingChord.addInterpretation(chord);
             continue;
           }
+          // Group chords by stack
+          const
+            cpart = mapping.temperament.commaPartitions[ mapping.stackMaps.get(iv)[i] ],
+            stack = mapping.temperament.partitionStacks.get(cpart).find(ivs => Common.bagEq(ivs, chord.intervals)),
+            stackData = mapping.temperament.stackChords.get(stack) ?? { commaPartitions: new Set(), chords: new Set() };
+          stackData.commaPartitions.add(cpart);
+          stackData.chords.add(chord);
+          mapping.temperament.stackChords.set(stack, stackData);
+
           if (source === "worker") {
             await storage.saveChord(ordChordRaw);
             upperBound.set(i, done ? null : ordChordRaw.ord);
             await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
           }
           cursor = this.emit("populate-chord", chord, chordsEl, cursor, done)["populate-chord"]
+        }
+        for (const { chords } of mapping.temperament.stackChords.values()) {
+          const chordList = [ ...chords ];
+          for (let i = 0; i < chordList.length; i++) for (let j = 0; j < i; j++) {
+            chordList[i].inverse = chordList[j];
+            chordList[j].inverse = chordList[i];
+          }
         }
         mapping.temperament.genChordGraph()
       }

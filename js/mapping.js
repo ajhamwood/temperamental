@@ -17,7 +17,8 @@ class HarmonicMapping {
   lattice; decomp; intervalSet = new IntervalSet()
   stepsBasis
   #commasworker; #commas = new IntervalSet();
-  commasBounds = new Map(); #temperaments = new Map(); #temperament
+  commasBounds = new Map(); stackMaps = new Map() // Map([ comma, [ index in commaPartitions ] ])
+  #temperaments = new Map(); #temperament
   #chordsworkers = new Map(); #chordGen
 
   constructor ({ keyboard, scale, hmap }) { // Map([ odd, number ])
@@ -118,7 +119,7 @@ class HarmonicMapping {
   set commas (_) {}
 
   // Chords (in worker)
-  // TODO: dynamically split large basicStack jobs across finished workers (use priority)
+  // TODO: dynamically split large commaPartition jobs across finished workers (use priority)
   
   #genChords (iv) {
     const
@@ -141,7 +142,8 @@ class HarmonicMapping {
           cr = new Map(), cp = new Map(), // Concatenate streams
           id = 0, yieldQueue = new Map(); // Map([ job -> ord ])
 
-      const stackJobs = new Map();
+      const partitionStacks = new Map();
+      let jobKeys;
       cp.set(0, new Promise(res => cr.set(0, res)));
       cr.get(0)();
       return {
@@ -149,7 +151,7 @@ class HarmonicMapping {
           const
             temperament = self.temperaments.get(iv) ??
               new Temperament({ keyboard: self.#keyboard, mapping: self, comma: iv, intervalSet: properIntervalSet }),
-            { hdecomp, basicStacks } = temperament;
+            { hdecomp, commaPartitions } = temperament;
           self.addTemperament(temperament);
           self.temperament = comma;
 
@@ -161,7 +163,7 @@ class HarmonicMapping {
             harms = [1n].concat(hdecomp.map(([h]) => BigInt(h))
               .filter(h => Common.gcd(h, iv.n) > 1 || Common.gcd(h, iv.d) > 1)
               .sort((a, b) => Common.bigLog2(a) % 1 < Common.bigLog2(b) % 1)),
-            taggedStacks = basicStacks.map(bstack => bstack.reduce((acc, iv) => {
+            taggedStacks = commaPartitions.map(cpart => cpart.reduce((acc, iv) => {
               const
                 ni = harms.indexOf(iv.n), di = harms.indexOf(iv.d),
                 divs = ni > di ?
@@ -172,9 +174,9 @@ class HarmonicMapping {
                   return [ basePart, basePart.toSpliced(-1).concat([ [n, h], [h, d] ]) ]
                 }).flat(), [[ iv.fraction ]])
                 .map(ivs => ivs.map(([n, d]) => properIntervalSet.getRatio(n, d).withOctave(0)));
-              return acc.map(([pch]) => ivPartitions.map(ivpart => [ pch.concat(ivpart), bstack ])).flat()
-            }, [[ [], bstack ]])).flat()
-              .reduce((acc, [ ivs, bstack ]) => {
+              return acc.map(([pch]) => ivPartitions.map(ivpart => [ pch.concat(ivpart), cpart ])).flat()
+            }, [[ [], cpart ]])).flat()
+              .reduce((acc, [ ivs, cpart ]) => {
                 ivs.sort((a, b) => ivOrder(b, a)); // Ascending order
                 let low = 0, high = acc.length;
                 while (low < high) {
@@ -188,10 +190,13 @@ class HarmonicMapping {
                   else high = mid
                 }
                 if (acc[low]?.[0].every((iv, i) => iv === ivs[i])) return acc;
-                return acc.toSpliced(low, 0, [ ivs, bstack ])
+                return acc.toSpliced(low, 0, [ ivs, cpart ])
               }, []);
           Common.group(taggedStacks, ([, a], [, b]) => a.length === b.length && a.every((v, i) => v === b[i]))
-            .forEach(job => stackJobs.set(job[0][1], job.map(([v]) => v)));
+            .forEach(job => partitionStacks.set(job[0][1], job.map(([v]) => v)));
+          self.temperament.partitionStacks = partitionStacks;
+          self.stackMaps.set(iv, (jobKeys = [ ...partitionStacks.keys() ])
+            .map(k => commaPartitions.findIndex(cpart => k === cpart)));
 
           for (let identifier = 0; identifier < coreCount - 1; identifier++) {
             const worker = new Worker("js/chordworker.js", { type: "module" })
@@ -207,7 +212,7 @@ class HarmonicMapping {
           }
         },
         fresh: async function * ({ retrieve, params }) {
-          const { upperBound } = params, jobKeys = [ ...stackJobs.keys() ];
+          const { upperBound } = params;
           (async () => {
             for (let i = 0; i < jobKeys.length; i++) {
               cp.set(i + 1, new Promise(res => cr.set(i + 1, res)));
@@ -217,7 +222,7 @@ class HarmonicMapping {
               bp.set(i, [ new Promise(res => br.set(i, [ res ])) ]);
               const
                 wid = freeWorkers.shift(),
-                stacks = stackJobs.get(jobKeys[i]).map(ivs => ivs.map(iv => iv.fraction));
+                stacks = partitionStacks.get(jobKeys[i]).map(ivs => ivs.map(iv => iv.fraction));
               self.#chordsworkers.get(wid).postMessage({ stacks, retrieve, upperBound, i });
             }
           })();
@@ -351,8 +356,9 @@ class Temperament {
   }
 
   #keyboard; #mapping; comma; intervalSet; #temperedIntervalSet
-  basicStacks; enharms; factors; #chords = new Map() // Trie with TemperedInterval symbols: Map([ TemperedInterval, Map | Chord ])
-  #stackMap = new Map() // Map([ [ Interval ], Set([ Chord ]) ])
+  commaPartitions; enharms; factors; #chords = new Map() // Trie with TemperedInterval symbols: Map([ TemperedInterval, Map | Chord ])
+  stackChords = new Map() // Map([ stack (Bag) : [ Interval ], { commaPartitions: Set([ [ Interval ] ]), chords : Set([ Chord ]) } ])
+  partitionStacks // Map([ commaPartition: [ Interval ], stacks: [ (Bag): [ Interval ] ] ])
   constructor ({ keyboard, mapping, comma, intervalSet }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Temperament error: must provide Keyboard object");
     this.#keyboard = keyboard;
@@ -366,8 +372,8 @@ class Temperament {
 
     // TODO: limit to harmonics non-coprime to comma!
     this.hdecomp = [ ...harmonicList ].map(([ n, { primeDecomp } ]) => [ n, primeDecomp ]);
-    const { true: pairs = [], false: basicStacks = [] } = Common.groupBy(this.#partitionComma(), ivs => ivs.length === 2);
-    this.basicStacks = basicStacks;
+    const { true: pairs = [], false: commaPartitions = [] } = Common.groupBy(this.#partitionComma(), ivs => ivs.length === 2);
+    this.commaPartitions = commaPartitions;
     this.enharms = pairs.reduce((m, [a, b]) => a === b ?
       m.set(a, a.inverse()) : m.set(a, b.inverse()).set(b, a.inverse()), new Map());
     
@@ -447,15 +453,35 @@ class Temperament {
           matches = ivs.slice(i).every((frac, j) => intervals[i + j].fraction.every((h, k) => h === frac[k])); // intervals[0]
         curLevel.withInversion(i, true);
         return matches ? curLevel : false
-      }
-      subtrie = curLevel
+      } else if (Map.prototype.isPrototypeOf(curLevel)) subtrie = curLevel;
+      else return false
     }
   }
 
   getTemperedInterval (n, d) { return this.#temperedIntervalSet.getRatio(n, d) }
 
-  genChordGraph () {
-
+  genChordGraph () { // Is the minimum chord adicity always 3?
+    const adicityChords = Common.group([ ...this.chords ], (ch1, ch2) => ch1.adicity === ch2.adicity)
+      .sort(([ch1], [ch2]) => ch1.adicity < ch2.adicity);
+    if (adicityChords.length > 1)
+      for (let i = 0; i < adicityChords.length - 1; i++)
+        for (const chord of adicityChords[i]) {
+          const { inversion, interpretation } = chord
+          for (let int = 0; int < chord.interpretations; int++) {
+            chord.interpretation = int;
+            for (let inv = 0; inv < chord.adicity; inv++) {
+              chord.inversion = inv;
+              const mbSubch = this.getChordByIntervals([ chord.internalIntervals[2] ]
+                .concat(chord.intervals.slice(2)).map(({ fraction }) => fraction));
+              if (mbSubch) {
+                chord.subchords.add(mbSubch);
+                mbSubch.superchords.add(chord)
+              }
+            }
+          }
+          chord.interpretation = interpretation;
+          chord.inversion = inversion
+        }
   }
 
 }
@@ -532,14 +558,14 @@ class Chord {
     const iv = mapping.commas.addRatio(...frac).withOctave(0);
     if (Common.mod(mapping.steps(iv), edo) !== 0) throw new Error("Unhandled - chord comma not tempered");
     if (!mapping.temperaments.has(iv)) throw new Error("Unhandled - chord temperament not yet loaded");
-    const ivset = mapping.intervalSet, { n, d } = iv;
+    const ivset = mapping.lattice.properIntervalSet, { n, d } = iv;
     if (n !== Common.comp(nd) || d !== Common.comp(dd)) throw new Error("Unhandled - comma / interval mismatch");
     return new Chord({ keyboard, mapping, type, voicing,
-      internalIntervals: internalIntervalsRaw.map(interp => interp.map(ivs => ivs.map(iv => ivset.addRatio(...iv)))) })
+      internalIntervals: internalIntervalsRaw.map(interp => interp.map(ivs => ivs.map(iv => ivset.getRatio(...iv)))) })
   }
   #keyboard; #mapping; temperament; type; adicity
   #temperedIntervals; #internalTemperedIntervals; #intervals; #internalIntervals
-  #interpretation
+  #interpretation; subchords; superchords
   harmonics; #harmonicIntervals; isSubHarm; #inversion
   voicing
   ord
@@ -568,10 +594,11 @@ class Chord {
       this.#harmonicIntervals = harmonics.map((h, i) => isSubHarm ?
         [ h, harmonics[++i % len] ] : [ harmonics[++i % len], h ]);
       this.#internalIntervals = harmonics.map((_, i) => harmonics.map((h, j) =>
-        mapping.intervalSet.getRatio(harmonics[(i + j) % len], 1).withOctave(i + j >= len).fraction));
+        mapping.lattice.properIntervalSet.getRatio(harmonics[(i + j) % len], 1).withOctave(i + j >= len).fraction));
       this.temperament = mapping.temperaments.get(mapping.commas.getRatio(1, 1)) // Unify
       break
     case "essentially tempered":
+      // TODO test iv membership in lattice.intervalSet?
       if (!("length" in internalIntervals) || !(internalIntervals.length > 0) ||
         internalIntervals.slice(1).reduce(([len, b], ivs) => b || ivs.length !== len, [ internalIntervals[0].length, false ])[1] ||
         internalIntervals.some(interp => !("length" in interp) || !(interp.length > 1) ||
@@ -600,7 +627,10 @@ class Chord {
       this.#temperedIntervals = internalTemperedIntervals.map(ivs => ivs[1]);
 
       // Check if symmetric - move to chordgen
-      this.dual = this;
+      this.inverse = this;
+      // Levenshtein neighbour graph
+      this.subchords = new Set();
+      this.superchords = new Set();
 
       this.#genNames()
     }
@@ -613,6 +643,8 @@ class Chord {
   }
   get interpretation () { return this.#interpretation }
   set interpretation (i) { this.#interpretation = Common.mod(i, this.#internalIntervals.length) }
+  get interpretations () { return this.#internalIntervals.length }
+  set interpretations (_) {}
 
   get inversion () { return this.#inversion }
   set inversion (i) { this.#inversion = Common.mod(i, this.adicity) }
@@ -627,9 +659,9 @@ class Chord {
   set intervals (_) {}
 
   get internalIntervals () {
-    const mapping = this.#mapping
+    const { properIntervalSet } = this.#mapping.lattice;
     return this.type === "harmonic series" ?
-      this.#internalIntervals[this.#interpretation][this.#inversion].map(iv => mapping.intervalSet.getRatio(...iv)) :
+      this.#internalIntervals[this.#interpretation][this.#inversion].map(iv => properIntervalSet.getRatio(...iv)) :
       this.type === "essentially tempered" ? this.#internalIntervals[this.#interpretation][this.#inversion].slice() : []
   }
   set internalIntervals (_) {}
@@ -648,13 +680,13 @@ class Chord {
   #genNames () {
     if (this.type === "harmonic series") return;
     const
-      { temperament } = this, { intervalSet, lattice } = this.#mapping,
+      { temperament } = this, { intervalSet, lattice } = this.#mapping, { harmonicList } = lattice,
       harms = new Set(temperament.hdecomp.map(([h]) => BigInt(h))).add(1n), interps = this.#internalIntervals,
       tonalities = interps.map(interp => interp.map(ivs => {
         const [ n, d ] = ivs[1].splitDecomp, [ [ ov, ol, op ], [ uv, ul, up ] ] = ivs.slice(2).reduce((brs, { n, d }, i) => {
           const ix = i + 2;
           return brs.map((sidebrs, s) => {
-            const hVal = Number(s ? d : n), hNum = hVal === 1 ? [] : lattice.harmonicList.get(hVal)?.primeDecomp, h = [ hNum, [] ];
+            const hVal = Number(s ? d : n), hNum = hVal === 1 ? [] : harmonicList.get(hVal)?.primeDecomp, h = [ hNum, [] ];
             return hNum ? sidebrs.reduce((acc, [ lixs, rixs, llcm, rlcm ]) => {
               const newLlcm = Common.splitLCM(llcm, h), newRlcm = Common.splitLCM(rlcm, h);
               if (lixs.size === 0 || harms.has(Common.comp(newLlcm[0]))) acc.push([ new Set(lixs).add(ix), rixs, newLlcm, rlcm ]);
@@ -676,7 +708,7 @@ class Chord {
                   ...(livs.length > 2 ? livs : livs.slice(0, 1)).map(({ splitDecomp: dec }) => Common.comp(Common.splitMult(s ? dec : dec.toReversed(), llcm)[0])),
                   ...(rivs.length > 2 ? rivs : rivs.slice(0, 1)).map(({ splitDecomp: dec }) => Common.comp(Common.splitMult(s ? dec : dec.toReversed(), rlcm)[0]))
                 ]);
-              const inLat = lattice.harmonicList.has(Number(m)), hasHarms = thisLen !== 1;
+              const inLat = harmonicList.has(Number(m)), hasHarms = thisLen !== 1;
               return inLat && thisLen > len ? [ m, thisLen, [[ livs, rivs ]] ] : inLat && thisLen < len ? [v, len, a] :
                 hasHarms && m < v ? [ m, len, [[ livs, rivs ]] ] : hasHarms && m > v ? [v, len, a] : [ v, len, a.concat([[ livs, rivs ]]) ]
             }, [ Infinity, 0, [] ]));
@@ -708,7 +740,7 @@ class Chord {
                       }, []);
                   return root.noteSpelling[q ? "romanlow" : "roman"] + " " + harmSeq.join(":")
                 }),
-                addPart = single.map(([, iv]) => " add" + iv.noteSpelling.number); // In case there are ever multiple add parts
+                addPart = single.map(([, iv]) => " add" + iv.noteSpelling.number); // length in [0, 1]
               return [ harmParts.join(" / ") + addPart.join("") ]
             }).flat();
           q !== -1 && genNames(up, 0).forEach(n => ns.built.add(n));
@@ -723,14 +755,14 @@ class Chord {
     if (this.type === "essentially tempered") return this.#names[this.#interpretation][this.#inversion]
   }
 
-  #dual
-  get dual () { return this.#dual }
-  set dual (chord) {
+  #inverse
+  get inverse () { return this.#inverse }
+  set inverse (chord) {
     const { adicity } = this;
     if (adicity !== chord.adicity) return false;
     const { inversion } = chord, { intervals } = chord.withInversion(0, true);
     if (this.#intervals.every(interp => interp.some((iv, i) => iv !== intervals[i ? adicity - i : 0]))) return false;
-    this.#dual = chord.withInversion(inversion, true)
+    this.#inverse = chord.withInversion(inversion, true)
   }
 
   get #repr () {
