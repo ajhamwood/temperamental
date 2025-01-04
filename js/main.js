@@ -979,19 +979,18 @@ $.targets({
       let cursor = 0, upperBound = mapping.commasBounds.get(iv) ?? new Map();
       if (chords) {
         mapping.temperament = [n, d];
-        for (const chord of chords) this.emit("populate-chord", chord, chordsEl)["populate-chord"]
+        for (const chord of chords) this.emit("populate-chord", chord, chordsEl)
       } else {
         for await (const { source, value } of mapping.takeChords(upperBound)) {
           const { done, ...ordChordRaw } = value, { internalIntervalsRaw, i, ...chordRaw } = ordChordRaw;
           chordRaw.internalIntervalsRaw = [ internalIntervalsRaw.map(ivs => [[1n, 1n]].concat(ivs)) ];
           await mapping.waitForTemperament;
-          const chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw });
 
-          const existingChord = mapping.temperament.addChord(chord);
-          if (chord !== existingChord) {
-            existingChord.addInterpretation(chord);
-            continue;
-          }
+          const
+            naiveChord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw }),
+            chord = mapping.temperament.addChord(naiveChord);
+          if (chord !== naiveChord) chord.addInterpretation(naiveChord);
+
           // Group chords by stack
           const
             cpart = mapping.temperament.commaPartitions[ mapping.stackMaps.get(iv)[i] ],
@@ -1006,14 +1005,18 @@ $.targets({
             if (!done) upperBound.set(i, ordChordRaw.ord);
             await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
           }
-          cursor = this.emit("populate-chord", chord, chordsEl, cursor, done)["populate-chord"]
-        }
-        for (const { chords } of mapping.temperament.stackChords.values()) {
-          const chordList = [ ...chords ];
-          for (let i = 0; i < chordList.length; i++) for (let j = 0; j < i; j++) {
-            chordList[i].dual = chordList[j];
-            chordList[j].dual = chordList[i];
+
+          // Check against stack members for dual pairing
+          for (const mbDual of stackData.chords) {
+            chord.dual = mbDual;
+            mbDual.dual = chord;
           }
+          if (!chord.dual || chord === naiveChord && chord.dual === chord) cursor = this.emit("populate-chord", chord, cursor)["populate-chord"];
+          if (chord.dual) {
+            const dualChordEl = $.all("#chords > .chord").find(el => el.dataset.ord === JSON.stringify(chord.dual.ord));
+            if (chord === chord.dual) $(".chord-duality", dualChordEl).classList.add("self-dual");
+          }
+          cursor = 0
         }
         mapping.temperament.genChordGraph()
       }
@@ -1022,10 +1025,10 @@ $.targets({
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
     },
 
-    "populate-chord" (chord, chordsEl, cursor = 0, done = false) {
+    "populate-chord" (chord, cursor = 0) {
       const
-        chordEls = $.all(".chord", chordsEl), chordEl = $.load("chord", "#chords")[0][0],
-        chordIvsEl = $(".chord-intervals", chordEl);
+        chordsEl = $("#chords"), chordEl = $.load("chord", "#chords")[0][0],
+        chordEls = $.all(".chord", chordsEl), chordIvsEl = $(".chord-intervals", chordEl);
       chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
       chordEl.dataset.ord = JSON.stringify(chord.ord);
       const ix = chordEls.slice(cursor).findIndex(el => Common.LTE(chord.ord, JSON.parse(el.dataset.ord ?? "[]")));
@@ -1034,7 +1037,6 @@ $.targets({
         chordsEl.append(chordEl)
       } else chordEls[cursor += ix].insertAdjacentElement("beforebegin", chordEl);
       cursor++;
-      if (done) cursor = 0;
 
       app.emit("display-chord", chord, chordEl);
       $.queries({
@@ -1042,9 +1044,11 @@ $.targets({
         "button.play-chord": {
           pointerdown ({ pointerId }) {
             this.setPointerCapture(pointerId);
-            if ($(".switch input:checked")) IntervalManager.set("pointerdown", () => {
+            const { value } = $("#temperaments > form").elements.switch;
+            if (value !== "off") IntervalManager.set("pointerdown", () => {
               chord.stop("pointer-" + pointerId);
-              chord.inversion++;
+              if (value === "forwards") chord.inversion++;
+              else if (value === "backwards") chord.inversion--;
               app.emit("display-chord", chord, chordEl);
               setTimeout(() => chord.start("pointer-" + pointerId), 50)
             }, 1000);
@@ -1057,6 +1061,13 @@ $.targets({
             this.releasePointerCapture(pointerId)
           }
         },
+        
+        "button.chord-duality": { click () {
+          if (!chord.dual) return; // dual must exist
+          chordIvsEl.dataset.intervals = JSON.stringify((chord = chord.dual)
+            .withInversion(0).intervals.map(iv => iv.fraction.map(Number)));
+          app.emit("display-chord", chord, chordEl)
+        } },
 
         "button.inversion": { click () {
           chord.inversion++;
@@ -1085,13 +1096,14 @@ $.targets({
     "display-chord" (chord, chordEl) {
       const
         { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
-        [ chNameEl, chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
+        [ chNameQualEl, chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
+        [ chNameEl, chQualityEl ] = chNameQualEl.children,
         [ chIvHarmonicEl, chIvStepsEl ] = chIntervalsEl.children,
         [ chPcHarmonicEl, chPcStepsEl ] = chPitchesEl.children,
-        [ chIvSpellingEl, chPcSpellingEl ] = chSpellingEl.children,
-        [ chIsSymmetricEl, chNextInvBtn, chPlayChordBtn ] = chControlsEl.children;
+        [ chIvSpellingEl, chPcSpellingEl ] = chSpellingEl.children;
       $.all(".chord-edo", chordEl).forEach(el => el.innerText = edo);
-      chNameEl.children[0].innerHTML = chord.chordName.values().next().value; // Obviously, to be improved
+      chNameEl.innerText = chord.chordName.values().next().value; // Obviously, to be improved
+      chQualityEl.innerText = ({ "-1": "utonal", "0": "ambitonal", "1": "otonal" })[chord.quality];
       chIvHarmonicEl.innerHTML = chord.intervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" ");
       chIvStepsEl.innerText = chord.temperedIntervals.map(tiv => mapping.steps(tiv)).join(" ");
       chPcHarmonicEl.innerHTML = chord.internalIntervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" – ");

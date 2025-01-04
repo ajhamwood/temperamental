@@ -77,11 +77,11 @@ class HarmonicMapping {
     cp.set(0, new Promise(res => cr.set(0, res)));
     cr.get(0)();
     $.targets({ async message ({ data }) {
-      const { i } = data;
-      await bp.get(i).shift();
-      ar.get(i).shift()(data);
+      const { i, count } = data;
       ap.get(i).push(new Promise(res => ar.get(i).push(res)));
       bp.get(i).push(new Promise(res => br.get(i).push(res)));
+      await bp.get(i)[count];
+      ar.get(i)[count](data);
     } }, worker);
     const fresh = async function * ({ retrieve, params }) {
       const i = id++, { upperBound } = params;
@@ -192,6 +192,7 @@ class HarmonicMapping {
                 if (acc[low]?.[0].every((iv, i) => iv === ivs[i])) return acc;
                 return acc.toSpliced(low, 0, [ ivs, cpart ])
               }, []);
+          // TODO reject temperaments which produce no stacks of length 3?
           Common.group(taggedStacks, ([, a], [, b]) => a.length === b.length && a.every((v, i) => v === b[i]))
             .forEach(job => partitionStacks.set(job[0][1], job.map(([v]) => v)));
           self.temperament.partitionStacks = partitionStacks;
@@ -203,11 +204,11 @@ class HarmonicMapping {
             workers.set(identifier, worker);
             worker.postMessage({ params: { identifier, edo, stepsBasis, hdecomp, intervalList, comma, batchSize } });
             $.targets({ async message ({ data }) { // TODO call as named function?
-              const { i } = data, ord = yieldQueue.has(i) ? yieldQueue.get(i) : (yieldQueue.set(i, id), id++);
-              await bp.get(ord).shift();
-              ar.get(ord).shift()(data);
+              const { i, count } = data, ord = yieldQueue.has(i) ? yieldQueue.get(i) : (yieldQueue.set(i, id), id++);
               ap.get(ord).push(new Promise(res => ar.get(ord).push(res)));
               bp.get(ord).push(new Promise(res => br.get(ord).push(res)));
+              await bp.get(ord)[count];
+              ar.get(ord)[count](data);
             } }, worker);
           }
         },
@@ -641,8 +642,6 @@ class Chord {
         }) ];
       this.#temperedIntervals = internalTemperedIntervals.map(ivs => ivs[1]);
 
-      // Check if symmetric - move to chordgen
-      this.dual = this;
       // Levenshtein neighbour graph
       this.subchords = new Set();
       this.superchords = new Set();

@@ -387,7 +387,7 @@ body {
             display: grid;
             width: fit-content;
             gap: .5em .3em }
-            .chord-name, .chord-intervals, .chord-pitches, .chord-spelling {
+            .chord-name-quality, .chord-intervals, .chord-pitches, .chord-spelling {
               grid-template-columns: subgrid;
               display: grid;
               grid-column: span 7;
@@ -396,15 +396,16 @@ body {
               .chord-spelling-intervals { grid-area: 1/2/span 1/span 1 }
               .chord-spelling-pitches { grid-area: 1/4/span 1/span 4 }
             .chord-controls { grid-column: span 7 }
-              .chord-interval-harmonic, .chord-pitches-harmonic,
-                .chord-interval-steps, .chord-pitches-steps,
-                .chord-spelling-intervals, .chord-spelling-pitches {
+              .chord-name, .chord-interval-harmonic, .chord-pitches-harmonic,
+              .chord-interval-steps, .chord-pitches-steps,
+              .chord-spelling-intervals, .chord-spelling-pitches {
                 justify-self: right;
                 width: max-content }
               :is(.chord-interval-harmonic, .chord-pitches-harmonic,
                 .chord-interval-steps, .chord-pitches-steps)::before { content: "[" }
               :is(.chord-interval-harmonic, .chord-pitches-harmonic,
                 .chord-interval-steps, .chord-pitches-steps)::after { content: "]" }
+                .chord-duality.self-dual { display: none }
               .play-chord { cursor: pointer }
               #chords:not(.cycling) .play-chord::before { content: "⏵" }
               #chords.cycling .play-chord:not(.active)::before { content: "Play ⏵" }
@@ -498,6 +499,46 @@ input[type="number"] { min-width: calc(var(--size) * .8rem) }
     border-radius: 50%;
     background-color: #222 }
     input:checked + .slider::before { transform: translateX(1em) }
+.three-state-switch {
+  font-family: Netto;
+  position: relative;
+  display: inline-block;
+  height: calc(1em + 4px);
+  width: calc(3em - 4px);
+  border-radius: .7em;
+  background-color: #666;
+  color: #666;
+  vertical-align: bottom;
+  cursor: pointer }
+  .three-state-switch > label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    cursor: pointer }
+  .three-state-switch > label:has(input[value="backwards"]) { --ix: 0; z-index: 1 }
+  .three-state-switch > label:has(input[value="off"]) { --ix: 1; z-index: 2 }
+  .three-state-switch:has(input:not([value="off"]):checked) { background-color: #ddd }
+  .three-state-switch > label:has(input[value="forwards"]) { --ix: 2; z-index: 1 }
+  .three-state-switch > label:not(:has(:checked))::before { background-color: transparent }
+  .three-state-switch > label::before {
+    position: absolute;
+    content: "";
+    top: 2px;
+    left: calc(2px + var(--ix) * (1em - 4px));
+    height: 1em;
+    width: 1em;
+    border-radius: 50%;
+    background-color: #222 }
+    .three-state-switch input[type="radio"] { display: none }
+  .three-state-switch > label:has(input[value="backwards"]:checked) ~ .switch-backwards-arrow,
+  .three-state-switch > label:has(input[value="forwards"]:checked) ~ .switch-forwards-arrow { display: inline-block }
+  .switch-backwards-arrow { --left: calc(1em + 3px) }
+  .switch-forwards-arrow { --left: 1px }
+  .three-state-switch > :is(.switch-backwards-arrow, .switch-forwards-arrow) {
+    display: none;
+    position: absolute;
+    top: calc(2px + .2em);
+    left: var(--left) }
 input[type="checkbox"].ternary {
   appearance: none;
   width: 1em;

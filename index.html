@@ -3,7 +3,7 @@
 <head>
   <title>Temperamental ⁂ Microtonal music explorer</title>
   <meta charset='UTF-8'>
-  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <meta name='viewport' content='width=device-width, initial-scale=1, interactive-widget=overlays-content'>
   <meta name='keywords' content='music, xenharmony, xenrhythm'>
   <meta name='description' content='Web app for composing, playing, and noodling on microtonal music.'>
   <link rel='icon' type='image/x-icon' href='data:image/x-icon;base64,'>
@@ -153,7 +153,15 @@
         <fieldset id="chord-list">
           <legend>Chords</legend>
           <div class="chord-settings">
-            <div>Cycle inversions <label class="switch"><input type="checkbox"><span class="slider"></span></label></div>
+            <div>Cycle inversions 
+              <div class="three-state-switch">
+                <label><input type="radio" name="switch" value="backwards"></label>
+                <label><input type="radio" name="switch" value="off" checked></label>
+                <label><input type="radio" name="switch" value="forwards"></label>
+                <span class="switch-backwards-arrow">←</span>
+                <span class="switch-forwards-arrow">→</span>
+              </div>
+            </div>
             <div>Tempering <span id="comma-info"></span></div>
             <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
               <use href="#hourglass"></use>
@@ -281,8 +289,8 @@
   </template>
   <template id="chord">
     <div class="chord copyable" draggable="true">
-      <div class="chord-name">
-        Name:<span></span>
+      <div class="chord-name-quality">
+        Name:<span class="chord-name"></span>, <span class="chord-quality"></span>
       </div>
       <div class="chord-intervals">
         Intervals:<span class="chord-interval-harmonic"></span>=<span class="chord-interval-steps"></span>⧹<span class="chord-edo"></span>
@@ -294,10 +302,7 @@
         Spelling:<span class="chord-spelling-intervals"></span>, <span class="chord-spelling-pitches"></span>
       </div>
       <div class="chord-controls">
-        <span class="chord-is-symmetric">
-          <button type="button">Otonal</button>
-          <button type="button">Utonal</button>
-        </span>
+        <button class="chord-duality" type="button">Dual</button>
         <button class="inversion" type="button">Next inversion</button>
         <button class="play-chord" type="button"></button>
       </div>

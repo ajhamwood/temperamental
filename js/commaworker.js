@@ -62,15 +62,18 @@ self.onmessage = ({ data: { params, upperBound, retrieve, i } }) => {
   if (params) commaGen = new CommaWorker(params);
   else if (upperBound !== undefined) {
     const { batchSize } = commaGen, batch = [];
+    let count = 0;
     if (retrieve && firstRetrieve) { // Always advance signal before retrieval
       batch.push(commaGen.curComma);
       firstRetrieve = false
     }
     for (const value of commaGen.takeCommas(upperBound)) {
       if (!retrieve) continue;
-      else if (batch.length < batchSize) batch.push(value);
-      else postMessage({ batch: batch.splice(0), done: false, i })
+      batch.push(value);
+      if (batch.length < batchSize) continue;
+      postMessage({ batch: batch.splice(0), done: false, i, count });
+      count++
     }
-    postMessage({ batch, done: true, i })
+    postMessage({ batch, done: true, i, count })
   }
 }

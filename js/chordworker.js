@@ -82,6 +82,7 @@ self.onmessage = ({ data: { params, stacks, upperBound, retrieve, i } }) => {
     chordGen = new ChordWorker(ps);
   } else if (stacks !== undefined) {
     const { batchSize } = chordGen, batch = [];
+    let count = 0;
     if (upperBound.get(i) !== null)
       for (const value of chordGen.chords(comma, stacks.map(ivs => ivs.map(iv => chordGen.properIvSet.getRatio(...iv))))) {
         const
@@ -91,9 +92,11 @@ self.onmessage = ({ data: { params, stacks, upperBound, retrieve, i } }) => {
               return i ? 2 - v : v
             }) ];
         if (upperBound.has(i) && Common.LTE(ord, upperBound.get(i))) continue;
-        if (batch.length < batchSize) batch.push({ internalIntervalsRaw: value, ord });
-        else postMessage({ batch: batch.splice(0), done: false, identifier, i })
+        batch.push({ internalIntervalsRaw: value, ord });
+        if (batch.length < batchSize) continue;
+        postMessage({ batch: batch.splice(0), done: false, identifier, i, count });
+        count++
       }
-    postMessage({ batch, done: true, identifier, i });
+    postMessage({ batch, done: true, identifier, i, count });
   }
 }
