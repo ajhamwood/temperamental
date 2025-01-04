@@ -125,7 +125,7 @@ class HarmonicMapping {
     const
       existing = this.#temperaments.get(iv), self = this,
       { globalBatchSize: batchSize } = app;
-    if (existing) {
+    if (existing && existing.chords !== null) {
       this.temperament = existing.comma.fraction;
       return { setup: () => {}, fresh: function * () {} }
     } else {
@@ -213,6 +213,8 @@ class HarmonicMapping {
         },
         fresh: async function * ({ retrieve, params }) {
           const { upperBound } = params;
+          if (upperBound.size === 0) for (let i = 0; i < partitionStacks.size; i++) upperBound.set(i, []);
+          else if (upperBound.values().every(v => v === null)) return;
           (async () => {
             for (let i = 0; i < jobKeys.length; i++) {
               cp.set(i + 1, new Promise(res => cr.set(i + 1, res)));
@@ -226,13 +228,23 @@ class HarmonicMapping {
               self.#chordsworkers.get(wid).postMessage({ stacks, retrieve, upperBound, i });
             }
           })();
-          let batch, done, identifier, i;
+          let batch, done, identifier, i, last;
           for (let ord = 0; ord < jobKeys.length; ord++) {
             await cp.get(ord);
             do {
               br.get(ord).shift()();
               ({ batch, done, identifier, i } = await ap.get(ord).shift());
-              for (const { internalIntervalsRaw, ord } of batch) yield { edo, limit, nd, dd, internalIntervalsRaw, ord, done, i }
+              if (last) batch.unshift(last);
+              if (batch.length) last = batch.pop();
+              for (const { internalIntervalsRaw, ord } of batch) yield { edo, limit, nd, dd, internalIntervalsRaw, ord, done: false, i }
+              if (done) {
+                upperBound.set(i, null);
+                if (last) {
+                  const { internalIntervalsRaw, ord } = last;
+                  yield { edo, limit, nd, dd, internalIntervalsRaw, ord, done: true, i };
+                  last = null
+                }
+              }
             } while (!done);
             [ ar, ap, br, bp ].map(m => m.delete(ord));
             freeWorkers.push(identifier);
@@ -356,7 +368,7 @@ class Temperament {
   }
 
   #keyboard; #mapping; comma; intervalSet; #temperedIntervalSet
-  commaPartitions; enharms; factors; #chords = new Map() // Trie with TemperedInterval symbols: Map([ TemperedInterval, Map | Chord ])
+  commaPartitions; enharms; factors; #chords // Trie with TemperedInterval symbols: Map([ TemperedInterval, Map | Chord ])
   stackChords = new Map() // Map([ stack (Bag) : [ Interval ], { commaPartitions: Set([ [ Interval ] ]), chords : Set([ Chord ]) } ])
   partitionStacks // Map([ commaPartition: [ Interval ], stacks: [ (Bag): [ Interval ] ] ])
   constructor ({ keyboard, mapping, comma, intervalSet }) {
@@ -406,7 +418,7 @@ class Temperament {
       else throw new Error("Temperament error: Chords trie must have only either Map nodes or Chord leaves");
     }
   }
-  get chords () { return [ ...this.#yieldFromChordTrie() ] }
+  get chords () { return typeof this.#chords === "undefined" ? null : [ ...this.#yieldFromChordTrie() ] }
   set chords (_) {}
   
   #addChordToSubtrie (i, subtrie, chord) {
@@ -426,7 +438,7 @@ class Temperament {
   addChord (chord) {
     if (!Chord.prototype.isPrototypeOf(chord)) new Error("Temperament error: this method only accepts Chords");
     const { inversion: i } = chord;
-    return this.#addChordToSubtrie(0, this.#chords, chord.withInversion(0, true)).withInversion(i, true)
+    return this.#addChordToSubtrie(0, this.#chords ??= new Map(), chord.withInversion(0, true)).withInversion(i, true)
   }
 
   #findChordInSubtrie (i, subtrie, chord) {
@@ -460,8 +472,10 @@ class Temperament {
 
   getTemperedInterval (n, d) { return this.#temperedIntervalSet.getRatio(n, d) }
 
-  genChordGraph () { // Is the minimum chord adicity always 3?
-    const adicityChords = Common.group([ ...this.chords ], (ch1, ch2) => ch1.adicity === ch2.adicity)
+  genChordGraph () { // TODO ensure once only
+    const chords = this.chords;
+    if (chords === null) this.#chords = new Map();
+    const adicityChords = Common.group(chords ?? [], (ch1, ch2) => ch1.adicity === ch2.adicity)
       .sort(([ch1], [ch2]) => ch1.adicity < ch2.adicity);
     if (adicityChords.length > 1)
       for (let i = 0; i < adicityChords.length - 1; i++)
@@ -611,6 +625,7 @@ class Chord {
       this.#inversion = 0;
       const
         { temperament } = mapping, // Can a chord ever be created when the temperament is different? Refactor this
+        // TODO important! select root based on tempered intervals
         internalTemperedIntervals = this.#internalTemperedIntervals = internalIntervals[0]
           .map(ivs => ivs.map(({ fraction: [n, d] }) => temperament.getTemperedInterval(n, d)));
       this.temperament = temperament;
@@ -627,7 +642,7 @@ class Chord {
       this.#temperedIntervals = internalTemperedIntervals.map(ivs => ivs[1]);
 
       // Check if symmetric - move to chordgen
-      this.inverse = this;
+      this.dual = this;
       // Levenshtein neighbour graph
       this.subchords = new Set();
       this.superchords = new Set();
@@ -640,6 +655,8 @@ class Chord {
     this.#internalIntervals = this.#internalIntervals.concat(chord.#internalIntervals);
     this.#intervals = this.#intervals.concat(chord.#intervals);
     this.#names = this.#names.concat(chord.#names);
+    this.#quality = this.#quality.concat(chord.#quality);
+    this.dual = this
   }
   get interpretation () { return this.#interpretation }
   set interpretation (i) { this.#interpretation = Common.mod(i, this.#internalIntervals.length) }
@@ -676,12 +693,14 @@ class Chord {
   get internalTemperedIntervals () { return this.#internalTemperedIntervals[this.#inversion].slice() }
   set internalTemperedIntervals (_) {}
 
-  #names
+  #names; #quality
   #genNames () {
     if (this.type === "harmonic series") return;
+    let quality = 0;
     const
       { temperament } = this, { intervalSet, lattice } = this.#mapping, { harmonicList } = lattice,
       harms = new Set(temperament.hdecomp.map(([h]) => BigInt(h))).add(1n), interps = this.#internalIntervals,
+
       tonalities = interps.map(interp => interp.map(ivs => {
         const [ n, d ] = ivs[1].splitDecomp, [ [ ov, ol, op ], [ uv, ul, up ] ] = ivs.slice(2).reduce((brs, { n, d }, i) => {
           const ix = i + 2;
@@ -714,6 +733,7 @@ class Chord {
             }, [ Infinity, 0, [] ]));
         return [ ol < ul ? 1 : ol > ul ? -1 : ov > uv ? 1 : ov < uv ? -1 : 0, op, up ]
       })),
+
       names = interps.map((interp, inv) => {
         const interpNames = interp.map((ivs, int) => {
           const
@@ -743,26 +763,36 @@ class Chord {
                 addPart = single.map(([, iv]) => " add" + iv.noteSpelling.number); // length in [0, 1]
               return [ harmParts.join(" / ") + addPart.join("") ]
             }).flat();
-          q !== -1 && genNames(up, 0).forEach(n => ns.built.add(n));
-          q !== 1 && genNames(op, 1).forEach(n => ns.built.add(n));
+          q !== -1 && genNames(up, 0).forEach(n => { quality++; ns.built.add(n) });
+          q !== 1 && genNames(op, 1).forEach(n => { quality--; ns.built.add(n) });
           return ns
         });
         return interpNames.map(ns => ns.built.size === 0 ? new Set([ ns.default ]) : ns.built)
       });
+    
+    this.#quality = [ Math.sign(quality) ];  // TODO replace isSubHarm
     this.#names = names
   }
   get chordName () {
     if (this.type === "essentially tempered") return this.#names[this.#interpretation][this.#inversion]
   }
+  get quality () { return this.#quality[this.#interpretation] }
+  set quality (_) {}
 
-  #inverse
-  get inverse () { return this.#inverse }
-  set inverse (chord) {
+  #dual
+  get dual () { return this.#dual }
+  set dual (chord) {
     const { adicity } = this;
-    if (adicity !== chord.adicity) return false;
-    const { inversion } = chord, { intervals } = chord.withInversion(0, true);
-    if (this.#intervals.every(interp => interp.some((iv, i) => iv !== intervals[i ? adicity - i : 0]))) return false;
-    this.#inverse = chord.withInversion(inversion, true)
+    if (adicity === chord.adicity && this.#intervals.reduce(([ b, rem ], interp) => {
+      if (!b) return [ false ];
+      let ix;
+      for (let i = 0; i < adicity; i++) {
+        let inv = interp.toSpliced(0, i).concat(interp.toSpliced(i))
+        ix = rem.findIndex(int => inv.every((iv, i) => iv === int[i ? adicity - i : 0]));
+        if (~ix) break
+      }
+      return ~ix ? [ true, rem.toSpliced(ix, 1) ] : [ false ]
+    }, [ true, chord.#intervals ])[0]) this.#dual = chord
   }
 
   get #repr () {

@@ -974,12 +974,12 @@ $.targets({
       chordsFieldsetEl.classList.add("computing");
       await new Promise(requestAnimationFrame);
       
-      const iv = commas.getRatio(n, d), test = mapping.temperaments.has(iv);
+      const iv = commas.getRatio(n, d), chords = mapping.temperaments.get(iv)?.chords;
       mapping.resetChords(iv);
       let cursor = 0, upperBound = mapping.commasBounds.get(iv) ?? new Map();
-      if (test) {
+      if (chords) {
         mapping.temperament = [n, d];
-        for (const chord of mapping.temperament.chords) this.emit("populate-chord", chord, chordsEl)["populate-chord"]
+        for (const chord of chords) this.emit("populate-chord", chord, chordsEl)["populate-chord"]
       } else {
         for await (const { source, value } of mapping.takeChords(upperBound)) {
           const { done, ...ordChordRaw } = value, { internalIntervalsRaw, i, ...chordRaw } = ordChordRaw;
@@ -1003,7 +1003,7 @@ $.targets({
 
           if (source === "worker") {
             await storage.saveChord(ordChordRaw);
-            upperBound.set(i, done ? null : ordChordRaw.ord);
+            if (!done) upperBound.set(i, ordChordRaw.ord);
             await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
           }
           cursor = this.emit("populate-chord", chord, chordsEl, cursor, done)["populate-chord"]
@@ -1011,12 +1011,13 @@ $.targets({
         for (const { chords } of mapping.temperament.stackChords.values()) {
           const chordList = [ ...chords ];
           for (let i = 0; i < chordList.length; i++) for (let j = 0; j < i; j++) {
-            chordList[i].inverse = chordList[j];
-            chordList[j].inverse = chordList[i];
+            chordList[i].dual = chordList[j];
+            chordList[j].dual = chordList[i];
           }
         }
         mapping.temperament.genChordGraph()
       }
+      await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
       chordsFieldsetEl.classList.remove("computing");
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
     },
@@ -1094,7 +1095,7 @@ $.targets({
       chIvHarmonicEl.innerHTML = chord.intervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" ");
       chIvStepsEl.innerText = chord.temperedIntervals.map(tiv => mapping.steps(tiv)).join(" ");
       chPcHarmonicEl.innerHTML = chord.internalIntervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" – ");
-      chPcStepsEl.innerText = `${chord.internalIntervals.map(iv => mapping.steps(iv)).join("-")}-${edo}`;
+      chPcStepsEl.innerText = chord.internalIntervals.map(iv => mapping.steps(iv)).join("-");
       chIvSpellingEl.innerText = chord.intervals.map(({ noteSpelling }) => noteSpelling.number).join(" ");
       chPcSpellingEl.innerText = chord.internalIntervals.map(({ noteSpelling }) => noteSpelling.letter).join(" – ");
     },
