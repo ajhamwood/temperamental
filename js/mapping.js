@@ -163,6 +163,7 @@ class HarmonicMapping {
             harms = [1n].concat(hdecomp.map(([h]) => BigInt(h))
               .filter(h => Common.gcd(h, iv.n) > 1 || Common.gcd(h, iv.d) > 1)
               .sort((a, b) => Common.bigLog2(a) % 1 < Common.bigLog2(b) % 1)),
+            // Throws out many-partitionStacks-to-one-stack mappings
             taggedStacks = commaPartitions.map(cpart => cpart.reduce((acc, iv) => {
               const
                 ni = harms.indexOf(iv.n), di = harms.indexOf(iv.d),
@@ -195,7 +196,6 @@ class HarmonicMapping {
           // TODO reject temperaments which produce no stacks of length 3?
           Common.group(taggedStacks, ([, a], [, b]) => a.length === b.length && a.every((v, i) => v === b[i]))
             .forEach(job => partitionStacks.set(job[0][1], job.map(([v]) => v)));
-          self.temperament.partitionStacks = partitionStacks;
           self.stackMaps.set(iv, (jobKeys = [ ...partitionStacks.keys() ])
             .map(k => commaPartitions.findIndex(cpart => k === cpart)));
 
@@ -370,8 +370,7 @@ class Temperament {
 
   #keyboard; #mapping; comma; intervalSet; #temperedIntervalSet
   commaPartitions; enharms; factors; #chords // Trie with TemperedInterval symbols: Map([ TemperedInterval, Map | Chord ])
-  stackChords = new Map() // Map([ stack (Bag) : [ Interval ], { commaPartitions: Set([ [ Interval ] ]), chords : Set([ Chord ]) } ])
-  partitionStacks // Map([ commaPartition: [ Interval ], stacks: [ (Bag): [ Interval ] ] ])
+  stackChords = [] // [[ stack (Bag) : [ Interval ], chords : Set([ Chord ]) ]]
   constructor ({ keyboard, mapping, comma, intervalSet }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Temperament error: must provide Keyboard object");
     this.#keyboard = keyboard;
@@ -568,7 +567,7 @@ class Chord {
     if (keyboard.edo !== edo) throw new Error("Unhandled - chord edo different to current edo");
     if (keyboard.scale.limit !== limit) throw new Error("Unhandled - chord limit different to current limit");
     const intervalsRaw = internalIntervalsRaw.map(interp => interp.map(ivs => ivs[1]));
-    const frac = intervalsRaw[0].reduce(([a, b], [c, d]) => [a * c, b * d], [1n, 2n]);
+    const frac = intervalsRaw[0].reduce(([a, b], [c, d]) => [a * BigInt(c), b * BigInt(d)], [1n, 2n]);
     if (Common.bigLog2(frac[0]) < Common.bigLog2(frac[1])) frac.reverse();
     const iv = mapping.commas.addRatio(...frac).withOctave(0);
     if (Common.mod(mapping.steps(iv), edo) !== 0) throw new Error("Unhandled - chord comma not tempered");
@@ -583,7 +582,7 @@ class Chord {
   #interpretation; subchords; superchords
   harmonics; #harmonicIntervals; isSubHarm; #inversion
   voicing
-  ord
+  ord; #limit
   constructor ({ keyboard, mapping, type, harmonics, bass, isSubHarm = false, internalIntervals, voicing, ord }) {
     if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Chord error: must provide Keyboard object");
     if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Chord error: must provide HarmonicMapping object");
@@ -600,6 +599,7 @@ class Chord {
       this.adicity = harmonics.length;
       this.voicing = voicing ?? Array(this.adicity).fill(-1);
       this.harmonics = harmonics;
+      this.#limit = Math.max(...harmonics);
       this.isSubHarm = isSubHarm;
       if (isSubHarm) this.harmonics.sort((a, b) => Common.mod(Math.log2(1 / a), 1) > Common.mod(Math.log2(1 / b), 1));
       else this.harmonics.sort((a, b) => Common.mod(Math.log2(a), 1) > Common.mod(Math.log2(b), 1));
@@ -633,7 +633,8 @@ class Chord {
       
       this.#internalIntervals = internalIntervals;
       this.#intervals = [ this.#internalIntervals[0].map(ivs => ivs[1]) ];
-      const intervals = this.#intervals[0]
+      const intervals = this.#intervals[0];
+      this.#limit = this.#internalIntervals.map(ivss => Common.bigMax(ivss.map(ivs => Common.bigMax(ivs.map(({n, d}) => Common.bigMax([n, d]))))));
       
       this.ord = ord ?? [ intervals.length, ...intervals
         .map(({ fraction: [n, d] }, i) => {
@@ -653,6 +654,7 @@ class Chord {
   addInterpretation (chord) {
     this.#internalIntervals = this.#internalIntervals.concat(chord.#internalIntervals);
     this.#intervals = this.#intervals.concat(chord.#intervals);
+    this.#limit = this.#limit.concat(chord.limit);
     this.#names = this.#names.concat(chord.#names);
     this.#quality = this.#quality.concat(chord.#quality);
     this.dual = this
@@ -677,7 +679,7 @@ class Chord {
   get internalIntervals () {
     const { properIntervalSet } = this.#mapping.lattice;
     return this.type === "harmonic series" ?
-      this.#internalIntervals[this.#interpretation][this.#inversion].map(iv => properIntervalSet.getRatio(...iv)) :
+      this.#internalIntervals[this.#inversion].map(iv => properIntervalSet.getRatio(...iv)) :
       this.type === "essentially tempered" ? this.#internalIntervals[this.#interpretation][this.#inversion].slice() : []
   }
   set internalIntervals (_) {}
@@ -691,6 +693,9 @@ class Chord {
 
   get internalTemperedIntervals () { return this.#internalTemperedIntervals[this.#inversion].slice() }
   set internalTemperedIntervals (_) {}
+
+  get limit () { return this.#limit[this.#inversion] }
+  set limit (_) {}
 
   #names; #quality
   #genNames () {

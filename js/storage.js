@@ -26,6 +26,11 @@ class Persist {
     $.targets({ success (e) { r(e.target.result); p = new Promise(res => r = res) } }, index);
     while (csr = await p) { const { value } = csr; yield value; csr.continue() }
   }
+  static async * #requestWait (req) {
+    let r, p = new Promise(res => r = res);
+    $.targets({ success (e) { r(e.target.result) } }, req);
+    yield await p
+  }
    
   static async #upgradeFromVersion0 (vn) {
     return await Persist.#runSchemaTxs(vn, [
@@ -97,6 +102,7 @@ class Persist {
       this.#resolveReady()
     } catch (e) { this.#rejectReady(e) }
   }
+  close () { this.#db.close() }
 
   loadItem (key, initial) {
     let value = localStorage.getItem(key);
@@ -153,7 +159,14 @@ class Persist {
       csr = commaStore.index("commas").openCursor(IDBKeyRange.only([ edo, limit ])),
       yieldCommaCsr = Persist.#cursorWait(csr),
       values = (await Array.fromAsync(yieldCommaCsr)).sort(({ n: a }, { n: b }) => a > b);
-  for (const value of values) yield value
+    for (const value of values) yield value
+  }
+  async * getComma ({ edo, limit, nd, dd }) {
+    const
+      commaStore = this.#db.transaction("commas").objectStore("commas"),
+      req = commaStore.get([ edo, limit, nd, dd ]),
+      yieldCommaReq = Persist.#requestWait(req);
+    yield * yieldCommaReq
   }
   async saveComma (comma) {
     const

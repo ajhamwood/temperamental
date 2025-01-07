@@ -37,7 +37,7 @@ class Keyboard {
   static noteColours = {
     default: "#333333", active: "#ffff00", echo: "#ffffff22",
     white: "#222222", black: "#777777",
-    5: "#ff0000", 7: "#0000ff", 11: "#00ff00", 13: "#ff00ff"
+    5: "#ff0000", 7: "#0000ff", 11: "#00ff00", 13: "#ff00ff", 17: "#ffff00"
   }
 
   static selectEl; static edoInfoEl; static limitInfoEl; static displayKeyNamesEl
@@ -60,8 +60,7 @@ class Keyboard {
       name: Keyboard.nameFieldEl.value,
       orientation: Keyboard.orientationSelectEl.value.split(",").map(v => parseInt(v)),
       displayKeyNames: $("#hexbutton-labels input:checked").parentElement.id === "key-name-choice",
-      hmap: $.all(".harmonic.prime > input.steps")
-        .map(el => [ parseInt(el.parentElement.dataset.harm), el.valueAsNumber ])
+      clipboard: app.keyboard.clipboard.slice()
     };
     [ "gstep", "hstep", "unit", "refNote", "freqBasis", "edo", "limit", "maxError" ]
       .forEach(dataname => keyboardObj[dataname] = Keyboard[dataname + "El"].valueAsNumber);
@@ -87,13 +86,13 @@ class Keyboard {
   name; edo; hexGrid; scale; instrument = "triangle"
   touches = new Map(); mousedown = false
   hoveredKey; wheelVal = 0; wheelSensitivity = 200
-  clipboard = []; clipboardPeekIndex
+  clipboard; clipboardPeekIndex
   root = 0 // TODO: load/save
   constructor ({
     name, edo,
     gstep, hstep, unit, orientation, displayKeyNames,
     limit, refNote, freqBasis, maxError,
-      hmap,
+    clipboard = []
     // instrument
   }) {
     // TODO: validation helper?
@@ -102,19 +101,19 @@ class Keyboard {
     this.name = name;
     this.edo = edo;
     this.hexGrid = new HexGrid({ keyboard: this, gstep, hstep, unit, orientation, displayKeyNames });
-    this.scale = new Scale({ keyboard: this, limit, refNote, freqBasis, maxError })
+    this.scale = new Scale({ keyboard: this, limit, refNote, freqBasis, maxError });
+    this.clipboard = clipboard
   }
 
   async save () {
     const
       { name, edo, hexGrid, scale, clipboard } = this,
       { gstep, hstep, unit, orientation, displayKeyNames } = hexGrid,
-      { limit, refNote, freqBasis, maxError, mapping } = scale,
-      { hmap } = mapping,
+      { limit, refNote, freqBasis, maxError } = scale,
       keyboard = {
         name, edo, gstep, hstep, unit, orientation, displayKeyNames,
-        limit, refNote, freqBasis, maxError, hmap,
-        clipboard: clipboard.map(({ text }) => text)
+        limit, refNote, freqBasis, maxError,
+        clipboard: clipboard.map(({ text }) => ({ text }))
       };
     Object.assign(app.keyboards[app.keyboardSelection], keyboard)
     await app.storage.saveKeyboard(keyboard);
@@ -125,11 +124,11 @@ class Keyboard {
       { gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
         edoEl, limitEl, maxErrorEl, displayKeyNamesEl, scaleOutputEl,
         edoInfoEl, limitInfoEl, nameFieldEl, nameTextEl } = Keyboard,
-      { name, edo, hexGrid, scale, clipboard } = this,
+      { name, edo, hexGrid, scale } = this,
       { gstep, hstep, unit, orientation, orientations, displayKeyNames } = hexGrid,
       { limit, refNote, freqBasis, maxError } = scale,
       { upperBound } = await app.storage.loadScale({ edo, limit });
-    $("#commas").dataset.upperBound = upperBound; //
+    $("#commas").dataset.upperBound = upperBound;
     nameFieldEl.value = name;
     nameFieldEl.classList.remove("invalid");
     nameTextEl.innerText = name;
@@ -152,7 +151,6 @@ class Keyboard {
     $(`#key-${displayKeyNames ? "name" : "rank"}-choice > input`, displayKeyNamesEl).checked = true;
     scaleOutputEl.value = `One step of ${edo}EDO = ${(1200 / edo).toFixed(2)}¢`;
     $.all("#clipboard-peek > *").forEach(el => el.remove());
-    clipboard.forEach(({ text }) => this.emit("copy", { text }));
     edoInfoEl.innerText = edo;
     limitInfoEl.innerText = limit;
   }

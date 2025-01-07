@@ -1,7 +1,7 @@
 import $ from "./machine.js";
 import Common from "./common.js";
 import Persist from "./storage.js";
-import { Chord } from "./mapping.js";
+import { Temperament, Chord } from "./mapping.js";
 import { HarmonicLattice, Harmonic, Interval } from "./interval.js";
 import { Keyboard, Scale } from "./keyboard.js";
 
@@ -44,6 +44,7 @@ class MenuState {}
 // Page state
 
 class Listeners {
+  // Replicate drag & drop using first changed touch
   static dragDropTouch = ((img, dx, dy) => ({
     touchstart (e) {
       e.preventDefault();
@@ -54,7 +55,7 @@ class Listeners {
       dx = pageX - left;
       dy = pageY - top;
       img = this.cloneNode(true);
-      img.id = "drag-feedback";
+      img.id = "pointer-drag-feedback";
       img.style.setProperty("left", pageX - dx + 40 + "px");
       img.style.setProperty("top", pageY - dy + 40 + "px")
       document.body.appendChild(img);
@@ -75,14 +76,17 @@ class Listeners {
           e = new Event("drop", { bubbles: true, cancelable: true }),
           tr = new DataTransfer();
         let data;
-        if (classList.contains("harm-obj")) data = { type: "harmonic", order: this.parentElement.dataset.harm };
-        else if (classList.contains("subharm-obj")) data = { type: "subharmonic", order: this.parentElement.dataset.harm };
-        else if (classList.contains("interval-obj")) data = { type: "interval", interval: this.parentElement.dataset.interval };
+        if (classList.contains("harm-obj")) data = JSON.stringify({ type: "harmonic", order: this.parentElement.dataset.harm });
+        else if (classList.contains("subharm-obj")) data = JSON.stringify({ type: "subharmonic", order: this.parentElement.dataset.harm });
+        else if (classList.contains("interval-obj")) data = JSON.stringify({ type: "interval", interval: this.parentElement.dataset.interval });
         else if (classList.contains("chord")) {
           this.dataset.active = "";
-          data = { type: "chord" };
-        }
-        tr.setData("text/plain", JSON.stringify(data));
+          const
+            chord = app.keyboard.scale.mapping.temperament.getChordByIntervals(JSON.parse($(".chord-intervals", this).dataset.intervals)),
+            { internalIntervalsRaw, inversion, voicing } = JSON.parse(chord.toString());
+          data = JSON.stringify({ type: "chord", data: { internalIntervalsRaw, inversion, voicing, comma } })
+        } else (data = app.keyboard.clipboard[app.keyboard.clipboardPeekIndex].text);
+        tr.setData("text/plain", data);
         tr.effectAllowed = "copy";
         tr.dropEffect = "copy";
         e.dataTransfer = tr;
@@ -339,6 +343,7 @@ $.targets({
       Keyboard.noteColours = JSON.parse(storage.loadItem("noteColours", JSON.stringify(Keyboard.noteColours)));
       await this.keyboard.fillSettings();
       Keyboard.ready = true;
+      this.emit("generate-keyboard");
 
       // Tracks
       const
@@ -390,15 +395,15 @@ $.targets({
       }
     },
 
-    copy ({ node, text }) {  // Move to Keyboard?
+    async copy ({ node, text }) {  // Move to Keyboard?
       let type, chord;
       const
         clipboardEl = $("#clipboard-item-select"), clipboardPeekEl = $("#clipboard-peek"),
-        { keyboard } = this, { scale, clipboard } = keyboard, { mapping } = scale, { lattice } = mapping;
+        { keyboard } = this, { scale, clipboard, edo } = keyboard, { mapping, limit } = scale, { lattice } = mapping;
       if (text) {
         const data = JSON.parse(text);
         ({ type } = data);
-        const { inversion, internalIntervals, ...opts } = data.data ?? {};
+        const { inversion, internalIntervalsRaw, voicing, comma } = data.data ?? {};
         switch (type) {
           case "harmonic": node = $(`[data-harm="${data.order}"] > .harm-obj`); break
           case "subharmonic": node = $(`[data-harm="${data.order}"] > .subharm-obj`); break
@@ -406,9 +411,20 @@ $.targets({
           case "chord":
             delete (node = $(".chord[data-active]"))?.dataset.active;
             if (!node) {
-              if (internalIntervals) opts.internalIntervals = internalIntervals
-                .map(ivs => ivs.map(([n, d]) => mapping.intervalSet.addRatio(n, d)));
-              chord = new Chord({ keyboard, mapping, ...opts }).withInversion(inversion, true)
+              let nd, dd;
+              if (mapping.temperaments.has(mapping.commas.getRatio(...comma))) {
+                mapping.temperament = comma;
+                ([ nd, dd ] = mapping.temperament.comma.splitDecomp)
+              } else {
+                ([ nd, dd ] = Common.decompBig(...comma.map(BigInt)).map(m => [ ...m ]));
+                const [ c ] = await Array.fromAsync(this.storage.getComma({ edo, limit, nd, dd }));
+                if (!c) throw new Error("Storage corrupted: Chord temperament not compatible with keyboard");
+                mapping.addTemperament(new Temperament({ keyboard, mapping, comma: mapping.commas.addRatio(...comma), intervalSet: mapping.lattice.properIntervalSet }));
+                mapping.resetWaitForTemperament();
+                mapping.temperament = comma;
+              }
+              chord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", voicing, chordRaw: { edo, limit, nd, dd, internalIntervalsRaw } })
+                .withInversion(inversion, true)
             }
         }
       } else {
@@ -423,14 +439,14 @@ $.targets({
       }
       let
         data = {
-          start: function (id) {
-            this.classList.add("active");
+          start (id) {
+            clipboardPeekEl.classList.add("active");
             chord.start("pointer-" + id)
-          }.bind(clipboardPeekEl),
-          stop: function (id) {
-            this.classList.remove("active");
+          },
+          stop (id) {
+            clipboardPeekEl.classList.remove("active");
             chord.stop("pointer-" + id)
-          }.bind(clipboardPeekEl)
+          }
         };
       switch (type) {
         case "harmonic": case "subharmonic":
@@ -442,17 +458,16 @@ $.targets({
           break
         case "interval":
           data.item = mapping.intervalSet.getRatio(...node.parentElement.dataset.interval.split("/"));
-          const { n, d } = data.item;
+          const n = Number(data.item.n), d = Number(data.item.d);
           chord = new Chord({ keyboard, mapping, type: "harmonic series", harmonics: [ n, d ], bass: n < d ? n : d, isSubHarm: n < d });
           break
         case "chord":
           if (chord) data.item = chord;
           else {
-            data.item = this.keyboard.scale.mapping.temperament
-              .getChordByIntervals(JSON.parse($(".chord-intervals", node).dataset.intervals).map(v => v.map(BigInt)));
-            // Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw: { edo, limit, nd, dd, internalIntervalsRaw } })
+            const { temperament } = this.keyboard.scale.mapping;
+            data.item = temperament.getChordByIntervals(JSON.parse($(".chord-intervals", node).dataset.intervals).map(v => v.map(BigInt)));
             chord = data.item;
-            text = JSON.stringify({ type, data: JSON.parse(chord.toString()) })
+            text = JSON.stringify({ type, data: { comma: temperament.comma.fraction.map(String), ...JSON.parse(chord.toString()) } })
           }
       }
       data.text = text;
@@ -464,7 +479,7 @@ $.targets({
 
     uncopy () {
       const { keyboard } = this, { clipboard, clipboardPeekIndex } = keyboard;
-      keyboard.clipboard.splice(clipboardPeekIndex, 1);
+      clipboard.splice(clipboardPeekIndex, 1);
       keyboard.save();
       keyboard.clipboardPeekIndex = clipboard.length === 0 ? null :
         Math.min(clipboardPeekIndex, clipboard.length - 1);
@@ -853,7 +868,10 @@ $.targets({
           ...Listeners.dragDropTouch
         }
         
-      })
+      });
+
+      const clipboard = keyboard.clipboard.splice(0);
+      clipboard.forEach(({ text }) => app.emit("copy", { text }));
     },
 
 
@@ -979,26 +997,16 @@ $.targets({
       let cursor = 0, upperBound = mapping.commasBounds.get(iv) ?? new Map();
       if (chords) {
         mapping.temperament = [n, d];
-        for (const chord of chords) this.emit("populate-chord", chord, chordsEl)
+        for (const chord of chords) {
+          const dualChordEl = $.all("#chords > .chord").find(el => el.dataset.ord === JSON.stringify(chord.dual.ord));
+          if (!dualChordEl || chord.dual === chord) this.emit("populate-chord", chord, 0);
+          if (chord.dual === chord) $(".chord-duality", dualChordEl).classList.add("self-dual");
+        }
       } else {
         for await (const { source, value } of mapping.takeChords(upperBound)) {
           const { done, ...ordChordRaw } = value, { internalIntervalsRaw, i, ...chordRaw } = ordChordRaw;
           chordRaw.internalIntervalsRaw = [ internalIntervalsRaw.map(ivs => [[1n, 1n]].concat(ivs)) ];
           await mapping.waitForTemperament;
-
-          const
-            naiveChord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw }),
-            chord = mapping.temperament.addChord(naiveChord);
-          if (chord !== naiveChord) chord.addInterpretation(naiveChord);
-
-          // Group chords by stack
-          const
-            cpart = mapping.temperament.commaPartitions[ mapping.stackMaps.get(iv)[i] ],
-            stack = mapping.temperament.partitionStacks.get(cpart).find(ivs => Common.bagEq(ivs, chord.intervals)),
-            stackData = mapping.temperament.stackChords.get(stack) ?? { commaPartitions: new Set(), chords: new Set() };
-          stackData.commaPartitions.add(cpart);
-          stackData.chords.add(chord);
-          mapping.temperament.stackChords.set(stack, stackData);
 
           if (source === "worker") {
             await storage.saveChord(ordChordRaw);
@@ -1006,12 +1014,27 @@ $.targets({
             await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
           }
 
+          const
+            naiveChord = Chord.fromRepr({ keyboard, mapping, type: "essentially tempered", chordRaw }),
+            chord = mapping.temperament.addChord(naiveChord);
+          if (chord !== naiveChord) {
+            chord.addInterpretation(naiveChord);
+            continue
+          }
+
+          // Group chords by stack
+          const
+            ix = mapping.temperament.stackChords.findIndex(([stack]) => Common.bagEq(stack, chord.intervals)),
+            stackData = ~ix ? mapping.temperament.stackChords[ix] : [ chord.intervals, new Set([ chord ]) ];
+          if (!~ix) mapping.temperament.stackChords.push(stackData);
+          stackData[1].add(chord);
+
           // Check against stack members for dual pairing
-          for (const mbDual of stackData.chords) {
+          for (const mbDual of stackData[1]) {
             chord.dual = mbDual;
             mbDual.dual = chord;
           }
-          if (!chord.dual || chord === naiveChord && chord.dual === chord) cursor = this.emit("populate-chord", chord, cursor)["populate-chord"];
+          if (!chord.dual || chord.dual === chord) cursor = this.emit("populate-chord", chord, cursor)["populate-chord"];
           if (chord.dual) {
             const dualChordEl = $.all("#chords > .chord").find(el => el.dataset.ord === JSON.stringify(chord.dual.ord));
             if (chord === chord.dual) $(".chord-duality", dualChordEl).classList.add("self-dual");
@@ -1027,8 +1050,10 @@ $.targets({
 
     "populate-chord" (chord, cursor = 0) {
       const
-        chordsEl = $("#chords"), chordEl = $.load("chord", "#chords")[0][0],
-        chordEls = $.all(".chord", chordsEl), chordIvsEl = $(".chord-intervals", chordEl);
+        { comma } = this.keyboard.scale.mapping.temperament,
+        chordsEl = $("#chords"), chordEls = $.all(".chord", chordsEl),
+        chordEl = $.load("chord", "#chords")[0][0],
+        chordIvsEl = $(".chord-intervals", chordEl);
       chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
       chordEl.dataset.ord = JSON.stringify(chord.ord);
       const ix = chordEls.slice(cursor).findIndex(el => Common.LTE(chord.ord, JSON.parse(el.dataset.ord ?? "[]")));
@@ -1081,7 +1106,8 @@ $.targets({
             $("body").classList.add("copying");
             e.dataTransfer.effectAllowed = "copy";
             this.dataset.active = "";
-            e.dataTransfer.setData("text/plain", "{ \"type\": \"chord\" }")
+            const { internalIntervalsRaw, inversion, voicing } = JSON.parse(chord.toString());
+            e.dataTransfer.setData("text/plain", JSON.stringify({ type: "chord", data: { internalIntervalsRaw, inversion, voicing, comma: comma.fraction.map(String) } }))
           },
           dragend () {
             $("body").classList.remove("copying");
@@ -1400,24 +1426,20 @@ $.queries({
       e.preventDefault();
       this.classList.add("active")
     },
-    dragleave (e) { this.classList.remove("active") },
+    dragleave () { this.classList.remove("active") },
     drop (e) {
       e.stopPropagation();
-      this.classList.remove("active");
       const text = e.dataTransfer.getData('text/plain');
-      if (text !== "self") app.emit("copy", { text });
-      $("nav").focus();
+      this.classList.remove("active");
       $("body").classList.remove("copying")
-    },
-    dragstart (e) { e.dataTransfer.setData("text/plain", "self") },
-    dragend ({ x, y }) {
-      if (!document.elementsFromPoint(x, y).includes(this)) app.emit("uncopy")
+      $("nav").focus();
+      app.emit("copy", { text })
     }
   },
   "#clipboard-peek": {
-    ...((x, prevX, y, threshhold, phase) => ({
+    ...((x, prevX, y, prevY, threshhold, phase, pid, img) => ({
       pointerdown ({ pointerId, ctrlKey, pageX, pageY }) {
-        this.setPointerCapture(pointerId);
+        this.setPointerCapture(pid = pointerId);
         if (!this.firstChild) return;
         if (ctrlKey) return app.emit("uncopy");
         const
@@ -1430,29 +1452,58 @@ $.queries({
         phase = 0;
         data.start(pointerId)
       },
-      pointermove ({ clientX, pageX, pageY, pointerId }) {
+      pointermove ({ pageX, pageY, pointerId }) {
         if (this.children.length === 0) return;
         const { keyboard } = app, { clipboard, clipboardPeekIndex } = keyboard;
         if (phase === 0 && Math.hypot(pageX - x, pageY - y) > threshhold) {
-          phase = 1 + (Math.abs(pageX - x) < Math.abs(pageY - y));
-          prevX = pageX;
-          if (Math.abs(pageX - x) < Math.abs(pageY - y)) {
+          phase = +(Math.abs(pageX - x) > Math.abs(pageY - y));
+          if (Math.abs(pageX - x) < Math.abs(pageY - y))
             clipboard[clipboardPeekIndex].stop(pointerId);
-            app.emit("uncopy")
-          }
         } else if (phase === 1) {
-          keyboard.cycle("clipboard", (-prevX + (prevX = pageX)) * 4);
+          keyboard.cycle("clipboard", (pageX - prevX) * 4);
           if (keyboard.clipboardPeekIndex !== clipboardPeekIndex) {
             clipboard[clipboardPeekIndex].stop(pointerId);
             clipboard[keyboard.clipboardPeekIndex].start(pointerId)
           }
         }
+        prevX = pageX;
+        prevY = pageY
       },
-      "pointerup lostpointercapture" ({ type, pointerId }) {
+      "pointerup lostpointercapture" (e) {
+        const { type, pointerId } = e;
         if (type === "pointerup" && !this.hasPointerCapture(pointerId)) return;
         const { clipboard, clipboardPeekIndex } = app.keyboard;
         clipboard[clipboardPeekIndex]?.stop(pointerId);
-        this.releasePointerCapture(pointerId)
+        this.releasePointerCapture(pointerId);
+        phase = null
+      },
+      dragstart (e) {
+        if (Math.abs(prevX - x) > Math.abs(prevY - y)) {
+          e.stopPropagation();
+          e.preventDefault();
+          phase = 1;
+          return
+        }
+        const { clipboard, clipboardPeekIndex } = app.keyboard, data = clipboard[clipboardPeekIndex];
+        data.stop(pid);
+        this.classList.add("active");
+        $("body").classList.add("copying");
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.dropEffect = "copy";
+        e.dataTransfer.setData("text/plain", data.text);
+        img = this.cloneNode(true);
+        document.body.appendChild(img);
+        img.id = "drag-feedback";
+        e.dataTransfer.setDragImage(img, 0, 0);
+        app.emit("uncopy");
+        this.releasePointerCapture(pid);
+        phase = null
+      },
+      dragend () {
+        img.remove();
+        this.classList.remove("active");
+        $("body").classList.remove("copying");
+        $("nav").focus()
       }
     }))()
   },

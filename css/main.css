@@ -98,7 +98,7 @@ body {
       #track-controls.activeControls { display: flex }
         #track-play:not(.trackPlaying)::before { content: "Play ⏵" }
         #track-play.trackPlaying::before { content: "Pause ⏸" }
-    nav:focus-within:not(:has(.non-focus:focus)) > #dropdown, .menuActive.copying #dropdown { display: flex}
+    nav:focus-within:not(:has(.non-focus:focus)) > #dropdown, .copying #dropdown { display: flex }
     #dropdown {
       display: none;
       background-color: #000 }
@@ -106,7 +106,7 @@ body {
         #dropdown > * > * { vertical-align: middle }
         #keyboard-select option[disabled]:not(:nth-last-child(3)) { display: none }
       #clipboard-item-select:has(#clipboard-peek:empty) { color: #666 }
-      .menuActive.copying #clipboard-item-select {
+      .copying #clipboard-item-select {
         position: absolute;
         top: 0;
         left: 0;
@@ -558,10 +558,13 @@ body.copying .copyable:hover:not([data-active]) {
   padding: 2px;
   margin: -4px;
   cursor: cell }
-  #drag-feedback {
+  #pointer-drag-feedback {
     position: absolute;
     opacity: 50%;
     z-index: 10 }
+  #drag-feedback {
+    position: absolute;
+    z-index: -1 }
 .editable > * { display: none }
 .editable > span {
   cursor: text;

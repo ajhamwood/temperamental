@@ -226,7 +226,7 @@ class Harmonic {
         { /*nonHarmonics,*/ index, primes } = lattice;
         // doErr = () => { throw new Error("Harmonic not in mapping") };
       if (lattice.ready) {
-        let decomp = mapping.decomp(order); // lattice.decomp
+        let decomp = lattice.decomp(order);
         // if (nonHarmonics.has(order) || decomp === null) doErr();
         this.isBasis = false;
         this.decomp = decomp
