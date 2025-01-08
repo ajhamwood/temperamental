@@ -47,7 +47,7 @@ class Listeners {
   // Replicate drag & drop using first changed touch
   static dragDropTouch = ((img, dx, dy) => ({
     touchstart (e) {
-      e.preventDefault();
+      e.preventDefault?.();
       const
         { changedTouches: [ { pageX, pageY } ] } = e,
         { left, top } = this.getBoundingClientRect();
@@ -85,7 +85,7 @@ class Listeners {
             chord = app.keyboard.scale.mapping.temperament.getChordByIntervals(JSON.parse($(".chord-intervals", this).dataset.intervals)),
             { internalIntervalsRaw, inversion, voicing } = JSON.parse(chord.toString());
           data = JSON.stringify({ type: "chord", data: { internalIntervalsRaw, inversion, voicing, comma } })
-        } else (data = app.keyboard.clipboard[app.keyboard.clipboardPeekIndex].text);
+        } else (data = app.keyboard.clipboardHolding.text);
         tr.setData("text/plain", data);
         tr.effectAllowed = "copy";
         tr.dropEffect = "copy";
@@ -1123,13 +1123,14 @@ $.targets({
       const
         { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
         [ chNameQualEl, chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
-        [ chNameEl, chQualityEl ] = chNameQualEl.children,
+        [ chNameEl, chQualityEl, chLimitEl ] = chNameQualEl.children,
         [ chIvHarmonicEl, chIvStepsEl ] = chIntervalsEl.children,
         [ chPcHarmonicEl, chPcStepsEl ] = chPitchesEl.children,
         [ chIvSpellingEl, chPcSpellingEl ] = chSpellingEl.children;
       $.all(".chord-edo", chordEl).forEach(el => el.innerText = edo);
       chNameEl.innerText = chord.chordName.values().next().value; // Obviously, to be improved
       chQualityEl.innerText = ({ "-1": "utonal", "0": "ambitonal", "1": "otonal" })[chord.quality];
+      chLimitEl.innerText = chord.limit;
       chIvHarmonicEl.innerHTML = chord.intervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" ");
       chIvStepsEl.innerText = chord.temperedIntervals.map(tiv => mapping.steps(tiv)).join(" ");
       chPcHarmonicEl.innerHTML = chord.internalIntervals.map(({ noteSpelling }) => noteSpelling.fraction).join(" – ");
@@ -1437,51 +1438,60 @@ $.queries({
     }
   },
   "#clipboard-peek": {
-    ...((x, prevX, y, prevY, threshhold, phase, pid, img) => ({
+    ...((x, prevX, y, prevY, threshhold, phase, pid, img, data) => ({
       pointerdown ({ pointerId, ctrlKey, pageX, pageY }) {
-        this.setPointerCapture(pid = pointerId);
         if (!this.firstChild) return;
         if (ctrlKey) return app.emit("uncopy");
+        this.setPointerCapture(pid = pointerId);
+
         const
           { height } = this.getBoundingClientRect(),
-          { clipboard, clipboardPeekIndex } = app.keyboard,
-          data = clipboard[clipboardPeekIndex];
+          { clipboard, clipboardPeekIndex } = app.keyboard;
+        (data = clipboard[clipboardPeekIndex]);
         x = pageX;
         y = pageY;
         threshhold = height;
         phase = 0;
         data.start(pointerId)
       },
-      pointermove ({ pageX, pageY, pointerId }) {
-        if (this.children.length === 0) return;
+      pointermove ({ pointerType, pointerId, pageX, pageY }) {
         const { keyboard } = app, { clipboard, clipboardPeekIndex } = keyboard;
         if (phase === 0 && Math.hypot(pageX - x, pageY - y) > threshhold) {
-          phase = +(Math.abs(pageX - x) > Math.abs(pageY - y));
-          if (Math.abs(pageX - x) < Math.abs(pageY - y))
-            clipboard[clipboardPeekIndex].stop(pointerId);
-        } else if (phase === 1) {
+          phase = 1 + (Math.abs(pageX - x) > Math.abs(pageY - y));
+          if (phase === 1) {
+            data.stop(pointerId);
+            if (pointerType === "touch") {
+              keyboard.clipboardHolding = data;
+              Listeners.dragDropTouch.touchstart.call(this, { changedTouches: [ { identifier: pointerId, pageX, pageY } ] });
+              app.emit("uncopy");
+            }
+          }
+        } else if (pointerType === "touch" && phase === 1) 
+          Listeners.dragDropTouch.touchmove.call(this, { changedTouches: [ { identifier: pointerId, pageX, pageY } ] });
+        else if (phase === 2) {
           keyboard.cycle("clipboard", (pageX - prevX) * 4);
           if (keyboard.clipboardPeekIndex !== clipboardPeekIndex) {
-            clipboard[clipboardPeekIndex].stop(pointerId);
-            clipboard[keyboard.clipboardPeekIndex].start(pointerId)
+            data.stop(pointerId);
+            (data = clipboard[keyboard.clipboardPeekIndex]).start(pointerId)
           }
         }
         prevX = pageX;
         prevY = pageY
       },
-      "pointerup lostpointercapture" (e) {
-        const { type, pointerId } = e;
-        if (type === "pointerup" && !this.hasPointerCapture(pointerId)) return;
-        const { clipboard, clipboardPeekIndex } = app.keyboard;
-        clipboard[clipboardPeekIndex]?.stop(pointerId);
-        this.releasePointerCapture(pointerId);
+      "pointerup lostpointercapture" ({ type, pointerType, pointerId }) {
+        if (type === "pointerup") {
+          if (pointerType === "touch" && phase === 1)
+            Listeners.dragDropTouch.touchend.call(this, { changedTouches: [ { identifier: pointerId, pageX: prevX, pageY: prevY } ] });
+          if (!this.hasPointerCapture(pointerId)) return;
+          this.releasePointerCapture(pointerId);
+        }
+        data.stop(pointerId);
         phase = null
       },
       dragstart (e) {
         if (Math.abs(prevX - x) > Math.abs(prevY - y)) {
           e.stopPropagation();
           e.preventDefault();
-          phase = 1;
           return
         }
         const { clipboard, clipboardPeekIndex } = app.keyboard, data = clipboard[clipboardPeekIndex];

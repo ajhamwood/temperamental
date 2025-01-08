@@ -59,7 +59,8 @@ body {
   display: grid;
   grid: "nav" auto "main" 1fr / 100dvw;
   overflow: hidden;
-  position: relative }
+  position: relative;
+  touch-action: none }
   nav {
     background-color: #222;
     grid-area: nav;
@@ -393,10 +394,12 @@ body {
               grid-column: span 7;
               align-items: baseline;
               gap: .5em .3em }
+              .chord-limit { grid-area: 1/6/span 1/span 2 }
+              .chord-limit::after { content: "-limit" }
               .chord-spelling-intervals { grid-area: 1/2/span 1/span 1 }
               .chord-spelling-pitches { grid-area: 1/4/span 1/span 4 }
             .chord-controls { grid-column: span 7 }
-              .chord-name, .chord-interval-harmonic, .chord-pitches-harmonic,
+              .chord-name, .chord-quality, .chord-interval-harmonic, .chord-pitches-harmonic,
               .chord-interval-steps, .chord-pitches-steps,
               .chord-spelling-intervals, .chord-spelling-pitches {
                 justify-self: right;
@@ -444,7 +447,6 @@ body {
           border-radius: .5em;
           cursor: pointer }
   main {
-    touch-action: none;
     background-color: #000;
     overflow: hidden }
     main.hover { cursor: pointer }

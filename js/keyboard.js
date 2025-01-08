@@ -86,7 +86,7 @@ class Keyboard {
   name; edo; hexGrid; scale; instrument = "triangle"
   touches = new Map(); mousedown = false
   hoveredKey; wheelVal = 0; wheelSensitivity = 200
-  clipboard; clipboardPeekIndex
+  clipboard; clipboardPeekIndex; clipboardHolding
   root = 0 // TODO: load/save
   constructor ({
     name, edo,

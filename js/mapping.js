@@ -694,7 +694,7 @@ class Chord {
   get internalTemperedIntervals () { return this.#internalTemperedIntervals[this.#inversion].slice() }
   set internalTemperedIntervals (_) {}
 
-  get limit () { return this.#limit[this.#inversion] }
+  get limit () { return this.#limit[this.#interpretation] }
   set limit (_) {}
 
   #names; #quality
