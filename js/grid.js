@@ -297,7 +297,7 @@ class HexButton {
   static #contrast = hc => {
     if (!hc.match(/#\p{Hex_Digit}{6,8}/ug)) return null;
     const [r, g, b, a] = hc.slice(1).match(/.{2}/g).map(s => parseInt(s, 16));
-    return r * .299 + g * .587 + b * .114 >= 32768 / ((a ?? 255) + 1) ? "#222222" : "#dddddd"
+    return (r * .299 + g * .587 + b * .114 >= 32768 / ((a ?? 255) + 1) ? "#222222" : "#dddddd") + (a ? a.toString(16) : "")
   }
 
   static vertices (g, h, grid) {
@@ -391,7 +391,7 @@ class HexButton {
     } else drawHex(bgColour = noteColours.default);
     ctx.font = (isGhost ? "bold  " : "") + (.5 * hexGrid.r) + "px HEJI2, Ratafly";
     const [ x, y ] = this.centre(),
-          label = this.#note.key.label.letter ?? this.#note.key.label,
+          label = hexGrid.displayKeyNames ? this.#note.key.label.letter ?? this.#note.key.label : this.#note.key.rank,
           { width } = ctx.measureText(label);
     ctx.fillStyle = isGhost ? bgColour : HexButton.#contrast(bgColour);
     ctx.fillText(label ?? this.rank, x - width / 2, y)

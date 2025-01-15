@@ -47,6 +47,7 @@
     width: 100% !important;
     resize: vertical }
   .interval-display, #mapping { max-width: calc(100dvw - 3.4em - 4px) }
+  #temperaments { max-width: calc(100dvw - .5em) }
   #temperament-list, #chord-list { max-width: calc(100dvw - 3.4em - 4px) } }
 
 html, body {
@@ -155,12 +156,12 @@ body {
     min-height: 0;
     display: none }
   body.menuActive > menu { display: block }
-    menu > li { padding: .5em }
-    menu > li:not(#breadcrumbs) {
-      overflow-y: scroll;
-      height: calc(100% - 3.6em);
+    menu > * { padding: .5em  }
+    menu > :not(#breadcrumbs) {
+      overflow: scroll;
+      height: calc(100% - 2.6em);
       display: none }
-    menu > li.activeMenu { display: list-item !important }
+    menu > .activeMenu { display: list-item !important }
     #breadcrumbs {
       background-color: #ddd;
       color: #222;
@@ -231,9 +232,9 @@ body {
         #harmonic-mapping:has(#table-choice > :checked)
           { height: calc(var(--iv-offsetTop) + var(--iv-scrollHeight)) }
           #ivtable-wrapper {
-            max-height: calc(var(--iv-height));
+            max-height: var(--iv-height);
             position: sticky;
-            top: -.5em;
+            top: -.8em;
             overflow-y: hidden }
           #interval-table {
             display: grid;
@@ -253,7 +254,7 @@ body {
                 margin-left: -1px }
               .interval-th.row-head {
                 position: sticky;
-                left: 0;
+                left: -.3em;
                 background-color: #222;
                 z-index: 2;
                 border-right: 1px solid #ddd8 }
@@ -289,7 +290,7 @@ body {
           padding: .5em }
           .harmonic-checkbox {
             display: inline-block;
-            padding-right: .5em }
+            padding-right: .2em }
         #commas {
           display: grid;
           grid-template-columns: repeat(6, max-content);
@@ -345,9 +346,7 @@ body {
             text-align: center;
             line-height: 2em }
           #computing-commas.active > .hourglass { display: inline }
-      #chord-list {
-        position: relative;
-        z-index: 1 }
+      #chord-list { z-index: 1 }
         .chord-settings {
           position: sticky;
           top: -.5em;
@@ -357,7 +356,8 @@ body {
           display: flex;
           flex-flow: row;
           align-items: baseline;
-          gap: 2em }
+          gap: 2em;
+          z-index: 1 }
           .heading-border {
             background-color: #ddd8;
             height: 1px;
@@ -366,16 +366,23 @@ body {
             width: 100%;
             z-index: -1;
             padding: 0 }
-        #chords {
-          display: flex;
-          flex-flow: column;
-          gap: 2em 0;
-          margin-top: 1em;
-          max-width: inherit;
-          overflow-x: scroll }
-        #chord-list:not(.computing) > #chords:empty::before { content: "To display chords, select a temperament" }
-        #chord-list:not(.computing) > #chords:empty { color: #666 }
-        #chord-list.computing > #chords::before {
+          #chords {
+            display: grid;
+            grid-template-columns: repeat(3, max-content);
+            grid-gap: 2em .5em;
+            margin-top: 1em;
+            max-width: inherit }
+          .chord-adicity-th > span::after { content: " notes" }
+          .chord-limit-th > span::after { content: "-limit" }
+          .chord-adicity-th > span, .chord-limit-th > span {
+            position: sticky;
+            top: .8em }
+
+        #chord-list:not(.computing) #chords:empty::before { content: "To display chords, select a temperament" }
+        #chord-list:not(.computing) #chords:empty {
+          height: 2.2em;
+          color: #666 }
+        #chord-list.computing #chords::before {
           line-height: 0;
           overflow: hidden }
         #chord-list.computing .hourglass {
@@ -543,14 +550,14 @@ input[type="number"] { min-width: calc(var(--size) * .8rem) }
     left: var(--left) }
 input[type="checkbox"].ternary {
   appearance: none;
-  width: 1em;
+  width: 1.3em;
   height: 1em;
-  vertical-align: -.3em;
-  font-family: Ratafly;
+  vertical-align: -.6em;
   cursor: pointer;
   position: relative }
 input[type="checkbox"].ternary::before {
-  content: "☐";
+  content: "□";
+  font-family: Netto;
   position: absolute }
 input[type="checkbox"].ternary.active:checked::before { content: "☑" }
 input[type="checkbox"].ternary.active:not(:checked)::before { content: "☒" }

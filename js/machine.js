@@ -1,5 +1,5 @@
 // Utilities
-const $ = (() => { let wm = new WeakMap(), v = Object.values, r = Promise.resolve.bind(Promise),
+const $ = (() => { let wm = new WeakMap(), v = Array.from, r = Promise.resolve.bind(Promise),
   test = (obj, con) => obj.constructor === con || con.prototype.isPrototypeOf(obj),
   add = (k, t, p, fn, es = wm.get(k) ?? {}) => { remove(k, t, fn.name);
     k.addEventListener(t, (es[t] ??= {})[fn.name] = fn, ...([{"*": { passive: !p }, "#": { capture: !p }}[p]] ?? [])); wm.set(k, es) },
@@ -44,7 +44,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
     return $.all(dest, root).map(n => v($('template#' + id).content.cloneNode(true).children).map(c => n.appendChild(c))) },
 
 //   $.loadWc adds web components
-  loadWc (tag, { constructor: c, ...methods }, attrs = []) { class El extends HTMLElement { static get observedAttributes () { return attrs }
-    constructor(...args) { super(); this.attachShadow({mode: 'open'}).appendChild($('#' + tag).content.cloneNode(true)); c.apply(this, args) } };
+  loadWc (tag, { constructor: c, options: o, ...methods }, attrs = []) { class El extends HTMLElement { static get observedAttributes () { return attrs }
+    constructor(...args) { super(); this.attachShadow(o ?? { mode: 'open' }).appendChild($('#' + tag).content.cloneNode(true)); c?.apply(this, args) } };
     Object.assign(El.prototype, methods); customElements.define(tag, El) } }) })();
 export default $

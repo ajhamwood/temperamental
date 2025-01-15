@@ -10,11 +10,13 @@ An isomorphic keyboard app that allows for endless exploration of microtonal sca
   - [x] Keyboard grid, notes, chord generator etc
   - [ ] Chords revamp
   - [ ] Debug pass
-  - [ ] Compute manager
+  - [ ] Major browser coverage
   - [ ] MOS Scales + menu rearrangement
-  - [ ] Clipboard -> Scrapbook, drag handles
+  - [ ] Compute manager
+  - [ ] Clipboard -> Scrapbook
   - [ ] Sequencer, markdown, sheet music (basic!)
   - [ ] MIDI out, instruments
+  - [ ] Microrhythm?
 
 </details>
 

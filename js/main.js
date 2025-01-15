@@ -276,27 +276,27 @@ $.targets({
       }).observe($("main"));
       const
         keyboardSettingsEl = $("#keyboard-settings"),
-        mappingFieldsetEl = $("#harmonic-mapping"),
-        ivInnerTableEl = $("#interval-table"), diamondEl = $("#diamond");
+        ivTableWrapperEl = $("#ivtable-wrapper"),
+        ivTableEl = ivTableWrapperEl.firstChild, diamondEl = $("#diamond");
       new ResizeObserver(() =>
-        mappingFieldsetEl.style.setProperty("--iv-height", `${Math.round(keyboardSettingsEl.offsetHeight)}px`)
+        ivTableWrapperEl.style.setProperty("--iv-height", `${Math.round(keyboardSettingsEl.offsetHeight)}px`)
       ).observe(keyboardSettingsEl);
       const
+        tableOuterEl = ivTableWrapperEl.parentElement,
         ro1 = new ResizeObserver(() => {
-          const height = diamondEl.offsetHeight || ivInnerTableEl.offsetHeight;
-          mappingFieldsetEl.style.setProperty("--iv-scrollHeight", `${Math.round(height)}px`)
+          const height = diamondEl.offsetHeight || ivTableEl.offsetHeight;
+          tableOuterEl.style.setProperty("--iv-scrollHeight", `${Math.round(height)}px`)
         }),
         ro2 = new ResizeObserver(() => {
           const
-            { offsetHeight, offsetTop } = $("#interval-view"), { offsetTop: fsTop } = mappingFieldsetEl,
-            { offsetLeft: x } = $("#keyboard-settings > form");
-          mappingFieldsetEl.style.setProperty("--iv-offsetTop", `${Math.round(offsetHeight + offsetTop - fsTop - x)}px`)
+            { offsetHeight, offsetTop } = ivTableWrapperEl.previousElementSibling.previousElementSibling,
+            { offsetTop: outerTop } = tableOuterEl;
+          tableOuterEl.style.setProperty("--iv-offsetTop", `${Math.round(offsetHeight + offsetTop - outerTop)}px`)
         });
       ro1.observe(diamondEl);
-      ro1.observe(ivInnerTableEl);
+      ro1.observe(ivTableEl);
       ro2.observe(keyboardSettingsEl);
-      ro2.observe($("#mapping"));
-      ro2.observe($("#ivtable-wrapper"));
+      ro2.observe(tableOuterEl);
       const
         tempsEl = $("#temperaments"), tempsListEl = $("#temperament-list"),
         loadingCommasEl = $("#computing-commas");
@@ -546,7 +546,8 @@ $.targets({
       await this.keyboard.fillSettings();
       this.emit("generate-keyboard");
 
-      $.all("#commas > .comma, #chords > .chord").forEach(el => el.remove());
+      $.all("#commas > .comma, #chords > *").forEach(el => el.remove());
+      $("#chord-list > :first-child").removeAttribute("table-bottom");
       IntervalManager.clear("loading-commas");
       if (app.menuState[0] === "temperaments") app.emit("menu-select", [ "temperaments" ]);
     },
@@ -970,13 +971,14 @@ $.targets({
       $(".comma.active")?.classList.remove("active");
       commaEl.classList.add("active");
       $.all(".comma.factor").forEach(el => el.classList.remove("factor"));
-      $.all(".chord").forEach(el => el.remove());
+      $.all("#chords > *").forEach(el => el.remove());
+      $("#chord-list > :first-child").removeAttribute("table-bottom");
       const
         [ n, d ] = commaEl.dataset.comma.split(",").map(x => BigInt(x)),
         [ nd, dd ] = JSON.parse(commaEl.dataset.factors),
         { keyboard, storage } = this, { edo, scale } = keyboard, { limit, mapping } = scale,
         { commas, temperaments } = mapping,
-        tempsEl = $("#temperaments"), chordsFieldsetEl = $("#chord-list"), chordsEl = $("#chords"),
+        tempsEl = $("#temperaments"), chordsFieldsetEl = $("#chord-list"),
         [ ,, ratioDiv, primesDiv ] = commaEl.children, [ numSpan, denSpan ] = primesDiv.children;
 
       (async () => {
@@ -998,7 +1000,7 @@ $.targets({
       if (chords) {
         mapping.temperament = [n, d];
         for (const chord of chords) {
-          const dualChordEl = $.all("#chords > .chord").find(el => el.dataset.ord === JSON.stringify(chord.dual.ord));
+          const dualChordEl = $.all("#chords .chord").find(el => el.dataset.ord === JSON.stringify(chord.dual.ord));
           if (!dualChordEl || chord.dual === chord) this.emit("populate-chord", chord, 0);
           if (chord.dual === chord) $(".chord-duality", dualChordEl).classList.add("self-dual");
         }
@@ -1036,13 +1038,14 @@ $.targets({
           }
           if (!chord.dual || chord.dual === chord) cursor = this.emit("populate-chord", chord, cursor)["populate-chord"];
           if (chord.dual) {
-            const dualChordEl = $.all("#chords > .chord").find(el => el.dataset.ord === JSON.stringify(chord.dual.ord));
+            const dualChordEl = $.all("#chords .chord").find(el => el.dataset.ord === JSON.stringify(chord.dual.ord));
             if (chord === chord.dual) $(".chord-duality", dualChordEl).classList.add("self-dual");
           }
           cursor = 0
         }
         mapping.temperament.genChordGraph()
       }
+      if ($("#chords").children.length) $("#chord-list > sticky-grid-container").setAttribute("table-bottom", "1em");
       await storage.saveComma({ edo, limit, n, d, nd, dd, upperBound });
       chordsFieldsetEl.classList.remove("computing");
       tempsEl.scrollTo(0, $("fieldset:has(#chords)").offsetTop - tempsEl.offsetTop)
@@ -1050,18 +1053,38 @@ $.targets({
 
     "populate-chord" (chord, cursor = 0) {
       const
-        { comma } = this.keyboard.scale.mapping.temperament,
-        chordsEl = $("#chords"), chordEls = $.all(".chord", chordsEl),
-        chordEl = $.load("chord", "#chords")[0][0],
+        order = "adicity", chordsEl = $("#chords"), secOf = { adicity: "limit", limit: "adicity" },
+        primary = chord[order], secondary = chord[secOf[order]], primEls = $.all(`.chord-${order}-th`),
+        primPrevEl = primEls.find(el => el.dataset.group == primary),
+        primAfterEl = primEls.find(el => el.dataset.group > primary);
+      if (primPrevEl) primPrevEl.style.gridRowEnd = "span " + (++primPrevEl.dataset.count);
+      else {
+        const primNewEl = $.load(`chord-${order}-th`, "#chords")[0][0];
+        primNewEl.dataset.group = primNewEl.firstElementChild.innerText = primary;
+        primNewEl.dataset.count = 1;
+        chordsEl.insertBefore(primNewEl, primAfterEl) ?? chordsEl.append(primNewEl)
+      }
+      const
+        secEls = $.all(`.chord-${order}-th[data-group="${primary}"] ~ .chord-${secOf[order]}-th` +
+          (primAfterEl ? `:not(.chord-${order}-th[data-group="${primAfterEl.dataset.group}"] ~ *)` : '')),
+        secPrevEl = secEls.find(el => el.dataset.group == secondary),
+        secAfterEl = secEls.find(el => el.dataset.group > secondary);
+      if (secPrevEl) secPrevEl.style.gridRowEnd = "span " + (++secPrevEl.dataset.count);
+      else {
+        const secNewEl = $.load(`chord-${secOf[order]}-th`, "#chords")[0][0];
+        secNewEl.dataset.group = secNewEl.firstElementChild.innerText = secondary;
+        secNewEl.dataset.count = 1;
+        chordsEl.insertBefore(secNewEl, secAfterEl ?? primAfterEl) ?? chordsEl.append(secNewEl)
+      }
+      const chordNewEl = $.load("chord-item-cell", "#chords")[0][0];
+      // chordNewEl.innerText = chord.chordName.values().next().value;
+      chordsEl.insertBefore(chordNewEl, secAfterEl ?? primAfterEl) ?? chordsEl.append(chordNewEl);
+
+      const
+        chordEl = $.load("chord", "", chordNewEl)[0][0],
         chordIvsEl = $(".chord-intervals", chordEl);
       chordIvsEl.dataset.intervals = JSON.stringify(chord.intervals.map(({ fraction }) => fraction.map(String)));
       chordEl.dataset.ord = JSON.stringify(chord.ord);
-      const ix = chordEls.slice(cursor).findIndex(el => Common.LTE(chord.ord, JSON.parse(el.dataset.ord ?? "[]")));
-      if (ix === -1) {
-        cursor = chordEls.length - 1;
-        chordsEl.append(chordEl)
-      } else chordEls[cursor += ix].insertAdjacentElement("beforebegin", chordEl);
-      cursor++;
 
       app.emit("display-chord", chord, chordEl);
       $.queries({
@@ -1122,7 +1145,7 @@ $.targets({
     "display-chord" (chord, chordEl) {
       const
         { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
-        [ chNameQualEl, chIntervalsEl, chPitchesEl, chSpellingEl, chControlsEl ] = chordEl.children,
+        [ chNameQualEl, chIntervalsEl, chPitchesEl, chSpellingEl ] = chordEl.children,
         [ chNameEl, chQualityEl, chLimitEl ] = chNameQualEl.children,
         [ chIvHarmonicEl, chIvStepsEl ] = chIntervalsEl.children,
         [ chPcHarmonicEl, chPcStepsEl ] = chPitchesEl.children,
@@ -1226,6 +1249,7 @@ $.targets({
     // Menu
 
     async "menu-select" (which, ...data) {
+      $.all("#menu-actions > *").forEach(el => el.remove());
       const
         breadcrumbText = {
           "keyboard-settings": "Keyboard ⛭",
@@ -1274,7 +1298,8 @@ $.targets({
           $.queries({ "#temperaments-close": { click () { app.emit("menu-cancel") } } });
           $.all("#harmonic-filter > .harmonic-checkbox").forEach(el => el.remove());
           $.all("#commas > .comma").forEach(el => el.remove());
-          $.all("#chords > .chord").forEach(el => el.remove());
+          $.all("#chords > *").forEach(el => el.remove());
+          $("#chord-list > :first-child").removeAttribute("table-bottom");
           this.menuState[1] = { keyboard: this.keyboard };
           this.emit("resize", true);
           let { upperBound } = await this.storage.loadScale({ edo: this.keyboard.edo, limit: this.keyboard.scale.limit });
@@ -1352,16 +1377,15 @@ $.queries({
     else app.emit("menu-select", [ "keyboard-settings" ])
   } },
   "#keyboard-settings": {
-    scroll ({ SCROLL_PAGE_DOWN }) {  // TODO: Allow simultaneous x and y scrolling
+    scroll () {  // TODO: Allow simultaneous x and y scrolling
       if (!$("#table-choice > input").checked) return;
       const
         { scrollTop } = this, el = $("#ivtable-wrapper"), { scrollLeft } = el,
-        { offsetTop, offsetHeight } = $("#interval-view"), { clientHeight } = $("#keyboard-settings"),
-        { offsetTop: y, offsetLeft: x, offsetHeight: height } = $("#keyboard-settings > form"),
+        { offsetTop, offsetHeight } = $("#interval-view"),
+        { offsetTop: y, offsetLeft: x } = $("#keyboard-settings > form"),
         offset = offsetTop + offsetHeight - y + x;
-      if (Common.between(offset, height - clientHeight + 2 * x, scrollTop)) el.scrollTo(scrollLeft, scrollTop - offset);
-      else if (scrollTop < offset) el.scrollTo(scrollLeft, 0);
-      else el.scrollTo(scrollLeft, SCROLL_PAGE_DOWN)
+      if (scrollTop < offset) el.scrollTo(scrollLeft, 0);
+      else el.scrollTo(scrollLeft, scrollTop - offset)
     }
   },
   "#keyboard-select > select": { change () { app.emit("keyboard-select", this.value) } },
@@ -1415,6 +1439,7 @@ $.queries({
   "#hexbutton-labels input": { change () {
     const { hexGrid } = app.keyboard;
     hexGrid.displayKeyNames = this.closest("label").id === "key-name-choice";
+    app.emit("resize", true);
     hexGrid.redraw(true)
   } },
 
@@ -1545,6 +1570,105 @@ $.queries({
   } }
 
 });
+
+
+
+// Web components
+
+$.loadWc("sticky-grid-scroller", {
+
+  containerEl: null, paddingTop: null,
+
+  constructor () {
+    this.containerEl = $("sticky-grid-container", this);
+    this.containerEl.scrollerEl = this;
+    $.targets({ scroll () { this.containerEl.lastScroll() } }, this.containerEl.scrollerEl = this);
+    this.paddingTop = getComputedStyle(this).paddingTop;
+    const wrapperHeightRO = new ResizeObserver(() => {
+      this.paddingTop = getComputedStyle(this).paddingTop;
+      this.containerEl.style.setProperty("--wrapHeight", Math.round(this.offsetHeight) + "px")});
+    wrapperHeightRO.observe(this);
+  }
+
+});
+
+$.loadWc("sticky-grid-container", {
+
+  options: { mode: 'open', slotAssignment: 'manual' },
+  scrollerEl: null, beforeSlot: null, wrapperEl: null, afterSlot: null, nextEl: null, lastEl: null, tableEl: null,
+  tableTop: 0, tableBottom: 0,
+
+  constructor () {
+    Object.assign(this, {
+      beforeSlot: $('[name="before"]', this.shadowRoot),
+      wrapperEl: $('#wrapper', this.shadowRoot),
+      afterSlot: $('[name="after"]', this.shadowRoot),
+      tableEl: $('[slot="table"]', this)
+    });
+    this.style.setProperty("--tableTop", "0px");
+    this.style.setProperty("--tableBottom", "0px");
+    const
+      tableHeightRO = new ResizeObserver(() => {
+        this.style.setProperty("--scrollerTop", this.scrollerEl.paddingTop);
+        this.style.setProperty("--containerTop", getComputedStyle(this).paddingTop);
+        this.style.setProperty("--tableHeight", Math.round(this.tableEl.offsetHeight) + "px")
+      }),
+      tableOffsetRO = new ResizeObserver(() => {
+        const
+          { beforeSlot, nextEl, lastEl, offsetTop: outerTop } = this,
+          { offsetTop: prevTop, offsetHeight: prevHeight } = beforeSlot,
+          { offsetTop: nextTop } = nextEl, { offsetTop: lastTop, offsetHeight: lastHeight } = lastEl,
+          offset = (prevTop + prevHeight || outerTop);
+        this.style.setProperty("--tableOffset", Math.round(offset - outerTop) + "px");
+        this.style.setProperty("--afterTable", (lastTop + lastHeight - nextTop || 0) + "px");
+        this.lastScroll()
+      });
+    tableHeightRO.observe(this.scrollerEl);
+    tableHeightRO.observe(this.tableEl);
+    tableOffsetRO.observe(this.scrollerEl);
+    tableOffsetRO.observe(this);
+  },
+
+  lastScroll () {
+    const
+      { scrollerEl, beforeSlot, wrapperEl, tableEl, offsetTop: outerTop, tableTop, tableBottom } = this, { scrollTop, clientHeight } = scrollerEl,
+      { offsetTop: prevTop, offsetHeight: prevHeight } = beforeSlot,
+      { offsetHeight: tableHeight } = tableEl, { paddingTop, paddingBottom } = getComputedStyle(wrapperEl),
+      offset = (prevTop + prevHeight || outerTop) - tableTop, padding = parseFloat(paddingTop) + parseFloat(paddingBottom), height = tableHeight + padding;
+    this.style.setProperty("--lastScroll", Math.max(0, Math.min(tableHeight, Math.round(scrollTop < offset + tableHeight ?
+      scrollTop - (offset + height - clientHeight) : clientHeight - padding))) + "px");
+    if (scrollTop < offset) wrapperEl.scrollTop = 0;
+    else if (scrollTop < offset + tableHeight + tableBottom) wrapperEl.scrollTop = scrollTop - offset
+
+  },
+
+  connectedCallback () { // TODO handle DOM changes
+    const { beforeSlot, wrapperEl, afterSlot } = this;
+    beforeSlot.assign(...$.all(':has(~ [slot="table"])', this));
+    wrapperEl.children[0].assign($('[slot="table"]', this));
+    afterSlot.assign(...$.all('[slot="table"] ~ *', this));
+    const afterEls = afterSlot.assignedElements(), nextEl = afterEls[0] ?? {}, lastEl = afterEls.at(-1) ?? {};
+    Object.assign(this, { nextEl, lastEl })
+  },
+
+  attributeChangedCallback (name, _, newValue) {
+    switch (name) {
+      case "table-top": this.style.setProperty("--tableTop", (this.tableTop = this.measure(newValue)) + "px"); break;
+      case "table-bottom": this.style.setProperty("--tableBottom", (this.tableBottom = this.measure(newValue)) + "px")
+    }
+    this.lastScroll()
+  },
+
+  measure (lengthText) {
+    const div = document.createElement('div');
+    div.style.width = `calc(1000 * ${lengthText})`;
+    document.body.appendChild(div);
+    const pixels = div.offsetWidth / 1000;
+    document.body.removeChild(div);
+    return pixels;
+  }
+
+}, [ "table-top", "table-bottom" ])
 
 
 

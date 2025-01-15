@@ -129,7 +129,7 @@
         </fieldset>
       </form>
     </li>
-    <li id="temperaments">
+    <sticky-grid-scroller id="temperaments">
       <form>
         <fieldset id="temperament-list">
           <legend>Temperaments</legend>
@@ -149,29 +149,31 @@
               </svg>
             </div>
           </div>
-        </fieldset>
+        </fieldset>  
         <fieldset id="chord-list">
           <legend>Chords</legend>
-          <div class="chord-settings">
-            <div>Cycle inversions 
-              <div class="three-state-switch">
-                <label><input type="radio" name="switch" value="backwards"></label>
-                <label><input type="radio" name="switch" value="off" checked></label>
-                <label><input type="radio" name="switch" value="forwards"></label>
-                <span class="switch-backwards-arrow">←</span>
-                <span class="switch-forwards-arrow">→</span>
+          <sticky-grid-container table-top="2.2em">
+            <div class="chord-settings">
+              <div>Cycle inversions 
+                <div class="three-state-switch">
+                  <label><input type="radio" name="switch" value="backwards"></label>
+                  <label><input type="radio" name="switch" value="off" checked></label>
+                  <label><input type="radio" name="switch" value="forwards"></label>
+                  <span class="switch-backwards-arrow">←</span>
+                  <span class="switch-forwards-arrow">→</span>
+                </div>
               </div>
+              <div>Tempering <span id="comma-info"></span></div>
+              <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
+                <use href="#hourglass"></use>
+              </svg>
             </div>
-            <div>Tempering <span id="comma-info"></span></div>
-            <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
-              <use href="#hourglass"></use>
-            </svg>
-          </div>
-          <div class="heading-border"></div>
-          <div id="chords"></div>
+            <div class="heading-border"></div>
+            <div id="chords" slot="table"></div>
+          </sticky-grid-container>
         </fieldset>
       </form>
-    </li>
+    </sticky-grid-scroller>
     <li id="track-editor">
       <form>
         <div id="track-file">
@@ -237,6 +239,41 @@
       <button type="button" data-action="Reset">Reset</button>
     </form>
   </dialog>
+  <template id="sticky-grid-scroller">
+    <style>
+:host {
+  display: block;
+  overflow: scroll;
+  position: relative;
+  box-sizing: border-box }
+    </style>
+    <slot></slot>
+  </template>
+  <template id="sticky-grid-container">
+    <style>
+:host {
+  display: block;
+  height: calc(var(--tableHeight) + var(--tableOffset) + var(--tableBottom) + var(--afterTable) - var(--containerTop)) }
+#wrapper {
+  height: var(--tableHeight);
+  max-height: calc(var(--wrapHeight) + var(--tableBottom) - var(--lastScroll));
+  overflow-y: hidden;
+  overflow-x: scroll;
+  position: sticky;
+  top: calc(var(--tableTop) - var(--scrollerTop));
+  box-sizing: border-box }
+::part(before) { display: initial }
+#wrapper > ::slotted(*) { margin-bottom: var(--wrapHeight) }
+#wrapper + * {
+  display: block;
+  margin-top: clamp(0em, var(--tableHeight), calc(var(--tableHeight) + var(--lastScroll) - var(--wrapHeight))) }
+    </style>
+    <slot name="before" part="before"></slot>
+    <div id="wrapper" part="wrapper">
+      <slot name="table"></slot>
+    </div>
+    <slot name="after" part="after"></slot>
+  </template>
   <template id="breadcrumb-level">
     <span></span>
   </template>
@@ -286,6 +323,22 @@
   </template>
   <template id="hcolour-disc">
     <span class="hcolour-disc">●</span>
+  </template>
+  <template id="chord-adicity-th">
+    <div class="chord-adicity-th">
+      <span></span>
+    </div>
+  </template>
+  <template id="chord-limit-th">
+    <div class="chord-limit-th">
+      <span></span>
+    </div>
+  </template>
+  <template id="chord-stack-cell">
+    <div class="chord-stack-cell"></div>
+  </template>
+  <template id="chord-item-cell">
+    <div class="chord-item-cell"></div>
   </template>
   <template id="chord">
     <div class="chord copyable" draggable="true">

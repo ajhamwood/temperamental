@@ -35,8 +35,8 @@ class Keyboard {
   } ]
 
   static noteColours = {
-    default: "#333333", active: "#ffff00", echo: "#ffffff22",
-    white: "#222222", black: "#777777",
+    default: "#333333", active: "#ffff00", echo: "#ffffff44",
+    white: "#222222", black: "#aaaaaa",
     5: "#ff0000", 7: "#0000ff", 11: "#00ff00", 13: "#ff00ff", 17: "#ffff00"
   }
 
