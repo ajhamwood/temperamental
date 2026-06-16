@@ -1,5 +1,5 @@
 // Utilities
-const $ = (() => { let wm = new WeakMap(), v = Array.from, r = Promise.resolve.bind(Promise),
+const $ = (() => { const wm = new WeakMap(), v = Array.from, r = Promise.resolve.bind(Promise),
   test = (obj, con) => obj.constructor === con || con.prototype.isPrototypeOf(obj),
   add = (k, t, p, fn, es = wm.get(k) ?? {}) => { remove(k, t, fn.name);
     k.addEventListener(t, (es[t] ??= {})[fn.name] = fn, ...([{"*": { passive: !p }, "#": { capture: !p }}[p]] ?? [])); wm.set(k, es) },
@@ -11,12 +11,12 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
   all (sel, node = document) { return sel ? v(node.querySelectorAll(sel)) : [node] },
 
 //   $.Machine creates state machines for the page
-  Machine: class { constructor (s) { let state = Object.seal(s); wm.set(this, { es: {}, state: Object.seal(s) });
+  Machine: class { constructor (s) { const state = Object.seal(s); wm.set(this, { es: {}, state: Object.seal(s) });
       for (const k in state) Object.defineProperty(this, k, { get: () => state[k], set: v => state[k] = v }); return Object.seal(this) }
     state () { return wm.get(this).state }
     on (t, fn) { (wm.get(this).es[t] ??= new Map()).set(fn.name, fn); return this }
-    stop (t, fname = t) { let {es} = wm.get(this); es[t]?.delete(fname) && (es[t].size || delete es[t]); return this }
-    emit (t, ...args) { let a = {}; wm.get(this).es[t]?.forEach(fn => a[fn.name] = fn.apply(this, args)); return a }
+    stop (t, fname = t) { const {es} = wm.get(this); es[t]?.delete(fname) && (es[t].size || delete es[t]); return this }
+    emit (t, ...args) { const a = {}; wm.get(this).es[t]?.forEach(fn => a[fn.name] = fn.apply(this, args)); return a }
     emitAsync (t, ...args) { let p = r({}); wm.get(this).es[t]
       ?.forEach(fn => p = p.then(a => r(fn.apply(this, args)).then(v => ({...a, [fn.name]: v})))); return p } },
 
@@ -35,7 +35,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
 
 //   $.queries adds event listeners to DOM nodes and removes them by name, indexed by selector
   queries (obj, root) {
-    for (const q in obj) { let ns = q === "" ? [root] : $.all(q, root); if (ns.length) for (const ts in obj[q])
+    for (const q in obj) { const ns = q === "" ? [root] : $.all(q, root); if (ns.length) for (const ts in obj[q])
       if (test(obj[q][ts], Function)) ts.split(' ').forEach(t => ns.forEach(n => add(n, t, false, obj[q][ts].bind(n))));
       else if (test(obj[q][ts], String)) ts.split(' ').forEach(t => ns.forEach(n => remove(n, t, 'bound ' + obj[q][ts]))) } },
 

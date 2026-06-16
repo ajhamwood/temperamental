@@ -129,7 +129,7 @@
         </fieldset>
       </form>
     </li>
-    <sticky-grid-scroller id="temperaments">
+    <li id="temperaments">
       <form>
         <fieldset id="temperament-list">
           <legend>Temperaments</legend>
@@ -152,28 +152,30 @@
         </fieldset>  
         <fieldset id="chord-list">
           <legend>Chords</legend>
-          <sticky-grid-container table-top="2.2em">
-            <div class="chord-settings">
-              <div>Cycle inversions 
-                <div class="three-state-switch">
-                  <label><input type="radio" name="switch" value="backwards"></label>
-                  <label><input type="radio" name="switch" value="off" checked></label>
-                  <label><input type="radio" name="switch" value="forwards"></label>
-                  <span class="switch-backwards-arrow">←</span>
-                  <span class="switch-forwards-arrow">→</span>
-                </div>
+          <div class="chord-settings">
+            <div>Cycle inversions 
+              <div class="three-state-switch">
+                <label><input type="radio" name="switch" value="backwards"></label>
+                <label><input type="radio" name="switch" value="off" checked></label>
+                <label><input type="radio" name="switch" value="forwards"></label>
+                <span class="switch-backwards-arrow">←</span>
+                <span class="switch-forwards-arrow">→</span>
               </div>
-              <div>Tempering <span id="comma-info"></span></div>
-              <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
-                <use href="#hourglass"></use>
-              </svg>
             </div>
-            <div class="heading-border"></div>
-            <div id="chords" slot="table"></div>
-          </sticky-grid-container>
+            <div>Tempering <span id="comma-info"></span></div>
+            <svg xmlns="http://www.w3.org/2000/svg" class="hourglass" viewBox="-6,-6,12,12">
+              <use href="#hourglass"></use>
+            </svg>
+          </div>
+          <div class="heading-border"></div>
+          <div id="chord-table-wrapper">
+            <div id="chord-table">
+              <div id="chords"></div>
+            </div>
+          </div>
         </fieldset>
       </form>
-    </sticky-grid-scroller>
+    </li>
     <li id="track-editor">
       <form>
         <div id="track-file">
@@ -244,35 +246,37 @@
 :host {
   display: block;
   overflow: scroll;
+  position: relative }
+:host(:not(.reset-pos)) > #wrapper {
   position: relative;
-  box-sizing: border-box }
+  overflow: hidden;
+  left: clamp(0px, var(--scrollLeft, 0px), var(--maxScrollLeft));
+  top: clamp(0px, var(--scrollTop, 0px), var(--maxScrollTop));
+  width: calc(var(--innerWidth) - min(var(--scrollLeft, 0px), var(--maxScrollLeft)));
+  height: calc(var(--innerHeight) - min(var(--scrollTop, 0px), var(--maxScrollTop))) }
     </style>
-    <slot></slot>
+    <div id="wrapper">
+      <slot></slot>
+    </div>
   </template>
-  <template id="sticky-grid-container">
+  <template id="sticky-grid-table">
     <style>
-:host {
-  display: block;
-  height: calc(var(--tableHeight) + var(--tableOffset) + var(--tableBottom) + var(--afterTable) - var(--containerTop)) }
-#wrapper {
-  height: var(--tableHeight);
-  max-height: calc(var(--wrapHeight) + var(--tableBottom) - var(--lastScroll));
-  overflow-y: hidden;
-  overflow-x: scroll;
-  position: sticky;
-  top: calc(var(--tableTop) - var(--scrollerTop));
-  box-sizing: border-box }
-::part(before) { display: initial }
-#wrapper > ::slotted(*) { margin-bottom: var(--wrapHeight) }
-#wrapper + * {
-  display: block;
-  margin-top: clamp(0em, var(--tableHeight), calc(var(--tableHeight) + var(--lastScroll) - var(--wrapHeight))) }
+:host { display: block }
+:host(:not(.reset-pos)) > #wrapper {
+  overflow: hidden;
+  position: relative;
+  left: calc(var(--scrollLeft, 0px) - var(--scrollRight));
+  top: calc(var(--scrollTop, 0px) - var(--scrollBottom));
+  width: clamp(0px, var(--tableWidth) - var(--scrollLeft, 0px) + var(--scrollRight),
+    max(var(--tableWidth) - var(--maxScrollLeft), var(--wrapperWidth, 0px)));
+  height: clamp(0px, var(--tableHeight) - var(--scrollTop, 0px) + var(--scrollBottom),
+    max(var(--tableHeight) - var(--maxScrollTop), var(--wrapperHeight, 0px)));
+  max-height: var(--tableHeight);
+  max-width: var(--tableWidth) }
     </style>
-    <slot name="before" part="before"></slot>
-    <div id="wrapper" part="wrapper">
+    <div id="wrapper">
       <slot name="table"></slot>
     </div>
-    <slot name="after" part="after"></slot>
   </template>
   <template id="breadcrumb-level">
     <span></span>

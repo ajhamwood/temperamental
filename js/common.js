@@ -197,6 +197,8 @@ class Common {
       return {
         accid: { "3": fifths, ...accid },
         number: revac + (numAdj < 0 ? `(${baseIvNum})` : baseIvNum),
+        degree: revac + (numAdj < 0 ? `(${baseIvNum}\u0302)` : baseIvNum + "\u0302"),
+        ordinal: revac + (numAdj < 0 ? `(${this.ordinal(baseIvNum)})` : this.ordinal(baseIvNum)),
         roman: revac + roman,
         romanlow: revac + roman.toLowerCase(),
         letter: key + acstring

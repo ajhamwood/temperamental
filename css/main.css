@@ -6,20 +6,19 @@
   font-style: normal;
   font-display: swap;
   unicode-range: U+E260-E266, U+E2C0-E2FA, U+EE50-EE59;
-  size-adjust: 150%;
+  size-adjust: 140%;
   ascent-override: 0%;
   descent-override: 0% }
 @font-face {
-  font-family: Ratafly;
-  src: url('../fonts/Ratafly-Extrabold.woff2') format('woff2');
-  font-weight: bold;
-  font-style: normal;
-  font-display: swap;
-  size-adjust: 100%; }
-@font-face {
-  font-family: Ratafly;
-  src: url('../fonts/Ratafly-Medium.woff2') format('woff2');
+  font-family: Aver;
+  src: url('../fonts/Aver.woff2') format('woff2');
   font-weight: normal;
+  font-style: normal;
+  font-display: swap }
+@font-face {
+  font-family: Aver;
+  src: url('../fonts/AverBold.woff2') format('woff2');
+  font-weight: bold;
   font-style: normal;
   font-display: swap }
 @font-face {
@@ -36,23 +35,25 @@
 @media (min-aspect-ratio: 1) {
   body.menuActive { grid: "nav nav" auto "menu main" 1fr / min-content 1fr }
   menu { max-width: 50dvw }
+  menu > * > form { max-width: calc(50dvw - 1em) }
   #track-editor > form > textarea {
     width: 20em;
     min-width: 10em }
-  .interval-display, #mapping { max-width: calc(50dvw - 3.4em - 4px) }
+  #diamond-wrapper, #mapping { max-width: calc(50dvw - 3.4em - 4px) }
   #temperament-list, #chord-list { max-width: calc(50dvw - 3.4em - 4px) } }
 @media (max-aspect-ratio: 1) {
   body.menuActive { grid: "nav" auto "menu" minmax(auto, 1fr) "main" 1fr / 100dvw }
+  menu > * > form { max-width: calc(100dvw - 1em) }
   #track-editor > form > textarea {
     width: 100% !important;
     resize: vertical }
-  .interval-display, #mapping { max-width: calc(100dvw - 3.4em - 4px) }
+  #diamond-wrapper, #mapping { max-width: calc(100dvw - 3.4em - 4px) }
   #temperaments { max-width: calc(100dvw - .5em) }
   #temperament-list, #chord-list { max-width: calc(100dvw - 3.4em - 4px) } }
 
 html, body {
   height: 100dvh }
-body, button, select, input, textarea { font: min(16px, 2.7dvw) HEJI2, Ratafly, Netto }
+body, button, select, input, textarea { font: min(18px, 3.2dvw) HEJI2, Aver, Netto }
 body {
   margin: 0;
   background-color: #222;
@@ -159,7 +160,7 @@ body {
     menu > * { padding: .5em  }
     menu > :not(#breadcrumbs) {
       overflow: scroll;
-      height: calc(100% - 2.6em);
+      height: calc(100% - 3.6em);
       display: none }
     menu > .activeMenu { display: list-item !important }
     #breadcrumbs {
@@ -219,7 +220,7 @@ body {
           .interval-display { display: none }
           .choice:has(label#diamond-choice > input[type="radio"]:checked) ~ #diamond-wrapper,
             .choice:has(label#table-choice > input[type="radio"]:checked) ~ #ivtable-wrapper { display: block }
-          .interval-display, #mapping { overflow-x: scroll }
+          #diamond-wrapper, #mapping { overflow-x: scroll }
             .interval-cell.activeEnharmonic {
               border-bottom: 1px solid;
               margin-bottom: -1px }
@@ -229,14 +230,13 @@ body {
             grid-template-rows: repeat(var(--size), 2em);
             justify-items: end;
             width: max-content }
-        #harmonic-mapping:has(#table-choice > :checked)
-          { height: calc(var(--iv-offsetTop) + var(--iv-scrollHeight)) }
-          #ivtable-wrapper {
-            max-height: var(--iv-height);
+        /* #harmonic-mapping:has(#table-choice > :checked)
+          { height: calc(var(--iv-offsetTop) + var(--iv-scrollHeight)) } */
+          #interval-table {
+            /* max-height: var(--iv-height); */
             position: sticky;
             top: -.8em;
-            overflow-y: hidden }
-          #interval-table {
+            /* overflow-y: hidden; */
             display: grid;
             grid-template-columns: repeat(2, auto) repeat(calc(var(--harms) - 1), 1px auto);
             grid-template-rows: repeat(2, minmax(0, min-content)) repeat(calc(var(--edo) - 1), 1px minmax(0, min-content));
@@ -319,7 +319,7 @@ body {
             grid-gap: .3em;
             align-items: baseline }
           .comma:nth-child(2) { margin-top: -.8em }
-          .comma:hover, .comma.active { font-weight: bold }
+          .comma:hover, .comma.active { font-weight: 900 }
           .comma > .comma-selection-factors::before {
             content: "●";
             color: transparent }
@@ -366,17 +366,46 @@ body {
             width: 100%;
             z-index: -1;
             padding: 0 }
-          #chords {
+          #chord-table-wrapper {
+            overflow: hidden;
+            max-width: inherit;
+            max-height: calc(var(--tp-height) - 3.5em - 1px) }
+          #chord-table {
             display: grid;
             grid-template-columns: repeat(3, max-content);
-            grid-gap: 2em .5em;
+            grid-gap: 2em 0;
             margin-top: 1em;
-            max-width: inherit }
+            height: 100%;
+            max-width: inherit;
+            overflow: scroll }
+          #chords {
+            display: grid;
+            grid-template-columns: subgrid;
+            grid-template-rows: subgrid;
+            grid-area: 1 / 3 / span var(--chord-count) / span 1;
+            margin-bottom: 1em;
+            padding-right: .5em }
           .chord-adicity-th > span::after { content: " notes" }
           .chord-limit-th > span::after { content: "-limit" }
+          #chord-table[data-order="adicity"] > .chord-adicity-th,
+          #chord-table[data-order="limit"] > .chord-limit-th {
+            grid-column-start: 1;
+            position: sticky;
+            left: 0;
+            background-color: #222;
+            padding: 1em .5em;
+            margin-top: -1em }
+          #chord-table[data-order="adicity"] > .chord-limit-th,
+          #chord-table[data-order="limit"] > .chord-adicity-th {
+            grid-column-start: 2;
+            position: sticky;
+            left: var(--chord-left-col-width);
+            background: #222;
+            padding: 1em .5em 1em 0;
+            margin-top: -1em }
           .chord-adicity-th > span, .chord-limit-th > span {
             position: sticky;
-            top: .8em }
+            top: 0 }
 
         #chord-list:not(.computing) #chords:empty::before { content: "To display chords, select a temperament" }
         #chord-list:not(.computing) #chords:empty {

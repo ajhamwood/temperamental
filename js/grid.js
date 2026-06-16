@@ -56,7 +56,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   removeFromActiveClasses (hex, id) {
     for (const [ name, activeHexes ] of this.#activeClasses) {
       const ids = activeHexes.get(hex);
-      if (!ids) return;
+      if (!ids) continue;
       ids.delete(id);
       if (ids.size === 0) activeHexes.delete(hex)
       if (activeHexes.size === 0) this.#activeClasses.delete(name)
@@ -389,7 +389,7 @@ class HexButton {
       } else drawHex(bgColour = (oc ? Common.colourMix(oc, noteColours.white, .1) : uc ?
         Common.colourMix(uc, noteColours.black, .1) : bc))
     } else drawHex(bgColour = noteColours.default);
-    ctx.font = (isGhost ? "bold  " : "") + (.5 * hexGrid.r) + "px HEJI2, Ratafly";
+    ctx.font = (isGhost ? "bold  " : "") + (.5 * hexGrid.r) + "px HEJI2, Aver";
     const [ x, y ] = this.centre(),
           label = hexGrid.displayKeyNames ? this.#note.key.label.letter ?? this.#note.key.label : this.#note.key.rank,
           { width } = ctx.measureText(label);
