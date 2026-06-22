@@ -79,10 +79,13 @@ body {
       display: grid;
       grid-template-columns: auto auto 1fr repeat(3, auto);
       grid-gap: 0 .5em }
-      #controls > * { flex: max-content 0 }
-      #controls > :nth-last-child(n+2),
-        #volume > * { vertical-align: middle }
+      #volume > * { vertical-align: middle }
       #volume > input { max-width: 20dvw }
+      #octave-range {
+        width: max-content;
+        display: inline-flex;
+        flex-flow: row nowrap;
+        & > * { margin: 0 .3em } }
       #info {
         width: 100%;
         min-width: max-content;
@@ -191,7 +194,7 @@ body {
         display: flex;
         flex-flow: column }
         fieldset > * { padding: .3em }
-          :is(#scale, #mapping) > * {
+          :is(#tuning, #mapping) > * {
             display: block;
             margin-left: 1em }
             :is(.harmonic, .interval-cell) > button { cursor: pointer }
@@ -500,6 +503,21 @@ body {
       border-color: red;
       border-radius: 4px }
 input[type="number"] { min-width: calc(var(--size) * .8rem) }
+.number-spin > input { display: none !important }
+.spinner {
+  display: inline-grid;
+  grid-template-rows: repeat(2, .6em);
+  & > * {
+    height: 100%;
+    contain: paint;
+    cursor: pointer;
+    user-select: none;
+    &:active { background-color: #444 } }
+  & > .spin-down {
+    align-self: end;
+    & > span {
+      display: block;
+      transform: translateY(-50%) } } }
 .choice {
   display: flex;
   flex-flow: row;

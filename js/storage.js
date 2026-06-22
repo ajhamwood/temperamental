@@ -6,6 +6,8 @@ import { Keyboard } from "./keyboard.js";
 // Local data
 
 class Persist {
+
+  // Static
   static reset () {
     localStorage.clear();
     return new Promise((success, error) => $.targets({ success, error }, indexedDB.deleteDatabase("userdata")))
@@ -50,9 +52,9 @@ class Persist {
       // Create scale store
       async evt => {
         const
-          createScaleStore = evt.target.result.createObjectStore("scales", { keyPath: ["edo", "limit"] }), // maxError?
-          createScalesTx = Persist.#txWait(createScaleStore.transaction);
-        await createScalesTx;
+          createTuningStore = evt.target.result.createObjectStore("tunings", { keyPath: ["edo", "limit"] }), // maxError?
+          createTuningsTx = Persist.#txWait(createTuningStore.transaction);
+        await createTuningsTx
       },
 
       // Create comma store
@@ -84,6 +86,8 @@ class Persist {
     ])
   }
 
+
+  // Instance
   #db; #resolveReady; #rejectReady
   #promiseReady = new Promise((res, rej) => [ this.#resolveReady, this.#rejectReady ] = [ res, rej ]);
   get ready () { return this.#promiseReady }
@@ -133,23 +137,23 @@ class Persist {
   }
   resetPresetKeyboards () {} //
 
-  // Scales
+  // Tunings
 
-  async loadScale ({ edo, limit }) {
+  async loadTuning ({ edo, limit }) {
     const
-      scaleStore = this.#db.transaction("scales").objectStore("scales"),
-      readScaleTx = Persist.#txWait(scaleStore.transaction), req = scaleStore.get([ edo, limit ]);
-    await readScaleTx;
+      tuningStore = this.#db.transaction("tunings").objectStore("tunings"),
+      readTuningTx = Persist.#txWait(tuningStore.transaction), req = tuningStore.get([ edo, limit ]);
+    await readTuningTx;
     if (req.result !== undefined) return req.result;
     const initial = { edo, limit, upperBound: 0n };
-    await this.saveScale(initial);
+    await this.saveTuning(initial);
     return initial
   }
-  async saveScale (scale) {
+  async saveTuning (tuning) {
     const
-      scaleStore = this.#db.transaction("scales", "readwrite").objectStore("scales"),
-      saveScaleTx = Persist.#txWait(scaleStore.transaction), req = scaleStore.put(scale);
-    await saveScaleTx
+      tuningStore = this.#db.transaction("tunings", "readwrite").objectStore("tunings"),
+      saveTuningTx = Persist.#txWait(tuningStore.transaction), req = tuningStore.put(tuning);
+    await saveTuningTx
   }
 
   // Commas

@@ -2,6 +2,8 @@ class Common {
 
   static #allPrimes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ]
   static #allPrimesBig = this.#allPrimes.map(BigInt)
+
+  static wait = ms => v => new Promise(r => setTimeout(() => r(v), ms))
   
   static between = (min, max, val) => val <= max && val >= min
   static clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined
@@ -10,8 +12,10 @@ class Common {
   static non2 = h => h / (h & (~--h))
   static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
   static lcm = (a, b) => a * b / this.gcd(a, b)
+  static sum = ar => ar.reduce((a, b) => a + b, 0)
   static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
+  static arrEq = (a1, a2) => a1.every((v, i) => v === a2[i])
   static bagEq = (a1, a2) => a1.length === a2.length && a1.reduce(([ b, rem ], v) => {
     if (!b) return [ false ];
     const i = rem.findIndex(u => u === v);

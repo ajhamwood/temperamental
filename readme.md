@@ -1,6 +1,6 @@
 # *Temperamental*, a microtonal music explorer
 
-An isomorphic keyboard app that allows for endless exploration of microtonal scales, and can generate complex harmonies and chords for your aural delight!
+An isomorphic keyboard app that allows for endless exploration of microtonality, and can generate complex harmonies and chords for your aural delight!
 
 \*Caveat: this project is heavily under construction. Right now, that means that it is only built for use in Firefox (desktop and mobile), and that the bare minimum of UI/UX concern is being given, in exchange for faster development of raw functionality. Even in Firefox, it is likely to be buggy as hell. Once a first draft of functionality is complete I'll add Chrome and Safari compatibility, followed by a design and usability pass-over.
 
@@ -26,10 +26,10 @@ An isomorphic keyboard app that allows for endless exploration of microtonal sca
 Play the buttons on the keyboard by clicking with a mouse or other pointer or by touching on a touchscreen. Simply touch a hexagonal button to play the labelled note. Touch multiple notes at the same time to play a chord. Cycle through key names by using a mousewheel or other wheel device.
 
 ### Control bar
-Change the volume slider, number of octaves displayed, recover from visual and audio bugs, and toggle fullscreen, by using the control bar at the top of the screen. Information about the currently active scale is displayed in the centre of the control bar.
+Change the volume slider, number of octaves displayed, recover from visual and audio bugs, and toggle fullscreen, by using the control bar at the top of the screen. Information about the currently active tuning is displayed in the centre of the control bar.
 
 ### Menu bar
-To display the menu bar and access deeper controls, tap the control bar background. Use the menu bar to access and edit preset and user-defined keyboards, generate the native chords of a scale based on their fundamental tempered interval, save musical objects to the in-app clipboard, edit and play sequenced tracks, and reset all data.
+To display the menu bar and access deeper controls, tap the control bar background. Use the menu bar to access and edit preset and user-defined keyboards, generate the native chords of a tuning based on their fundamental tempered interval, save musical objects to the in-app clipboard, edit and play sequenced tracks, and reset all data.
 
 # Menus
 
@@ -41,15 +41,15 @@ You can tap the keyboard title at the top left to rename it, and use the control
 
 ### Shape
 
-Discover different visual layouts of the current scale, and change the minimum size of the keyboard buttons.
+Discover different visual layouts of the current tuning, and change the minimum size of the keyboard buttons.
 
 ### Note
 
-Define the frequencies of the scale notes, and toggle key labelling by rank or by harmonic function.
+Define the frequencies of the tuning notes, and toggle key labelling by rank or by harmonic function.
 
 ### Harmonic mapping
 
-Discover the different harmonic structures which are supported by the current scale based on the uppermost harmonic being considered, define which note corresponds to which harmonic based how tolerant the note mapping is to error, choose the app-wide colour that expresses each harmonic, and then review and play back the basic intervals of the scale you have created.
+Discover the different harmonic structures which are supported by the current tuning based on the uppermost harmonic being considered, define which note corresponds to which harmonic based how tolerant the note mapping is to error, choose the app-wide colour that expresses each harmonic, and then review and play back the basic intervals of the tuning you have created.
 
 ### Waveform
 
@@ -61,7 +61,7 @@ Enharmonies are indicated by an equivalence sign (≅). Intervals are indicated 
 
 ### Temperaments
 
-Generate all the small intervals tempered by the current scale and review their relevant data, and filter them by included and excluded harmonics. Scroll down to continue to generate temperaments. Select a tempered interval to generate all of its essentially tempered chords.
+Generate all the small intervals tempered by the current tuning and review their relevant data, and filter them by included and excluded harmonics. Scroll down to continue to generate temperaments. Select a tempered interval to generate all of its essentially tempered chords.
 
 ### Chords
 

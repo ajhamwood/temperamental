@@ -1,17 +1,17 @@
 import $ from "./machine.js";
 import Common from "./common.js";
 import { app } from "./main.js";
-import { Keyboard, Scale } from "./keyboard.js";
+import { Keyboard, Tuning } from "./keyboard.js";
 import { HarmonicLattice, IntervalSet, Interval } from "./interval.js";
 
 
 
-// Harmonic mapping
+// Harmonic mapping ("val")
 
 class HarmonicMapping {
 
   // Instance
-  #keyboard; #scale
+  #keyboard; #tuning
   rawHarmonicList
   nonHarmonics = new Set() // TODO: Cached blacklist
   lattice; decomp; intervalSet = new IntervalSet()
@@ -21,11 +21,11 @@ class HarmonicMapping {
   #temperaments = new Map(); #temperament
   #chordsworkers = new Map(); #chordGen
 
-  constructor ({ keyboard, scale, hmap }) { // Map([ odd, number ])
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Mapping error: must provide Keyboard object");
+  constructor ({ keyboard, tuning, hmap }) { // Map([ odd, number ])
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("Mapping error: must provide Keyboard object");
     this.#keyboard = keyboard;
-    if (!(Scale.prototype.isPrototypeOf(scale))) throw new Error("Mapping error: must provide Scale object");
-    this.#scale = scale;
+    if (!Tuning.prototype.isPrototypeOf(tuning)) throw new Error("Mapping error: must provide Tuning object");
+    this.#tuning = tuning;
     const { edo } = keyboard;
     if (!Map.prototype.isPrototypeOf(hmap) || [ ...hmap ].some(v => v.some(u => typeof u !== "number") ||
       v.some(u => u % 1) || v[0] < 3 || v[0] > app.maxHarmonic || v[0] % 2 !== 1 || v[1] < 0 || v[1] > edo)) throw new Error("Mapping error: bad interval-step mapping");
@@ -68,7 +68,7 @@ class HarmonicMapping {
   #genCommas (upperBound) {
     const
       worker = this.#commasworker = new Worker("js/commaworker.js", { type: "module" }), self = this,
-      { primes, index } = this.lattice, { edo } = this.#keyboard, { limit, maxError } = this.#scale,
+      { primes, index } = this.lattice, { edo } = this.#keyboard, { limit, maxError } = this.#tuning,
       { globalBatchSize: batchSize } = app;
     worker.postMessage({ params: { primes, index, maxError, edo, limit, batchSize } });
     let id = 0, ar = new Map(), ap = new Map(), // Resolve data
@@ -104,7 +104,7 @@ class HarmonicMapping {
   #commaGen
   async * takeCommas (upperBound) { yield * this.#commaGen({ upperBound }) }
   async resetCommas (upperBound) {
-    const { edo } = this.#keyboard, { limit } = this.#scale;
+    const { edo } = this.#keyboard, { limit } = this.#tuning;
     this.#commasworker?.terminate();
     this.#commaGen = Common.cacheAside({
       cacheGen: app.storage.yieldCommas({ edo, limit }),
@@ -130,10 +130,10 @@ class HarmonicMapping {
       return { setup: () => {}, fresh: function * () {} }
     } else {
       const comma = iv.fraction, [ nd, dd ] = iv.splitDecomp;
-      if (Common.bigLog2(comma[0]) - Common.bigLog2(comma[1]) >= this.#scale.maxError / 400)
+      if (Common.bigLog2(comma[0]) - Common.bigLog2(comma[1]) >= this.#tuning.maxError / 400)
         throw new Error("Mapping error: comma to temper must be within error bounds");
       const
-        { stepsBasis } = this, { edo } = this.#keyboard, { limit } = this.#scale,
+        { stepsBasis } = this, { edo } = this.#keyboard, { limit } = this.#tuning,
         { properIntervalSet } = this.lattice, intervalList = [ ...properIntervalSet ].map(iv => iv.withOctave(0).fraction),
         coreCount = navigator.hardwareConcurrency, workers = this.#chordsworkers, freeWorkers = Array(coreCount - 1).fill(0).map((_, i) => i);
 
@@ -258,7 +258,7 @@ class HarmonicMapping {
   async * takeChords (upperBound) { yield * await this.#chordGen({ upperBound }) }
   resetChords (iv) {
     const
-      { edo } = this.#keyboard, { limit } = this.#scale,
+      { edo } = this.#keyboard, { limit } = this.#tuning,
       comma = iv.fraction, [ nd, dd ] = iv.splitDecomp;
     this.#chordsworkers.forEach(w => w.terminate());
     this.#chordsworkers = new Map();
@@ -372,14 +372,14 @@ class Temperament {
   commaPartitions; enharms; factors; #chords // Trie with TemperedInterval symbols: Map([ TemperedInterval, Map | Chord ])
   stackChords = [] // [[ stack (Bag) : [ Interval ], chords : Set([ Chord ]) ]]
   constructor ({ keyboard, mapping, comma, intervalSet }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Temperament error: must provide Keyboard object");
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("Temperament error: must provide Keyboard object");
     this.#keyboard = keyboard;
-    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Temperament error: must provide HarmonicMapping object");
+    if (!HarmonicMapping.prototype.isPrototypeOf(mapping)) throw new Error("Temperament error: must provide HarmonicMapping object");
     this.#mapping = mapping;
     const { harmonicList, properIntervalSet } = mapping.lattice;
-    if (!(Interval.prototype.isPrototypeOf(comma))) throw new Error("Temperament error: comma must be Interval object");
+    if (!Interval.prototype.isPrototypeOf(comma)) throw new Error("Temperament error: comma must be Interval object");
     this.comma = comma;
-    if (!(IntervalSet.prototype.isPrototypeOf(intervalSet))) throw new Error("Temperament error: intervalSet must be IntervalSet object");
+    if (!IntervalSet.prototype.isPrototypeOf(intervalSet)) throw new Error("Temperament error: intervalSet must be IntervalSet object");
     this.intervalSet = intervalSet;
 
     // TODO: limit to harmonics non-coprime to comma!
@@ -505,8 +505,8 @@ class Temperament {
 class TemperedInterval {
   #temperament; enharmonicSet // Enharmonies are like tempered dyadic chords...
   constructor ({ temperament, enharmonicSet }) {
-    if (!(Temperament.prototype.isPrototypeOf(temperament))) throw new Error("TemperedInterval error: must provide Temperament object");
-    if (!(Set.prototype.isPrototypeOf(enharmonicSet)) || !Common.between(1, 2, enharmonicSet.size)) throw new Error("Bad enharmonic set");
+    if (!Temperament.prototype.isPrototypeOf(temperament)) throw new Error("TemperedInterval error: must provide Temperament object");
+    if (!Set.prototype.isPrototypeOf(enharmonicSet) || !Common.between(1, 2, enharmonicSet.size)) throw new Error("Bad enharmonic set");
     this.#temperament = temperament;
     this.enharmonicSet = enharmonicSet;
     const [ number, roman, romanlow, letter, fraction ] = [ ...enharmonicSet ]
@@ -522,7 +522,7 @@ class TemperedInterval {
 class TemperedIntervalSet {
   #rawMap = new Map() // Map([ denominator, Map([ numerator, temperedInterval ]) ])
   constructor ({ temperament, temperedIntervalSet }) {
-    if (!(Temperament.prototype.isPrototypeOf(temperament))) throw new Error("TemperedIntervalSet error: must provide Temperament object");
+    if (!Temperament.prototype.isPrototypeOf(temperament)) throw new Error("TemperedIntervalSet error: must provide Temperament object");
     this.temperament = temperament;
     if (temperedIntervalSet) for (const tiv of temperedIntervalSet) this.add(tiv);
     else {
@@ -565,7 +565,7 @@ class Chord {
   static types = [ "harmonic series", "essentially tempered" ]
   static fromRepr = ({ keyboard, mapping, type, voicing, chordRaw: { edo, limit, nd, dd, internalIntervalsRaw } }) => {
     if (keyboard.edo !== edo) throw new Error("Unhandled - chord edo different to current edo");
-    if (keyboard.scale.limit !== limit) throw new Error("Unhandled - chord limit different to current limit");
+    if (keyboard.tuning.limit !== limit) throw new Error("Unhandled - chord limit different to current limit");
     const intervalsRaw = internalIntervalsRaw.map(interp => interp.map(ivs => ivs[1]));
     const frac = intervalsRaw[0].reduce(([a, b], [c, d]) => [a * BigInt(c), b * BigInt(d)], [1n, 2n]);
     if (Common.bigLog2(frac[0]) < Common.bigLog2(frac[1])) frac.reverse();
@@ -584,8 +584,8 @@ class Chord {
   voicing
   ord; #limit
   constructor ({ keyboard, mapping, type, harmonics, bass, isSubHarm = false, internalIntervals, voicing, ord }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Chord error: must provide Keyboard object");
-    if (!(HarmonicMapping.prototype.isPrototypeOf(mapping))) throw new Error("Chord error: must provide HarmonicMapping object");
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("Chord error: must provide Keyboard object");
+    if (!HarmonicMapping.prototype.isPrototypeOf(mapping)) throw new Error("Chord error: must provide HarmonicMapping object");
     this.#keyboard = keyboard;
     this.#mapping = mapping;
     if (typeof type !== "string" && !Chord.types.includes(type)) throw new Error("Chord error: unknown type");
@@ -593,7 +593,7 @@ class Chord {
     switch (type) {
       // Harmonic chords temper the unison
       case "harmonic series":
-      if (typeof bass !== "number" || !harmonics.includes(bass) || !("length" in harmonics) || !(harmonics.length > 1) ||
+      if (typeof bass !== "number" || !Array.prototype.isPrototypeOf(harmonics) || harmonics.length <= 1 || !harmonics.includes(bass) ||
         harmonics.some(h => typeof h !== "number" || !mapping.decomp(h, bass)()))
         throw new Error("Chord error: harmonic not supported by temperament");
       this.adicity = harmonics.length;
@@ -806,7 +806,7 @@ class Chord {
     else if (type === "essentially tempered") opts.internalIntervals = this.#internalIntervals;
     return opts
   }
-  set #repr (_) {}
+  set #repr ({}) {}
 
   toString () {
     const { internalIntervals, ...opts } = this.#repr;
@@ -842,16 +842,16 @@ class Chord {
   start (id) {
     const
       { voicing } = this, keyboard = this.#keyboard, mapping = this.#mapping,
-      { scale, edo, hexGrid } = keyboard, { orientation: [ gO, hO ] } = hexGrid;
+      { tuning, edo, hexGrid } = keyboard, { orientation: [ gO, hO ] } = hexGrid;
     this.internalIntervals.forEach((iv, i) => {
-      const key = scale.getKey(mapping.steps(iv) % edo);
+      const key = tuning.getKey(mapping.steps(iv) % edo);
       key.label = key.labels.findIndex(({ letter }) => letter === iv.noteSpelling.letter)
     });
     keyboard.hexGrid.redraw(true);
     this.internalIntervals.forEach((iv, i) => {
       const
         steps = mapping.steps(iv), rank = steps % edo, octave = Math.floor(steps / edo),
-        [ g, h ] = scale.getKey(rank).home.coord;
+        [ g, h ] = tuning.getKey(rank).home.coord;
       keyboard.play(g + gO * (voicing[i] + octave), h + hO * (voicing[i] + octave), id + "-" + i)
     })
   }

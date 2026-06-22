@@ -66,6 +66,8 @@ class HarmonicLattice { // is commas on the lattice??
     }
   }
 
+
+  // Instance
   params = []; index = []; indexPrimes = []; primes = []; harmonicList = new Map(); verify = () => true
   properIntervalSet; ready = false
   constructor ({ harmsRaw }) {
@@ -213,7 +215,7 @@ class Harmonic {
   #lattice; order; isBasis; countingFn = null; decomp; primeDecomp
   isSubHarm = false; label
   constructor ({ lattice, order, countingFn, isSubHarm = false }) {
-    if (!(HarmonicLattice.prototype.isPrototypeOf(lattice))) throw new Error("Harmonic error: must provide HarmonicLattice object");
+    if (!HarmonicLattice.prototype.isPrototypeOf(lattice)) throw new Error("Harmonic error: must provide HarmonicLattice object");
     this.#lattice = lattice;
     this.order = order;
     this.isSubHarm = isSubHarm;
@@ -297,7 +299,7 @@ class Interval {
   #intervalSet; n; d; octave; fraction; decomp; noteSpelling
   octaveAdjust; splitDecomp
   constructor ({ intervalSet, n, d }) {
-    if (!(IntervalSet.prototype.isPrototypeOf(intervalSet))) throw new Error("Interval error: must provide IntervalSet object");
+    if (!IntervalSet.prototype.isPrototypeOf(intervalSet)) throw new Error("Interval error: must provide IntervalSet object");
     if (typeof n !== "bigint" || typeof d !== "bigint") throw new Error("Interval error: numerator and denominator type must be BigInt");
     const c = Common.gcd(n, d);
     n = n / c;

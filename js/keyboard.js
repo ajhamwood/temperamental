@@ -12,25 +12,25 @@ class Keyboard {
 
   // Static
   static presets = [ {
-    name: "12edo", gstep: 2, hstep: 1, orientation: [5, 2], unit: 45, refNote: 9, freqBasis: 220,
+    name: "12edo", gstep: 2, hstep: 1, orientation: [5, 2], unit: 45, refNote: 9, freqBasis: 440,
     edo: 12, limit: 9, maxError: 33, hmap: [[3, 7], [5, 4], [7, 10], [9, 2]], instrument: "triangle"
   }, {
-    name: "19edo", gstep: 3, hstep: 2, orientation: [5, 2], unit: 45, refNote: 14, freqBasis: 220,
+    name: "19edo", gstep: 3, hstep: 2, orientation: [5, 2], unit: 45, refNote: 14, freqBasis: 440,
     edo: 19, limit: 9, maxError: 22, hmap: [[3, 11], [5, 6], [7, 15], [9, 3]], instrument: "triangle"
   }, {
-    name: "22edo", gstep: 4, hstep: 1, orientation: [5, 2], unit: 45, refNote: 16, freqBasis: 220,
+    name: "22edo", gstep: 4, hstep: 1, orientation: [5, 2], unit: 45, refNote: 16, freqBasis: 440,
     edo: 22, limit: 11, maxError: 18, hmap: [[3, 13], [5, 7], [7, 18], [9, 4], [11, 10]], instrument: "triangle"
   }, {
-    name: "31edo", gstep: 5, hstep: 3, orientation: [5, 2], unit: 45, refNote: 23, freqBasis: 220,
+    name: "31edo", gstep: 5, hstep: 3, orientation: [5, 2], unit: 45, refNote: 23, freqBasis: 440,
     edo: 31, limit: 11, maxError: 12, hmap: [[3, 18], [5, 10], [7, 25], [9, 5], [11, 14]], instrument: "triangle"
   }, {
-    name: "41edo", gstep: 7, hstep: 3, orientation: [5, 2], unit: 45, refNote: 30, freqBasis: 220,
+    name: "41edo", gstep: 7, hstep: 3, orientation: [5, 2], unit: 45, refNote: 30, freqBasis: 440,
     edo: 41, limit: 15, maxError: 9, hmap: [[3, 24], [5, 13], [7, 33], [9, 7], [11, 19], [13, 29], [15, 37]], instrument: "triangle"
   }, {
-    name: "53edo", gstep: 5, hstep: 4, orientation: [5, 7], unit: 45, refNote: 39, freqBasis: 220,
+    name: "53edo", gstep: 5, hstep: 4, orientation: [5, 7], unit: 45, refNote: 39, freqBasis: 440,
     edo: 53, limit: 15, maxError: 8, hmap: [[3, 31], [5, 17], [7, 43], [9, 9], [11, 24], [13, 37], [15, 48]], instrument: "triangle"
   }, {
-    name: "94edo", gstep: 9, hstep: 7, orientation: [5, 7], unit: 45, refNote: 69, freqBasis: 220,
+    name: "94edo", gstep: 9, hstep: 7, orientation: [5, 7], unit: 45, refNote: 69, freqBasis: 440,
     edo: 94, limit: 21, maxError: 4, hmap: [[3, 55], [5, 30], [7, 76], [9, 16], [11, 43], [13, 66], [15, 85], [17, 8], [19, 23], [21, 37]], instrument: "triangle"
   } ]
 
@@ -44,15 +44,15 @@ class Keyboard {
   static nameFieldEl; static nameTextEl
   static gstepEl; static hstepEl; static orientationSelectEl; static unitEl
   static refNoteEl; static freqBasisEl; static edoEl; static limitEl; static maxErrorEl
-  static scaleOutputEl; static clipboardPeekEl
+  static tuningOutputEl; static clipboardPeekEl
   static attach ({
     selectEl, edoInfoEl, limitInfoEl, displayKeyNamesEl, nameFieldEl, nameTextEl,
     gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
-    edoEl, limitEl, maxErrorEl, scaleOutputEl, clipboardPeekEl
+    edoEl, limitEl, maxErrorEl, tuningOutputEl, clipboardPeekEl
   }) { Object.assign(this, {
     selectEl, edoInfoEl, limitInfoEl, displayKeyNamesEl, nameFieldEl, nameTextEl,
     gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
-    edoEl, limitEl, maxErrorEl, scaleOutputEl, clipboardPeekEl
+    edoEl, limitEl, maxErrorEl, tuningOutputEl, clipboardPeekEl
   }) }
 
   static async applySettings () {
@@ -82,8 +82,10 @@ class Keyboard {
   static userIsActive = new Promise(r => this.#userResolver = r);
   static userActivate () { this.#userResolver() }
 
+
+  
   // Instance
-  name; edo; hexGrid; scale; instrument = "triangle"
+  name; edo; hexGrid; tuning; instrument = "triangle"
   touches = new Map(); mousedown = false
   hoveredKey; wheelVal = 0; wheelSensitivity = 200
   clipboard; clipboardPeekIndex; clipboardHolding
@@ -101,15 +103,15 @@ class Keyboard {
     this.name = name;
     this.edo = edo;
     this.hexGrid = new HexGrid({ keyboard: this, gstep, hstep, unit, orientation, displayKeyNames });
-    this.scale = new Scale({ keyboard: this, limit, refNote, freqBasis, maxError });
+    this.tuning = new Tuning({ keyboard: this, limit, refNote, freqBasis, maxError });
     this.clipboard = clipboard
   }
 
   async save () {
     const
-      { name, edo, hexGrid, scale, clipboard } = this,
+      { name, edo, hexGrid, tuning, clipboard } = this,
       { gstep, hstep, unit, orientation, displayKeyNames } = hexGrid,
-      { limit, refNote, freqBasis, maxError } = scale,
+      { limit, refNote, freqBasis, maxError } = tuning,
       keyboard = {
         name, edo, gstep, hstep, unit, orientation, displayKeyNames,
         limit, refNote, freqBasis, maxError,
@@ -122,12 +124,12 @@ class Keyboard {
   async fillSettings () {
     const
       { gstepEl, hstepEl, orientationSelectEl, unitEl, refNoteEl, freqBasisEl,
-        edoEl, limitEl, maxErrorEl, displayKeyNamesEl, scaleOutputEl,
+        edoEl, limitEl, maxErrorEl, displayKeyNamesEl, tuningOutputEl,
         edoInfoEl, limitInfoEl, nameFieldEl, nameTextEl } = Keyboard,
-      { name, edo, hexGrid, scale } = this,
+      { name, edo, hexGrid, tuning } = this,
       { gstep, hstep, unit, orientation, orientations, displayKeyNames } = hexGrid,
-      { limit, refNote, freqBasis, maxError } = scale,
-      { upperBound } = await app.storage.loadScale({ edo, limit });
+      { limit, refNote, freqBasis, maxError } = tuning,
+      { upperBound } = await app.storage.loadTuning({ edo, limit });
     $("#commas").dataset.upperBound = upperBound;
     nameFieldEl.value = name;
     nameFieldEl.classList.remove("invalid");
@@ -149,7 +151,7 @@ class Keyboard {
     limitEl.value = limit;
     maxErrorEl.value = maxError;
     $(`#key-${displayKeyNames ? "name" : "rank"}-choice > input`, displayKeyNamesEl).checked = true;
-    scaleOutputEl.value = `One step of ${edo}EDO = ${(1200 / edo).toFixed(2)}¢`;
+    tuningOutputEl.value = `One step of ${edo}EDO = ${(1200 / edo).toFixed(2)}¢`;
     $.all("#clipboard-peek > *").forEach(el => el.remove());
     edoInfoEl.innerText = edo;
     limitInfoEl.innerText = limit;
@@ -179,9 +181,9 @@ class Keyboard {
 
   play (g, h, id) { // Convert g, h to hex?
     const
-      { hexGrid, scale, touches } = this, rank = hexGrid.coordToRank(g, h), octave = hexGrid.coordToOctave(g, h),
-      note = scale.getNote({ octave, rank }) ?? scale.addNote({ rank, octave }),
-      key  = scale.getKey(rank), hex = hexGrid.getHex(g, h), hexes = hex ? [hex] : key.hexes;
+      { hexGrid, tuning, touches } = this, rank = hexGrid.coordToRank(g, h), octave = hexGrid.coordToOctave(g, h),
+      note = tuning.getNote({ octave, rank }) ?? tuning.addNote({ rank, octave }),
+      key  = tuning.getKey(rank), hex = hexGrid.getHex(g, h), hexes = hex ? [hex] : key.hexes;
     let flag = true;
     const to = setTimeout(() => {
       hexes.forEach(h => hexGrid.addToActiveClass(hex ? "active" : "echo", h, id));
@@ -225,7 +227,7 @@ class Keyboard {
 
   refresh () {
     this.touches = new Map();
-    this.scale.refresh();
+    this.tuning.refresh();
     this.hexGrid.clearActiveClasses();
     this.hexGrid.redraw(true)
   }
@@ -236,26 +238,26 @@ class Keyboard {
 
 // Musical aspect of keyboard
 
-class Scale {
+class Tuning {
   #keyboard; limit
   mapping; refNote; freqBasis; maxError
   #keys = new Map() // Map([ rank, key ])
   #active = new Map() // Map([ note, Set(id) ])
   constructor ({ keyboard, limit, refNote, freqBasis, maxError }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Scale error: must provide Keyboard object");
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("Tuning error: must provide Keyboard object");
     this.#keyboard = keyboard;
     const { edo } = keyboard;
-    if (typeof limit !== "number" || limit < 3 || limit > app.maxHarmonic || limit % 2 !== 1) throw new Error("Scale error: bad harmonic limit");
-    if (typeof refNote !== "number" || refNote < 0 || refNote >= edo || refNote % 1) throw new Error("Scale error: bad reference note");
-    if (typeof freqBasis !== "number" || freqBasis < 10 || freqBasis > 4e4) throw new Error("Scale error: bad reference frequency");
-    if (typeof maxError !== "number" || freqBasis < 0 || freqBasis > 1200) throw new Error("Scale error: bad max pitch variation");
+    if (typeof limit !== "number" || limit < 3 || limit > app.maxHarmonic || limit % 2 !== 1) throw new Error("Tuning error: bad harmonic limit");
+    if (typeof refNote !== "number" || refNote < 0 || refNote >= edo || refNote % 1) throw new Error("Tuning error: bad reference note");
+    if (typeof freqBasis !== "number" || freqBasis < 10 || freqBasis > 4e4) throw new Error("Tuning error: bad reference frequency");
+    if (typeof maxError !== "number" || freqBasis < 0 || freqBasis > 1200) throw new Error("Tuning error: bad max pitch variation");
     this.limit = limit;
     this.maxError = maxError;
     this.refNote = refNote;
-    this.mapping = new HarmonicMapping({ keyboard, scale: this, hmap: this.#genRawHMap({ edo, limit, maxError }) });
+    this.mapping = new HarmonicMapping({ keyboard, tuning: this, hmap: this.#genRawHMap({ edo, limit, maxError }) });
     this.freqBasis = freqBasis;
 
-    for (let i = 0; i < edo; i++) this.#keys.set(i, new Key({ keyboard, scale: this, rank: i }))
+    for (let i = 0; i < edo; i++) this.#keys.set(i, new Key({ keyboard, tuning: this, rank: i }))
   }
   * [ Symbol.iterator ] () { for (const s of this.#keys.values()) yield s }
   #genRawHMap ({ edo, limit, maxError }) {
@@ -297,17 +299,17 @@ class Scale {
 
 
 class Key {
-  #keyboard; #scale; #notes = new Map(); #labels = []; #labelIndex = 0; #home; rank
+  #keyboard; #tuning; #notes = new Map(); #labels = []; #labelIndex = 0; #home; rank
   hexes = new Set()
-  constructor ({ keyboard, scale, rank }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("Key error: must provide Keyboard object");
+  constructor ({ keyboard, tuning, rank }) {
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("Key error: must provide Keyboard object");
     this.#keyboard = keyboard;
-    if (!(Scale.prototype.isPrototypeOf(scale))) throw new Error("Key error: must provide Scale object");
-    this.#scale = scale;
+    if (!Tuning.prototype.isPrototypeOf(tuning)) throw new Error("Key error: must provide Tuning object");
+    this.#tuning = tuning;
     this.rank = rank
   }
   addNote (octave) {
-    const note = new Note({ keyboard: this.#keyboard, scale: this.#scale, rank: this.rank, octave });
+    const note = new Note({ keyboard: this.#keyboard, tuning: this.#tuning, rank: this.rank, octave });
     this.#notes.set(octave, note);
     return note
   }
@@ -327,31 +329,31 @@ class Key {
 
 
 class Note {
-  #keyboard; #scale; rank; octave
+  #keyboard; #tuning; rank; octave
   #maxVolume = .333; #attack = .2; #decay = .5
   #note
-  constructor ({ keyboard, scale, rank, octave }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("HexGrid error: must provide Keyboard object");
-    if (!Scale.prototype.isPrototypeOf(scale)) throw new Error("Note error: must provide Scale object");
-    const existing = scale.getNote({ rank, octave })
+  constructor ({ keyboard, tuning, rank, octave }) {
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("HexGrid error: must provide Keyboard object");
+    if (!Tuning.prototype.isPrototypeOf(tuning)) throw new Error("Note error: must provide Tuning object");
+    const existing = tuning.getNote({ rank, octave })
     if (existing) return existing;
     this.#keyboard = keyboard;
-    this.#scale = scale;
+    this.#tuning = tuning;
     this.rank = rank;
     this.octave = octave
   }
-  get key () { return this.#scale.getKey(this.rank) }
+  get key () { return this.#tuning.getKey(this.rank) }
   async start () {
     if (this.#note) return;
     await Keyboard.userIsActive;
     const
       { audioctx, masterVolume } = app,
-      { rank, octave } = this, { freqBasis, refNote } = this.#scale, { edo } = this.#keyboard,
+      { rank, octave } = this, { freqBasis, refNote } = this.#tuning, { edo } = this.#keyboard,
       osc = audioctx.createOscillator(),
       volume = audioctx.createGain(),
       now = audioctx.currentTime;
     osc.type = "triangle";
-    osc.frequency.value = freqBasis * 2 ** (octave + ((refNote + rank) / edo));
+    osc.frequency.value = freqBasis * 2 ** (octave + ((rank - refNote) / edo));
     osc.connect(volume);
     volume.gain.value = .001;
     volume.gain.setValueAtTime(.001, now);
@@ -372,10 +374,10 @@ class Note {
     osc.stop(now + decay);
   }
 
-  turnOn (id) { this.#scale.play(this, id) }
-  turnOff (id) { this.#scale.stop(this, id) }
+  turnOn (id) { this.#tuning.play(this, id) }
+  turnOff (id) { this.#tuning.stop(this, id) }
 }
 
 
 
-export { Keyboard, Scale, Key, Note }
+export { Keyboard, Tuning, Key, Note }

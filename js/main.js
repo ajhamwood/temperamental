@@ -3,7 +3,7 @@ import Common from "./common.js";
 import Persist from "./storage.js";
 import { Temperament, Chord } from "./mapping.js";
 import { HarmonicLattice, Harmonic, Interval } from "./interval.js";
-import { Keyboard, Scale } from "./keyboard.js";
+import { Keyboard, Tuning } from "./keyboard.js";
 
 
 
@@ -82,7 +82,7 @@ class Listeners {
         else if (classList.contains("chord")) {
           this.dataset.active = "";
           const
-            chord = app.keyboard.scale.mapping.temperament.getChordByIntervals(JSON.parse($(".chord-intervals", this).dataset.intervals)),
+            chord = app.keyboard.tuning.mapping.temperament.getChordByIntervals(JSON.parse($(".chord-intervals", this).dataset.intervals)),
             { internalIntervalsRaw, inversion, voicing } = JSON.parse(chord.toString());
           data = JSON.stringify({ type: "chord", data: { internalIntervalsRaw, inversion, voicing, comma } })
         } else (data = app.keyboard.clipboardHolding.text);
@@ -105,7 +105,7 @@ class Listeners {
 const
   app = self.app = new $.Machine({
   // Global
-    version: "0.0.7",
+    version: "0.0.8",
     storage: null,
     globalBatchSize: 10,
 
@@ -126,7 +126,8 @@ const
     audioctx: null,
     masterVolume: null,
 
-    octaves: null,
+    octaveLow: null,
+    octaveHigh: null,
 
   // Track
     tracks: {},
@@ -215,6 +216,11 @@ $.targets({
     main.classList.toggle("hover", (mousedown || e.target === main) && Boolean(hex));
     if (!mousedown) keyboard.hoveredKey = e.target === main ? hex?.note.key : null;
     if (mousedown && hex) app.emit("press", e.layerX, e.layerY, "mouse", "move");
+
+    // if (e.target === main) {
+    //   const x = e.layerX * 2, y = e.layerY * 2, { h, w, octLen } = hexGrid;
+    //   console.log(Math.abs(h / 2 - y) + (Math.abs((w - octLen) / 2 - x) + Math.abs((w + octLen) / 2 - x)) / 2)
+    // }
   },
   "mouseup mouseout" (e) {
     if (!Keyboard.ready) return;
@@ -279,7 +285,7 @@ $.targets({
         limitEl: $("#limit > input"),
         maxErrorEl: $("#maxError > input"),
         displayKeyNamesEl: $("#hexbutton-labels"),
-        scaleOutputEl: $("#scale > output")
+        tuningOutputEl: $("#tuning > output")
       });
       Keyboard.limitEl.max = this.maxHarmonic;
       await this.emitAsync("load-presets");
@@ -340,7 +346,6 @@ $.targets({
     "clear-storage": Persist.reset,
 
     async "load-presets" () {  // Once, initially
-      this.octaves = $("#octaves > input").value = parseInt(this.storage.loadItem("octaves", 2));
 
       // Keyboards
       const { storage } = this;
@@ -360,7 +365,11 @@ $.targets({
       Keyboard.noteColours = JSON.parse(storage.loadItem("noteColours", JSON.stringify(Keyboard.noteColours)));
       await this.keyboard.fillSettings();
       Keyboard.ready = true;
+      this.octaveLow = $("#octave-low > input").value = parseInt(this.storage.loadItem("octaveLow", 3));
+      this.octaveHigh = $("#octave-high > input").value = parseInt(this.storage.loadItem("octaveHigh", 4));
       this.emit("generate-keyboard");
+
+      $.all("#octave-range input").forEach(el => el.dispatchEvent(new Event("change", { bubbles: true })));
 
       // Tracks
       const
@@ -377,8 +386,8 @@ $.targets({
 
     resize (reset) {
       const
-        { hexGrid } = this.keyboard,
-        { canvas, octaves } = this, { unit, orientation: [g, h], theta } = hexGrid,
+        { hexGrid } = this.keyboard, { canvas, octaveLow, octaveHigh } = this,
+        octaves = octaveHigh - octaveLow, { unit, orientation: [g, h], theta } = hexGrid,
         x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5,
         { width, height } = $("main").getBoundingClientRect(),
         r = hexGrid.r = Math.min(unit * 2, width / (Math.hypot(x, y) * octaves + 2) * 2);
@@ -387,6 +396,7 @@ $.targets({
         hexGrid.h = canvas.height = Math.ceil(height) * 2;
         this.gridctx.textBaseline = "middle"
       }
+      hexGrid.o = octaveLow - 3;
       hexGrid.c = (octaves % 2) * Math.hypot(x, y) * r / 2;
       hexGrid.octLen = Math.hypot(x, y) * r;
 
@@ -416,7 +426,7 @@ $.targets({
       let type, chord;
       const
         clipboardEl = $("#clipboard-item-select"), clipboardPeekEl = $("#clipboard-peek"),
-        { keyboard } = this, { scale, clipboard, edo } = keyboard, { mapping, limit } = scale, { lattice } = mapping;
+        { keyboard } = this, { tuning, clipboard, edo } = keyboard, { mapping, limit } = tuning, { lattice } = mapping;
       if (text) {
         const data = JSON.parse(text);
         ({ type } = data);
@@ -481,7 +491,7 @@ $.targets({
         case "chord":
           if (chord) data.item = chord;
           else {
-            const { temperament } = this.keyboard.scale.mapping;
+            const { temperament } = this.keyboard.tuning.mapping;
             data.item = temperament.getChordByIntervals(JSON.parse($(".chord-intervals", node).dataset.intervals).map(v => v.map(BigInt)));
             chord = data.item;
             text = JSON.stringify({ type, data: { comma: temperament.comma.fraction.map(String), ...JSON.parse(chord.toString()) } })
@@ -650,7 +660,7 @@ $.targets({
       $.all(".harmonic").forEach(el => el.remove());
       
       const
-        scale = new Scale({ keyboard, limit, maxError, refNote, freqBasis }), { mapping } = scale,
+        tuning = new Tuning({ keyboard, limit, maxError, refNote, freqBasis }), { mapping } = tuning,
         { rawHarmonicList, lattice, intervalSet } = mapping, { harmonicList, primes, indexPrimes } = lattice;
 
       for (const [ harmonic, steps ] of rawHarmonicList) {
@@ -725,7 +735,7 @@ $.targets({
           }
         }, labelEl)
       }
-      Object.assign(keyboard, { edo, scale });
+      Object.assign(keyboard, { edo, tuning });
 
       // Tonality diamond
       const diamondEl = $("#diamond");
@@ -796,7 +806,7 @@ $.targets({
       }
       $("div:last-of-type", ivTable).remove();
       $.all(".column-head:last-of-type, .row-head:last-of-type")
-      for (let steps = 0; steps < edo; steps++) scale.getKey(steps).labels
+      for (let steps = 0; steps < edo; steps++) tuning.getKey(steps).labels
         .forEach(({ interval: iv, number, keyClass }) => {
           const // TODO removable?
             [ n, d ] = iv.map(side => side.reduce(([big, log], [p, rad]) =>
@@ -846,13 +856,13 @@ $.targets({
         '.interval-display button:not([data-steps="0"])': {
           pointerdown ({ pointerId }) {
             this.setPointerCapture(pointerId);
-            const { keyboard } = app, { mapping } = keyboard.scale, steps = parseInt(this.dataset.steps);
+            const { keyboard } = app, { mapping } = keyboard.tuning, steps = parseInt(this.dataset.steps);
             $.all(`button[data-steps="${steps}"]`, this.closest(".interval-display"))
               .forEach(el => el.parentElement.classList.add("activeEnharmonic"));
             if (this.closest("#interval-table")) {
               const
                 [n, d] = this.parentElement.dataset.interval.split("/").map(v => Common.non2(BigInt(v))),
-                key = keyboard.scale.getKey(steps),
+                key = keyboard.tuning.getKey(steps),
                 enhi = key.labels.findIndex(({ interval: iv }) => Common.comp(iv[0]) === n && Common.comp(iv[1]) === d);
               ~enhi && (key.label = enhi);
               keyboard.hexGrid.redraw();
@@ -898,7 +908,7 @@ $.targets({
 
     async "generate-temperaments" () {
       const
-        { keyboard, storage } = this, { edo } = keyboard, { mapping, limit } = keyboard.scale, { lattice } = mapping,
+        { keyboard, storage } = this, { edo } = keyboard, { mapping, limit } = keyboard.tuning, { lattice } = mapping,
         ps = lattice.primes.concat(lattice.index).sort((a, b) => a > b), commasEl = $("#commas");
       let boundN, hasFresh, upperBound = parseInt(commasEl.dataset.upperBound), prevn, prevd;
 
@@ -959,7 +969,7 @@ $.targets({
       // TODO fix!
       if (hasFresh) commasEl.scrollTo(0, $("#computing-commas").offsetTop - commasEl.offsetTop - commasEl.offsetHeight - 1)
       commasEl.dataset.upperBound = upperBound = (1n + boundN / 100n) * 100n;
-      await storage.saveScale({ edo, limit, upperBound }) // commaBuffer?
+      await storage.saveTuning({ edo, limit, upperBound }) // commaBuffer?
     },
 
     "update-temperament-filter" (newCommas) {
@@ -993,7 +1003,7 @@ $.targets({
       const
         [ n, d ] = commaEl.dataset.comma.split(",").map(x => BigInt(x)),
         [ nd, dd ] = JSON.parse(commaEl.dataset.factors),
-        { keyboard, storage } = this, { edo, scale } = keyboard, { limit, mapping } = scale,
+        { keyboard, storage } = this, { edo, tuning } = keyboard, { limit, mapping } = tuning,
         { commas, temperaments } = mapping,
         tempsEl = $("#temperaments"), chordsFieldsetEl = $("#chord-list"),
         [ ,, ratioDiv, primesDiv ] = commaEl.children, [ numSpan, denSpan ] = primesDiv.children;
@@ -1170,7 +1180,7 @@ $.targets({
 
     "display-chord" (chord, chordEl) {
       const
-        { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.scale,
+        { keyboard } = this, { edo } = keyboard, { mapping } = keyboard.tuning,
         [ chNameQualEl, chIntervalsEl, chPitchesEl, chSpellingEl ] = chordEl.children,
         [ chNameEl, chQualityEl, chLimitEl ] = chNameQualEl.children,
         [ chIvHarmonicEl, chIvStepsEl ] = chIntervalsEl.children,
@@ -1298,7 +1308,7 @@ $.targets({
       $.queries({ "#breadcrumb-text > :nth-last-child(n+2)": { click () {
         app.emit("menu-select", this.dataset.menu.split(","))
       } } });
-      let cancelEl, applyEl;
+      let cancelEl, closeEl, applyEl;
       switch (menuLeaf) {
         case "keyboard-settings":
           cancelEl = $.load("menu-action", "#menu-actions")[0][0];
@@ -1328,9 +1338,9 @@ $.targets({
           $("#chord-list > :first-child").removeAttribute("table-bottom");
           this.menuState[1] = { keyboard: this.keyboard };
           this.emit("resize", true);
-          let { upperBound } = await this.storage.loadScale({ edo: this.keyboard.edo, limit: this.keyboard.scale.limit });
+          let { upperBound } = await this.storage.loadTuning({ edo: this.keyboard.edo, limit: this.keyboard.tuning.limit });
           $("#commas").dataset.upperBound = upperBound;
-          await this.keyboard.scale.mapping.resetCommas(upperBound); //?
+          await this.keyboard.tuning.mapping.resetCommas(upperBound); //?
           this.emit("generate-temperaments");
           break;
         case "track-editor":
@@ -1346,7 +1356,7 @@ $.targets({
       }
     },
     
-    async "menu-cancel" (data) {
+    async "menu-cancel" (data = {}) {
       $("body").classList.remove("menuActive");
       $("menu > .activeMenu")?.classList.remove("activeMenu");
       $.all("#menu-actions > *").forEach(el => el.remove());
@@ -1383,8 +1393,15 @@ $.queries({
   nav: { touchstart (e) { if ($.all(".non-focus").every(el => e.target !== el)) this.focus() } },
   form: { submit (e) { e.preventDefault() } },
   "#volume > input": { change () { app.emit("volume-change", this.valueAsNumber) } },
-  "#octaves > input": { change () {
-    app.storage.saveItem("octaves", app.octaves = this.valueAsNumber);
+  "#octave-low > input": { change () {
+    $("#octave-high > input").min = this.valueAsNumber + 1;
+    app.storage.saveItem("octaveLow", app.octaveLow = this.valueAsNumber);
+    app.emit("resize", true);
+    app.keyboard.hexGrid.redraw(true)
+  } },
+  "#octave-high > input": { change () {
+    $("#octave-low > input").max = this.valueAsNumber - 1;
+    app.storage.saveItem("octaveHigh", app.octaveHigh = this.valueAsNumber);
     app.emit("resize", true);
     app.keyboard.hexGrid.redraw(true)
   } },
@@ -1457,10 +1474,10 @@ $.queries({
   ":is(#limit, #maxError) > input": { change () { app.emit("generate-keyboard") } },
   "#edo > input": { change () {
     const
-      { refNoteEl, maxErrorEl, scaleOutputEl } = Keyboard,
+      { refNoteEl, maxErrorEl, tuningOutputEl } = Keyboard,
       edo = this.valueAsNumber;
     refNoteEl.value = Math.round(Math.log2(5 / 3) * edo); // C-A = 5/3
-    scaleOutputEl.value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
+    tuningOutputEl.value = `One step of ${edo}edo = ${(1200 / edo).toFixed(2)}¢`;
     maxErrorEl.value = Math.floor(400 / edo);
     app.keyboard.updateShape();
     app.emit("generate-keyboard");
@@ -1597,7 +1614,23 @@ $.queries({
     if ($("#track-edit").value !== app.tracks[app.trackSelection]) app.emit("track-save")
     editorEl.setSelectionRange(selStart + 1, selStart + 1);
     editorEl.focus()
-  } }
+  } },
+
+  // TODO as WC?
+  ".number-spin > input": {
+    change: function numberSpinInputChange () { $(".number-value", this.closest(".number-spin")).innerText = this.value },
+    invalid (e) {
+      if (this.validity.rangeUnderflow) this.value = this.min;
+      else if (this.validity.rangeOverflow) this.value = this.max;
+    }
+  },
+  ".spinner > *": { click () {
+    const numberSpinEl = this.closest(".number-spin"), inputEl = $("input", numberSpinEl);
+    inputEl.valueAsNumber += 1 - 2 * (this.className === "spin-down");
+    inputEl.reportValidity();
+    $(".number-value", numberSpinEl).innerText = inputEl.value;
+    inputEl.dispatchEvent(new Event("change", { bubbles: true }))
+  } },
 
 });
 

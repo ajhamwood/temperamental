@@ -45,7 +45,25 @@
       </div>
       <div id="octaves">
         <span>Octaves</span>
-        <input type="number" value="2" min="1" max="5" steps="1" size="2" enterkeyhint="done">
+        <div id="octave-range">
+          <div id="octave-low" class="number-spin">
+            <span class="number-value"></span>
+            <input type="number" value="3" min="0" step="1">
+            <div class="spinner">
+              <span class="spin-up"><span>⌃</span></span>
+              <span class="spin-down"><span>⌄</span></span>
+            </div>
+          </div>
+          &ndash;
+          <div id="octave-high" class="number-spin">
+            <span class="number-value"></span>
+            <input type="number" value="4" max="6" step="1">
+            <div class="spinner">
+              <span class="spin-up"><span>⌃</span></span>
+              <span class="spin-down"><span>⌄</span></span>
+            </div>
+          </div>
+        </div>
       </div>
       <div id="info">
         <span id="edo-info"></span>
@@ -90,7 +108,7 @@
           <legend>Note</legend>
           <label id="refNote">Tuning root note: <input type="number" min="0" step="1" size="4" enterkeyhint="done"></label>
           <label id="freqBasis">Tuning root frequency: <input type="number" min="10" max="40000" size="6" enterkeyhint="done"> Hz</label>
-          <div id="scale">Scale:
+          <div id="tuning">Tuning:
             <label id="edo">Divisions of octave: <input type="number" min="1" step="1" max="270" size="4" enterkeyhint="done"></label>
             <output></output>
           </div>

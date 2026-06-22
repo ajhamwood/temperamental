@@ -2,6 +2,7 @@ import Common from "./common.js";
 import { app } from "./main.js";
 import { IntervalSet } from "./interval.js";
 import { Keyboard } from "./keyboard.js";
+import { Scale } from "./scale.js";
 
 
 
@@ -10,14 +11,14 @@ import { Keyboard } from "./keyboard.js";
 class HexGrid { // TODO: set w, h, theta within HexGrid
   #keyboard
   w = 0; h = 0; c; unit; r; octLen
-  gstep; hstep; orientations; displayKeyNames; theta = 0
+  gstep; hstep; orientations; displayKeyNames; theta = 0; o = 0
   #orientation
   #hexes = new Map(); #edges; #notes
   #activeClasses = new Map() // Map([classname, Map([hex, Set(id)])])
   #bgImgCache
 
   constructor ({ keyboard, gstep, hstep, unit, orientation, displayKeyNames = true }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("HexGrid error: must provide Keyboard object");
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("HexGrid error: must provide Keyboard object");
     this.#keyboard = keyboard;
     if (typeof gstep !== "number" || gstep < 1 || gstep > app.maxEdo || gstep % 1 ||
       typeof hstep !== "number" || hstep < 1 || hstep > app.maxEdo || hstep % 1) throw new Error("Keyboard error: bad grid steps");
@@ -68,14 +69,14 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     const { gstep, hstep } = this, { edo } = this.#keyboard, res = [];
     for (let y = 0; y <= edo / hstep; y++) {
       const x = (edo - hstep * y) / gstep;
-      if (x === Math.floor(x)) res.push ([ x, y ])
+      if (x === Math.floor(x) && Common.gcd(x, y) === 1) res.push ([ x, y ])
     }
     this.orientations = res;
   }
   get orientation () { return this.#orientation }
   set orientation ([g, h]) {
     this.#orientation = [ g, h ];
-    const { unit, w } = this, x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5;
+    const x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5;
     this.theta = Math.atan(y / x)
   }
   setLattice ({ gstep, hstep }) {
@@ -92,42 +93,52 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   updateGrid (force) {
     if (this.#notes && !force) return;
     const
-      { gstep, hstep, c, w, octLen, orientation: [ g, h ] } = this,
+      { gstep, hstep, c, w, octLen, o, orientation: [ g, h ], r } = this,
       { edo } = this.#keyboard;
 
     // Central line
     this.#hexes = new Map();
-    this.#edges = new Set([this.#newHex(0, 0, false)]);
-    this.#notes = new Set([0]);
-    let left = .5, right = .5, focus = [ [0, 0], [0, 0] ];
-    for (let i = 1; i <= g + h; i++) {
-      if (left / i <= h / (g + h)) { left++; focus[0][1]++ } else focus[0][0]++;
-      if (right / i < h / (g + h)) { right++; focus[1][1]++ } else focus[1][0]++;
-      this.#edges.add(this.#newHex(...focus[0], false));
-      this.#notes.add(this.coordToSteps(focus[0][0], focus[0][1]));
-      if (focus[0].every((v, i) => v === focus[1][i])) continue
-      this.#edges.add(this.#newHex(...focus[1], false));
-      this.#notes.add(this.coordToSteps(focus[1][0], focus[1][1]))
+    this.#edges = new Set();
+    this.#notes = new Set();
+    const
+      { ranks } = new Scale({ keyboard: this.#keyboard, composition: new Set([g, h]) }).genSymmetricScale()
+        .setStepSizes(new Map([[g > h ? "X" : "Y", gstep], [g > h ? "Y" : "X", hstep]])),
+      coords = ranks.slice(1).reduce((ar, r, i) => {
+        const data = ar.at(-1).slice();
+        data[+(r - ranks[i] === hstep)]++;
+        data[2] = r;
+        return ar.concat([data])
+      }, [[ o * g, o * h, 0 ]]);
+    for (const [ g0, h0, s ] of coords) {
+      this.#edges.add(this.#newHex(g0, h0, false));
+      this.#notes.add(s)
     }
+    
 
     // One octave
-    const dev = coord => Math.abs(this.h / 2 - HexButton.centre(...coord, this)[1]);
+    // TODO candidates by f(g, h) R theta, filter by dev
+    const
+      xMin = HexButton.centre(o * g, o * h, this)[0] - r / 2,
+      xMax = HexButton.centre((o + 1) * g, (o + 1) * h, this)[0] + r / 2,
+      dev = coord => Math.abs(this.h / 2 - HexButton.centre(...coord, this)[1]);
     this.fillGrid({
-      candidate: (g0, h0) => Common.between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
-        !this.#notes.has(this.coordToRank(g0, h0)),
-      filter: hexes => Common.group(hexes, ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
-        .map(enhs => enhs.sort((a, b) => dev(a) > dev(b))[0]),
+      candidate: (g0, h0) => !this.#notes.has(this.coordToRank(g0, h0)) &&
+        Common.between(xMin, xMax, HexButton.centre(g0, h0, this)[0]),
+      filter: coords => Common.group(coords, ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
+        .map(enhs => enhs.sort((a, b) => dev(a) - dev(b))[0]),
       isGhost: () => false
     });
 
     // Two octaves
     this.#notes = new Set();
+    const hexes = this[Symbol.iterator]().map(h => h.coord).toArray();
     this.fillGrid({
-      candidate: (g0, h0) => Common.between(w / 2 - c, w / 2 - c + octLen, HexButton.centre(g0, h0, this)[0]) &&
-        !this.#notes.has(this.coordToRank(g0, h0)),
-      filter: hexes => Common.group(hexes, ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
-        .filter(([[g0, h0]]) => !this.#notes.has(this.coordToRank(g0, h0)))
-        .map(enhs => enhs.sort((a, b) => dev(a) > dev(b))[0]),
+      candidate: (g0, h0) => !this.#notes.has(this.coordToRank(g0, h0)) &&
+        Common.between(xMin, xMax, HexButton.centre(g0, h0, this)[0]),
+      filter: coords => Common.group(coords.filter(([a, b]) => [-1, 0, 1]
+        .every(k => hexes.every(([c, d]) => c !== a + k * g || d !== b + k * h))),
+        ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
+        .map(enhs => enhs.sort((a, b) => dev(a) - dev(b))[0]),
       isGhost: () => true
     });
 
@@ -137,7 +148,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       candidate: (g0, h0) => {
         const homeEquiv = ~home.findIndex(hex => {
                 const [ baseG, baseH ] = hex.coord;
-                return (baseG - g0) * h === (baseH - h0) * g // require gcd(g, h) === 1
+                return (baseG - g0) * h === (baseH - h0) * g
               });
         return homeEquiv && HexButton.vertices(g0, h0, this).some(([ px, py ]) =>
           px > 0 && px < this.w && py > 0 && py < this.h)
@@ -150,26 +161,25 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
 
     // Notes
     for (const hex of this) if (!hex.isGhost) {
-      const { octave, rank } = hex, note = this.#keyboard.scale.addNote({ octave, rank });
+      const { octave, rank } = hex, note = this.#keyboard.tuning.addNote({ octave, rank });
       if (octave === 0) note.key.home = hex
     }
   }
 
   async fillGrid ({ candidate, filter = x => x, isGhost }) {
-    let viewEdges = new Set([ ...this.#edges ]);
+    const viewEdges = new Set([ ...this.#edges ]);
     while (viewEdges.size > 0) {
-      let newViewEdges = new Map(), removeViewEdges = new Set(), newNotes = new Set();
+      const newViewEdges = new Map(), removeViewEdges = new Set(), newNotes = new Set();
       for (const hex of viewEdges) {
         let remove = true;
         for (const [g, h] of hex.neighbours()) {
           const thisHex = this.getHex(g, h);
-          if (thisHex) { if (viewEdges.has(thisHex)) removeViewEdges.add(thisHex) }
-          else if (candidate(g, h)) {
+          if (!thisHex && candidate(g, h)) {
             newViewEdges.get(g)?.add(h) ?? newViewEdges.set(g, new Set([h]));
-            newNotes.add(this.coordToRank(g, h));
-          } else remove = false;
+          }
+          else remove = false;
         }
-        removeViewEdges.add(hex)
+        removeViewEdges.add(hex);
         if (remove) this.#edges.delete(hex)
       }
       filter([ ...(function * () {
@@ -178,6 +188,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         const nextHex = this.#newHex(g, h, isGhost(g, h));
         this.#edges.add(nextHex);
         viewEdges.add(nextHex)
+        newNotes.add(this.coordToRank(g, h));
       });
       removeViewEdges.forEach(hex => viewEdges.delete(hex));
       this.#notes = new Set([ ...this.#notes, ...newNotes ])
@@ -191,11 +202,13 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   }
 
   getCoord (x, y) {
-    const { r, w: width, h: height, c } = this;
-    ([ x, y ] = this.rotate(x * 2 + c, y * 2, true));
+    const
+      { r, w: width, h: height, c, o, octLen } = this,
+      { octaveLow, octaveHigh } = self.app, os = octaveHigh - octaveLow; //ugh...
+    ([ x, y ] = this.rotate(x * 2 + (o + os / 2) * octLen, y * 2, true));
     const a = (x - width / 2) / r / Math.sqrt(3) * 2,
           b = (y - height / 2) / r * 2,
-          band = Math.floor(Math.floor((b + 1) / 3));
+          band = Math.floor((b + 1) / 3);
     if (((Math.floor(b % 3)) + 3) % 3 === 1) {
       const clampedA = ((a % 1) + 1) % 1, clampedB = ((b % 1) + 1) % 1,
             topLeft = clampedA + clampedB > 1, bottomLeft = clampedA < clampedB,
@@ -209,7 +222,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   classifyKeys (force) {
     if (this.#notes && !force) return;
     const 
-      { scale, edo } = this.#keyboard, { mapping } = scale,
+      { tuning, edo } = this.#keyboard, { mapping } = tuning,
       { intervalSet, lattice, rawHarmonicList } = mapping,
       { primes, indexPrimes, index, harmonicList } = lattice,
       bases = primes.map(p => [ p, p ])
@@ -248,13 +261,13 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       k = 1
     }
     for (const iv of ivset) mapping.intervalSet.add(iv);
-    for (const key of scale) key.hexes.clear();
+    for (const key of tuning) key.hexes.clear();
     for (const hex of this) {
       const
         { octave, rank } = hex, labels = [],
-        scaleKey = scale.getKey(rank),
-        note = scaleKey.addNote(octave);
-      scaleKey.hexes.add(hex);
+        tuningKey = tuning.getKey(rank),
+        note = tuningKey.addNote(octave);
+      tuningKey.hexes.add(hex);
       hex.note = note;
       if (result[rank]) for (let i = 0, ivs = result[rank]; i < ivs.length; i++) {
         const { accid, ...labelStrings } = Common.noteFromFactors(ivs[i]);
@@ -265,7 +278,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         if (ut) keyClass += ut[0] + "u";
         labels.push({ ...labelStrings, keyClass, interval: ivs[i] })
       }
-      if (!scaleKey.labels.length) scaleKey.labels = labels
+      if (!tuningKey.labels.length) tuningKey.labels = labels
     }
   }
 
@@ -301,33 +314,35 @@ class HexButton {
   }
 
   static vertices (g, h, grid) {
-    const { r, w, h: ht, c } = grid, x = w / 2, y = ht / 2, k = .5 * Math.sqrt(3),
+    const { r, w, h: ht, c, o, octLen } = grid, x = w / 2, y = ht / 2, k = .5 * Math.sqrt(3),
+          { octaveLow, octaveHigh } = self.app, os = octaveHigh - octaveLow,
           origin = [
             [ x, y - r ], [ x - r * k, y - r / 2 ], [ x - r * k, y + r / 2 ],
             [ x, y + r ], [ x + r * k, y + r / 2 ], [ x + r * k, y - r / 2 ]
           ];
-    return origin.map(([ a, b ]) => {
+    return origin.map(([ i, j ]) => {
       const [ rx, ry ] = grid.rotate(
-              Math.floor(a + r * k * (h + 2 * g)),
-              Math.floor(b + 1.5 * r * h)
+              Math.floor(i + r * k * (h + 2 * g)),
+              Math.floor(j + 1.5 * r * h)
             );
-      return [ rx - c, ry ]
+      return [ rx - (o + os / 2) * octLen, ry ]
     })
   }
   static centre (g, h, grid) {
-    const { r, w: width, h: height, c } = grid, k = .5 * Math.sqrt(3),
+    const { r, w: width, h: height, c, o, octLen } = grid, k = .5 * Math.sqrt(3),
+          { octaveLow, octaveHigh } = self.app, os = octaveHigh - octaveLow,
           [ rx, ry ] = grid.rotate(
             Math.floor(width / 2 + r * k * (h + 2 * g)),
             Math.floor(height / 2 + 1.5 * r * h)
           );
-    return [ rx - c, ry ]
+    return [ rx - (o + os / 2) * octLen, ry ]
   }
 
   #keyboard; #hexGrid; #g; #h; #note; isGhost
   constructor ({ keyboard, hexGrid, g, h, isGhost = false }) {
-    if (!(Keyboard.prototype.isPrototypeOf(keyboard))) throw new Error("HexButton error: must provide Keyboard object");
+    if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("HexButton error: must provide Keyboard object");
     this.#keyboard = keyboard;
-    if (!(HexGrid.prototype.isPrototypeOf(hexGrid))) throw new Error("HexButton error: must provide HexGrid object");
+    if (!HexGrid.prototype.isPrototypeOf(hexGrid)) throw new Error("HexButton error: must provide HexGrid object");
     this.#hexGrid = hexGrid;
     this.#g = g;
     this.#h = h;
