@@ -77,10 +77,12 @@ body {
     nav:not(:focus-within) { cursor: pointer }
     #controls {
       display: grid;
-      grid-template-columns: auto auto 1fr repeat(3, auto);
+      grid-template-columns: repeat(4, auto) 1fr auto;
       grid-gap: 0 .5em }
-      #volume > * { vertical-align: middle }
-      #volume > input { max-width: 20dvw }
+      #controls > button {
+        min-width: 1.2em;
+        padding: 0 }
+      #volume { --val: 0 }
       #octave-range {
         width: max-content;
         display: inline-flex;
@@ -487,8 +489,27 @@ body {
           cursor: pointer }
   main {
     background-color: #000;
-    overflow: hidden }
+    overflow: hidden;
+    contain: paint }
     main.hover { cursor: pointer }
+    main > aside#notifications {
+      position: absolute;
+      z-index: 1;
+      right: 1em;
+      top: 1em;
+      display: grid;
+      grid-gap: .5em }
+      #notifications > * {
+        background-color: #ddda;
+        color: #222;
+        display: inline;
+        padding: .5em .8em;
+      }
+      #notifications > * > .key-wrapper::after { content: ":" }
+      #notifications > * > .initial-wrapper::after { content: "⋯" }
+      #notifications > * > .prevValue-wrapper::after { content: "→" }
+      #notifications > .isInitial > :is(.initial-wrapper, .prevValue-wrapper),
+      #notifications > .isSecond > .initial-wrapper { display: none }
     canvas {
       transform: scale(.5);
       transform-origin: 0 0;
@@ -502,7 +523,19 @@ body {
     #reset-dialog button[data-action="Reset"] {
       border-color: red;
       border-radius: 4px }
-input[type="number"] { min-width: calc(var(--size) * .8rem) }
+input[type="number"], select { field-sizing: content }
+.knob { height: 2em; --bg-color: #222 }
+.knob > input { display: none }
+.dial {
+  display: inline-block;
+  height: inherit;
+  aspect-ratio: 1 / 1;
+  background:
+    radial-gradient(circle, var(--bg-color) 45%,transparent 45% 55%, var(--bg-color) 55% 70%, #222 70%),
+    conic-gradient(from 216deg, lime var(--v), crimson var(--v) var(--t), white var(--v) 288deg, var(--bg-color) 288deg);
+  --v: calc(var(--val) * 0.007625turn);
+  --t: calc(var(--v) + 0.0375turn) }
+.knob:focus-within label { --bg-color: #444 }
 .number-spin > input { display: none !important }
 .spinner {
   display: inline-grid;

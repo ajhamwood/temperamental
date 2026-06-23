@@ -78,9 +78,10 @@ class Keyboard {
   }
 
   static ready = false
+  static active = false;
   static #userResolver
   static userIsActive = new Promise(r => this.#userResolver = r);
-  static userActivate () { this.#userResolver() }
+  static userActivate () { this.#userResolver(this.active = true) }
 
 
   

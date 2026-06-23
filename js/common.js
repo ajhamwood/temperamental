@@ -4,6 +4,12 @@ class Common {
   static #allPrimesBig = this.#allPrimes.map(BigInt)
 
   static wait = ms => v => new Promise(r => setTimeout(() => r(v), ms))
+  // static debounce = (wm => key => {
+  //   const { b, p } = wm.get(key) ?? wm.set(key, { b: true, p: Promise.resolve() }).get(key);
+  //   if (b) {
+
+  //   }
+  // })(new WeapMap())
   
   static between = (min, max, val) => val <= max && val >= min
   static clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined

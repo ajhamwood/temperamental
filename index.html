@@ -39,17 +39,19 @@
       <button class="info" type="button">ℹ</button>
     </div>
     <div id="controls">
-      <div id="volume">
-        <span>Volume</span>
-        <input class="non-focus" type="range" min="0" max="100" step="1">
+      <button id="panic" class="non-focus" type="button" title="Panic">!</button>
+      <button id="refresh" class="non-focus" type="button" title="Refresh">⟳</button>
+      <div id="volume" class="knob" title="Volume">
+        <label for="knob-value" class="dial non-focus" tabindex="0"></label>
+        <input id="knob-value" type="number" min="0" max="100" step="1">
       </div>
-      <div id="octaves">
-        <span>Octaves</span>
+      <div id="octaves" title="Octave range">
+        <span>C</span>
         <div id="octave-range">
           <div id="octave-low" class="number-spin">
             <span class="number-value"></span>
             <input type="number" value="3" min="0" step="1">
-            <div class="spinner">
+            <div class="spinner non-focus" tabindex="0">
               <span class="spin-up"><span>⌃</span></span>
               <span class="spin-down"><span>⌄</span></span>
             </div>
@@ -58,7 +60,7 @@
           <div id="octave-high" class="number-spin">
             <span class="number-value"></span>
             <input type="number" value="4" max="6" step="1">
-            <div class="spinner">
+            <div class="spinner non-focus" tabindex="0">
               <span class="spin-up"><span>⌃</span></span>
               <span class="spin-down"><span>⌄</span></span>
             </div>
@@ -73,9 +75,7 @@
         <button id="track-loop" type="button">Loop</button>
         <button id="track-play" type="button"></button>
       </div>
-      <button id="refresh" class="non-focus" type="button">Refresh</button>
-      <button id="panic" class="non-focus" type="button">Panic</button>
-      <button id="fullscreen" class="non-focus" type="button"></button>
+      <button id="fullscreen" class="non-focus" type="button" title="Full Screen"></button>
     </div>
   </nav>
   <menu>
@@ -233,6 +233,7 @@
     </li>
   </menu>
   <main>
+    <aside id="notifications"></aside>
     <canvas id="hex"></canvas>
   </main>
   <dialog id="browser-advice">
@@ -259,42 +260,13 @@
       <button type="button" data-action="Reset">Reset</button>
     </form>
   </dialog>
-  <template id="sticky-grid-scroller">
-    <style>
-:host {
-  display: block;
-  overflow: scroll;
-  position: relative }
-:host(:not(.reset-pos)) > #wrapper {
-  position: relative;
-  overflow: hidden;
-  left: clamp(0px, var(--scrollLeft, 0px), var(--maxScrollLeft));
-  top: clamp(0px, var(--scrollTop, 0px), var(--maxScrollTop));
-  width: calc(var(--innerWidth) - min(var(--scrollLeft, 0px), var(--maxScrollLeft)));
-  height: calc(var(--innerHeight) - min(var(--scrollTop, 0px), var(--maxScrollTop))) }
-    </style>
-    <div id="wrapper">
-      <slot></slot>
-    </div>
-  </template>
-  <template id="sticky-grid-table">
-    <style>
-:host { display: block }
-:host(:not(.reset-pos)) > #wrapper {
-  overflow: hidden;
-  position: relative;
-  left: calc(var(--scrollLeft, 0px) - var(--scrollRight));
-  top: calc(var(--scrollTop, 0px) - var(--scrollBottom));
-  width: clamp(0px, var(--tableWidth) - var(--scrollLeft, 0px) + var(--scrollRight),
-    max(var(--tableWidth) - var(--maxScrollLeft), var(--wrapperWidth, 0px)));
-  height: clamp(0px, var(--tableHeight) - var(--scrollTop, 0px) + var(--scrollBottom),
-    max(var(--tableHeight) - var(--maxScrollTop), var(--wrapperHeight, 0px)));
-  max-height: var(--tableHeight);
-  max-width: var(--tableWidth) }
-    </style>
-    <div id="wrapper">
-      <slot name="table"></slot>
-    </div>
+  <template id="notification">
+    <span>
+      <span class="key-wrapper"><span class="key"></span></span>
+      <span class="initial-wrapper"><button class="initial"></button></span>
+      <span class="prevValue-wrapper"><button class="prevValue"></button></span>
+      <button class="newValue"></button>
+    </span>
   </template>
   <template id="breadcrumb-level">
     <span></span>

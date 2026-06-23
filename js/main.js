@@ -25,6 +25,65 @@ class IntervalManager {
     clearInterval(iv);
   }
   static has (name) { return name in this.#ivs }
+  static debounce (name, fn, ms) {
+    this.has(name) && this.clear(name);
+    this.set(name, () => { this.clear(name); fn() }, ms)
+  }
+}
+
+// Logs
+
+class Log {
+  static #list = [];
+  static commitLast () { Log.#list.at(-1).commit() }
+  static append({ key, value }) {
+    if (key === undefined) return;
+    let item = Log.#list.at(-1), prevValue = item?.value;
+    if (item && (key === item.key && !item.committed || key === "error")) item.value = value;
+    else {
+      let obj = { key, value };
+      if (item && item.committed) prevValue = obj.initial = item.value;
+      else prevValue = value;
+      item?.commit();
+      Log.#list.push(item = new LogItem(obj));
+    }
+    return prevValue
+  }
+  static tail (n) { return Log.#list.slice(-n) }
+}
+
+class LogItem {
+  #committed = false; #key; #value; #initial
+  constructor ({ key, value, initial }) {
+    this.#key = key;
+    this.#value = value
+    this.#initial = initial ?? value
+  }
+  get key () { return this.#key }
+  set key ({}) {}
+  get value () { return this.#value }
+  set value (v) {
+    if (this.#committed) return null;
+    else return this.#value = v
+  }
+  get initial () { return this.#initial }
+  set initial ({}) {}
+  get committed () { return this.#committed }
+  set committed ({}) {}
+  initialise () { return this.#value = this.#initial }
+  commit () { this.#committed = true }
+}
+
+class Notifications {
+  static #cbs = {
+    volume: n => {
+      const volEl = $("#volume > input");
+      volEl.value = n;
+      volEl.parentElement.style.setProperty("--val", n);
+      volEl.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  static callback (key, value) { this.#cbs[key]?.(value) }
 }
 
 
@@ -134,7 +193,7 @@ const
     trackSelection: null,
 
   // Log
-    log: []
+    log: Log
   });
 
 
@@ -164,10 +223,13 @@ $.targets({
       }, self))).then(() => $.pipe("userActivate"))
     }
     $.targets({ pointerdown: "pointerdown" }, self);
+    const volumeEl = $("#volume > input"), { storage } = app;
+    await storage.ready;
+    volumeEl.parentElement.style.setProperty("--val", storage.loadItem("masterVolume", 50));
     Keyboard.userActivate();
     const audioctx = app.audioctx = new AudioContext(), masterVolume = app.masterVolume = audioctx.createGain();
     masterVolume.connect(audioctx.destination);
-    masterVolume.gain.value = Common.scaleVolume($("#volume > input").valueAsNumber);
+    masterVolume.gain.value = Common.scaleVolume(volumeEl.valueAsNumber);
   },
 
   resize () {
@@ -250,7 +312,7 @@ $.targets({
   // TODO visual feedback for errors; recovery
   unhandledrejection (e) {
     e.preventDefault();
-    app.emitAsync("log", e.reason);
+    app.emitAsync("log", { key: "error", value: e.reason });
     if (app.audioctx) app.emit("panic");
     if (app.keyboard) {
       app.emit("resize", true);
@@ -1375,15 +1437,47 @@ $.targets({
       this.keyboard.hexGrid.redraw(true)
     },
 
-    "volume-change" (value) { this.masterVolume.gain.value = Common.scaleVolume(value) },
+    "volume-change" (value) {
+      this.storage.saveItem("masterVolume", value);
+      this.masterVolume.gain.value = Common.scaleVolume(value);
+      IntervalManager.debounce("log", () => this.emit("log", { key: "volume", value }), 150)
+    },
 
-    "log" (reason) {
-      this.log.push({ level: 1, reason })
+    "log" ({ key, value }) {
+      const notifsEl = $("#notifications");
+      if (notifsEl.lastChild?.dataset.key === key) notifsEl.lastChild.remove();
+      const
+        prevValue = Log.append({ key, value }),
+        [ item ] = Log.tail(1),
+        notifEl = $.load("notification", "#notifications")[0][0],
+        [ keyWrapEl, initWrapEl, prevValWrapEl, newValEl ] = notifEl.children;
+      notifEl.dataset.key = key;
+      keyWrapEl.firstChild.innerHTML = key;
+      initWrapEl.firstChild.innerHTML = item.initial;
+      prevValWrapEl.firstChild.innerHTML = prevValue;
+      newValEl.innerHTML = value;
+      notifEl.classList.toggle("isInitial", item.initial === prevValue && item.initial === value);
+      notifEl.classList.toggle("isSecond", item.initial === prevValue);
+      $.queries({
+        ".initial": { click () {
+          Notifications.callback(key, item.initial);
+          app.emit("log", { key, value: item.initial })
+        } },
+        ".prevValue": { click () {
+          Notifications.callback(key, prevValue);
+          app.emit("log", { key, value: prevValue })
+        } },
+        ".newValue": { click () {
+          Log.commitLast();
+          notifEl.remove()
+        } }
+      }, notifEl);
+      IntervalManager.debounce("notify " + key, () => Array.from(notifsEl.children)
+        .find(el => el.dataset.key === key)?.remove(), 5000)
     }
 
   }
 }, self);
-
 
 
 // Elements
@@ -1617,6 +1711,46 @@ $.queries({
   } },
 
   // TODO as WC?
+  ".dial": {
+    wheel (e) {
+      if (!Keyboard.active) return;
+      e.preventDefault();
+      const { control } = e.target;
+      control.stepDown(Math.ceil(e.deltaY));
+      control.dispatchEvent(new Event("change", { bubbles: true }));
+      this.parentElement.style.setProperty("--val", control.valueAsNumber)
+    },
+    ...(() => {
+      let prevY, pid, active = false;
+      return {
+        pointerdown ({ pointerId, pageY }) {
+          if (!active) {
+            pid = pointerId;
+            this.setPointerCapture(pid);
+            prevY = pageY;
+            active = 1
+          }
+        },
+        pointermove ({ pointerId, pageY, target }) {
+          if (active && pointerId === pid) {
+            const dY = Math.ceil(pageY - prevY), { control } = target;
+            $("#knob-value").stepUp(dY);
+            control.dispatchEvent(new Event("change", { bubbles: true }))
+            this.parentElement.style.setProperty("--val", control.valueAsNumber);
+            prevY = pageY;
+          }
+        },
+        "pointerup lostpointercapture" ({ type, pointerId }) {
+          if (active && pointerId === pid) {
+            if (type === "pointerup" && this.hasPointerCapture(pid))
+              this.releasePointerCapture(pid);
+            active = false
+          }
+        }
+      }
+    })()
+  },
+
   ".number-spin > input": {
     change: function numberSpinInputChange () { $(".number-value", this.closest(".number-spin")).innerText = this.value },
     invalid (e) {
