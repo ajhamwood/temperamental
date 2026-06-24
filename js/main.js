@@ -123,14 +123,13 @@ class Listeners {
     touchmove ({ changedTouches: [ { pageX, pageY } ] }) {
       img.style.setProperty("left", pageX - dx + 40 + "px");
       img.style.setProperty("top", pageY - dy + 40 + "px");
-      const clipboardEl = $("#clipboard-item-select");
-      $("#clipboard-item-select").classList
+      $("#scrapbook-menuitem").classList
         .toggle("active", document.elementsFromPoint(pageX, pageY).includes(clipboardEl))
     },
     touchend ({ changedTouches: [ { pageX, pageY } ] }) {
       img.remove();
-      const clipboardEl = $("#clipboard-item-select"), { classList } = this;
-      if (document.elementsFromPoint(pageX, pageY).includes(clipboardEl)) {
+      const scrapbookMenuEl = $("#scrapbook-menuitem"), { classList } = this;
+      if (document.elementsFromPoint(pageX, pageY).includes(scrapbookMenuEl)) {
         const
           e = new Event("drop", { bubbles: true, cancelable: true }),
           tr = new DataTransfer();
@@ -149,7 +148,7 @@ class Listeners {
         tr.effectAllowed = "copy";
         tr.dropEffect = "copy";
         e.dataTransfer = tr;
-        clipboardEl.dispatchEvent(e)
+        scrapbookMenuEl.dispatchEvent(e)
       } else if (classList.contains("chord")) delete this.dataset.active;
       $("body").classList.remove("copying")
     }
@@ -212,24 +211,9 @@ $.targets({
 
   // blur () { $("body").classList.remove("copying") },
 
-  async pointerdown (e) {
-    if (e.pointerType !== "mouse") {
-      const name = crypto.randomUUID();
-      await $.pipe("userActivate", () => new Promise(r => $.targets({
-        pointerup: ({ [name] () {
-          $.targets({ pointerup: name }, self);
-          r()
-        } })[name]
-      }, self))).then(() => $.pipe("userActivate"))
-    }
-    $.targets({ pointerdown: "pointerdown" }, self);
-    const volumeEl = $("#volume > input"), { storage } = app;
-    await storage.ready;
-    volumeEl.parentElement.style.setProperty("--val", storage.loadItem("masterVolume", 50));
-    Keyboard.userActivate();
-    const audioctx = app.audioctx = new AudioContext(), masterVolume = app.masterVolume = audioctx.createGain();
-    masterVolume.connect(audioctx.destination);
-    masterVolume.gain.value = Common.scaleVolume(volumeEl.valueAsNumber);
+  async click () {
+    $.targets({ click: "click" }, self);
+    app.emit("user-activate")
   },
 
   resize () {
@@ -240,18 +224,19 @@ $.targets({
 
   keydown (e) { switch (e.key) {
     case "Control": $("body").classList.add("copying"); break
-    case "Escape": document.activeElement.blur()
+    case "Escape": document.activeElement.blur();
+    default: if (!Keyboard.active) app.emit("user-activate")
   } },
   keyup (e) { if (e.key === "Control") $("body").classList.remove("copying") },
 
   "touchstart touchend touchmove" (e) {
-    if (!Keyboard.ready) return;
+    if (!Keyboard.ready || !Keyboard.active) return true;
     const nav = $("nav");
     if (e.type === "touchstart" && document.activeElement === nav && !e.composedPath().includes(nav)) nav.blur();
-    const canvas = $("canvas");
-    if (e.target === $("main")) for (const { clientX, clientY, identifier } of e.changedTouches) {
+    const main = $("main");
+    if (e.target === main) for (const { clientX, clientY, identifier } of e.changedTouches) {
       const
-        x = clientX - canvas.offsetLeft, y = clientY - canvas.offsetTop,
+        x = clientX - main.offsetLeft, y = clientY - main.offsetTop,
         { keyboard } = app, { hexGrid } = keyboard;
       if (keyboard && (keyboard.touches.has("touch-" + identifier) || e.type === "touchstart") &&
         (hexGrid.hasHex(...hexGrid.getCoord(x, y)) || e.type === "touchend"))
@@ -309,8 +294,8 @@ $.targets({
   online () {},
   offline () {},
 
-  // TODO visual feedback for errors; recovery
-  unhandledrejection (e) {
+  // TODO recovery?
+  "error unhandledrejection" (e) {
     e.preventDefault();
     app.emitAsync("log", { key: "error", value: e.reason });
     if (app.audioctx) app.emit("panic");
@@ -330,7 +315,7 @@ $.targets({
 
       Keyboard.attach({
         // Keyboard selection
-        selectEl: $("#keyboard-select > select"),
+        selectEl: $("#keyboard-menuitem > select"),
         edoInfoEl: $("#edo-info"),
         limitInfoEl: $("#limit-info"),
 
@@ -353,8 +338,8 @@ $.targets({
       await this.emitAsync("load-presets");
 
       // Resize cbs called around pageshow (ie after load); TODO Put these elsewhere?
-      const navEl = $("nav"), clipboardEl = $("#clipboard-item-select");
-      new ResizeObserver(() => clipboardEl.style.setProperty("--nav-height", navEl.offsetHeight + "px")).observe(navEl);
+      const navEl = $("nav"), scrapbookMenuEl = $("#scrapbook-menuitem");
+      new ResizeObserver(() => scrapbookMenuEl.style.setProperty("--nav-height", navEl.offsetHeight + "px")).observe(navEl);
       new ResizeObserver(() => {
         this.emit("resize", true);
         this.keyboard.hexGrid.redraw(true)
@@ -402,7 +387,19 @@ $.targets({
 
       $.all("input[size]").forEach(el => el.style.setProperty("--size", el.size));
 
-      $("#track-select > select").selectedIndex = 0
+      $("#track-menuitem > select").selectedIndex = 0
+    },
+
+    async "user-activate" () {
+      if (!navigator.userActivation.isActive) return;
+      $.targets({ "user-activate": "user-activate" }, app);
+      Keyboard.userActivate();
+      const volumeEl = $("#volume > input"), { storage } = this;
+      await storage.ready;
+      volumeEl.parentElement.style.setProperty("--val", storage.loadItem("masterVolume", 50));
+      const audioctx = app.audioctx = new AudioContext(), masterVolume = this.masterVolume = audioctx.createGain();
+      masterVolume.connect(audioctx.destination);
+      masterVolume.gain.value = Common.scaleVolume(volumeEl.valueAsNumber);
     },
 
     "clear-storage": Persist.reset,
@@ -415,7 +412,7 @@ $.targets({
       const
         keyboards = this.keyboards = (await storage.loadKeyboards()).reduce((obj, kb) => ({ ...obj, [kb.name]: kb }), {}),
         keyboardSelection = this.keyboardSelection = storage.loadItem("keyboardSelection", Object.keys(keyboards)[0]),
-        keyboard = keyboards[keyboardSelection], clipboard = keyboard.clipboard ?? [], kbSelectHrEl = $("#keyboard-select hr");
+        keyboard = keyboards[keyboardSelection], clipboard = keyboard.clipboard ?? [], kbSelectHrEl = $("#keyboard-menuitem hr");
       this.keyboard = new Keyboard(keyboard);
       Object.keys(keyboards).forEach(name => {
         const el = $.load("option", "", Keyboard.selectEl)[0][0]
@@ -436,9 +433,9 @@ $.targets({
       // Tracks
       const
         tracks = this.tracks = (await storage.loadTracks()).reduce((obj, tr) => ({ ...obj, [tr.name]: tr }), {}),
-        trackSelEl = $("#track-select select"), trackSelectHrEl = $("#track-select hr");
+        trackSelEl = $("#track-menuitem select"), trackSelectHrEl = $("#track-menuitem hr");
       Object.keys(this.tracks).forEach(name => {
-        const el = $.load("option", "#track-select > select")[0][0];
+        const el = $.load("option", "#track-menuitem > select")[0][0];
         el.innerText = name;
         el.setAttribute("name", name);
         trackSelEl.insertBefore(el, trackSelectHrEl)
@@ -487,7 +484,7 @@ $.targets({
     async copy ({ node, text }) {  // Move to Keyboard?
       let type, chord;
       const
-        clipboardEl = $("#clipboard-item-select"), clipboardPeekEl = $("#clipboard-peek"),
+        scrapbookMenuEl = $("#scrapbook-menuitem"), clipboardPeekEl = $("#clipboard-peek"),
         { keyboard } = this, { tuning, clipboard, edo } = keyboard, { mapping, limit } = tuning, { lattice } = mapping;
       if (text) {
         const data = JSON.parse(text);
@@ -655,9 +652,9 @@ $.targets({
       Keyboard.nameTextEl.innerText = name;
       Keyboard.nameFieldEl.classList.remove("invalid");
       $("#keyboard-name").classList.remove("editing");
-      $(`#keyboard-select option[name='${oldName}']`)?.remove();
+      $(`#keyboard-menuitem option[name='${oldName}']`)?.remove();
       const
-        el = $.load("option", "#keyboard-select > select")[0][0],
+        el = $.load("option", "#keyboard-menuitem > select")[0][0],
         nextEl = [...Keyboard.selectEl.options].slice(1)
           .find(el => el.value.localeCompare(name) > 0);
       el.innerText = name;
@@ -683,7 +680,7 @@ $.targets({
       Keyboard.nameTextEl.innerText = newName;
       Keyboard.nameFieldEl.value = newName;
       const
-        el = $.load("option", "#keyboard-select > select")[0][0],
+        el = $.load("option", "#keyboard-menuitem > select")[0][0],
         nextEl = Keyboard.selectEl.namedItem(name).nextElementSibling;
       el.innerText = newName;
       el.setAttribute("name", newName);
@@ -705,7 +702,7 @@ $.targets({
       await app.emitAsync("keyboard-select", optionEl.value);
       app.menuState[1] = { keyboard: app.keyboard };
       await this.emit("menu-cancel");
-      $(`#keyboard-select option[name='${keyboardSelection}']`).remove();
+      $(`#keyboard-menuitem option[name='${keyboardSelection}']`).remove();
       await storage.deleteKeyboard(keyboardSelection);
       delete this.keyboards[keyboardSelection];
     },
@@ -1185,6 +1182,7 @@ $.targets({
       chordEl.dataset.ord = JSON.stringify(chord.ord);
 
       app.emit("display-chord", chord, chordEl);
+      const comma = $(".comma.active").dataset.comma;
       $.queries({
 
         "button.play-chord": {
@@ -1226,9 +1224,9 @@ $.targets({
           dragstart (e) {
             $("body").classList.add("copying");
             e.dataTransfer.effectAllowed = "copy";
-            this.dataset.active = "";
             const { internalIntervalsRaw, inversion, voicing } = JSON.parse(chord.toString());
-            e.dataTransfer.setData("text/plain", JSON.stringify({ type: "chord", data: { internalIntervalsRaw, inversion, voicing, comma: comma.fraction.map(String) } }))
+            this.dataset.active = "";
+            e.dataTransfer.setData("text/plain", JSON.stringify({ type: "chord", data: { internalIntervalsRaw, inversion, voicing, comma } }))
           },
           dragend () {
             $("body").classList.remove("copying");
@@ -1265,7 +1263,7 @@ $.targets({
     // Track editor
 
     "track-name-update" (name) {
-      const { tracks, trackSelection, storage } = this, trackSelEl = $("#track-select > select");
+      const { tracks, trackSelection, storage } = this, trackSelEl = $("#track-menuitem > select");
       if (name === "New" || name in tracks && trackSelEl.value !== name) {
         $("#track-name-field").classList.add("invalid");
         return
@@ -1277,11 +1275,11 @@ $.targets({
       $("#track-name-text").innerText = name;
       $("#track-name-field").classList.remove("invalid");
       $("#track-name").classList.remove("editing");
-      $(`#track-select option[name='${trackSelection}']`)?.remove();
-      const el = $.load("option", "#track-select > select")[0][0];
+      $(`#track-menuitem option[name='${trackSelection}']`)?.remove();
+      const el = $.load("option", "#track-menuitem > select")[0][0];
       el.innerText = name;
       el.setAttribute("name", name);
-      trackSelEl.insertBefore(el, $("#track-select hr"));
+      trackSelEl.insertBefore(el, $("#track-menuitem hr"));
       el.selected = true;
 
       storage.deleteKeyboard(trackSelection).then(() => storage.saveTrack(track))
@@ -1319,12 +1317,12 @@ $.targets({
       const trackSelection = $("#track-name-field").value;
       let el;
       if (!(trackSelection in this.tracks)) {
-        el = $.load("option", "#track-select > select")[0][0];
+        el = $.load("option", "#track-menuitem > select")[0][0];
         el.innerText = trackSelection;
         el.setAttribute("name", trackSelection);
-        $("#track-select select").insertBefore(el, $("#track-select hr"));
+        $("#track-menuitem select").insertBefore(el, $("#track-menuitem hr"));
         el.selected = true
-      } else el = $("#track-select > select").namedItem(trackSelection);
+      } else el = $("#track-menuitem > select").namedItem(trackSelection);
       const name = this.trackSelection = $("#track-name-field").value;
       this.tracks[name] = { name, text: $("#track-edit").value };
       el.innerText = trackSelection;
@@ -1337,7 +1335,7 @@ $.targets({
       const { tracks, trackSelection } = this;
       delete this.tracks[trackSelection];
       this.trackSelection = null;
-      $(`#track-select option[name='${trackSelection}']`).remove();
+      $(`#track-menuitem option[name='${trackSelection}']`).remove();
       app.storage.deleteTrack(trackSelection);
       this.emit("menu-cancel")
     },
@@ -1372,6 +1370,7 @@ $.targets({
       } } });
       let cancelEl, closeEl, applyEl;
       switch (menuLeaf) {
+        // TODO hide "keyboard-delete" button when final keyboard
         case "keyboard-settings":
           cancelEl = $.load("menu-action", "#menu-actions")[0][0];
           Object.assign(cancelEl, { innerText: "Cancel", id: "keyboard-settings-cancel" });
@@ -1407,7 +1406,7 @@ $.targets({
           break;
         case "track-editor":
           $("#track-controls").classList.add("activeControls");
-          $("#track-select > select").namedItem(data[0] ?? "New").selected = true;
+          $("#track-menuitem > select").namedItem(data[0] ?? "New").selected = true;
           closeEl = $.load("menu-action", "#menu-actions")[0][0];
           Object.assign(closeEl, { innerText: "Close", id: "track-editor-close" });
           $.queries({ "#track-editor-close": {
@@ -1430,7 +1429,7 @@ $.targets({
           break
         case "track-editor":
           $("#track-controls").classList.remove("activeControls");
-          $("#track-select > select").selectedIndex = 0
+          $("#track-menuitem > select").selectedIndex = 0
       }
       this.menuState = [];
       this.emit("resize", true);
@@ -1505,7 +1504,7 @@ $.queries({
   } },
   "#panic": { click () { app.emit("panic") } },
   "#fullscreen": { click () { app.emit("fullscreen") } },
-  "#reset": { click () { $("#reset-dialog").showModal() } },
+  "#reset-menuitem": { click () { $("#reset-dialog").showModal() } },
   "#reset-dialog button": { click () {
     $("#reset-dialog").close();
     if (this.dataset.action === "Cancel") return;
@@ -1513,23 +1512,15 @@ $.queries({
     location.reload()
   } },
 
-  "#keyboard-settings-button": { click () {
-    if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
-    else app.emit("menu-select", [ "keyboard-settings" ])
+  "#dropdown > .dropdown": { click (e) { if (this === e.target) this.focus() } },
+  "#keyboard-menuitem": { "click pointerdown" (e) {
+    if ($.all("select, option", this).includes(e.target)) {
+      if (e.target.localName === "option" || e.pointerType === "mouse") $("#elements-menu").focus()
+    } else if (app.menuState[0] === "keyboard-settings") app.emit("menu-cancel"); 
+    else app.emit("menu-select", [ "keyboard-settings" ]);
+    e.stopPropagation()
   } },
-  // "#keyboard-settings": {
-  //   scroll () {  // TODO: Allow simultaneous x and y scrolling
-  //     if (!$("#table-choice > input").checked) return;
-  //     const
-  //       { scrollTop } = this, el = $("#ivtable-wrapper"), { scrollLeft } = el,
-  //       { offsetTop, offsetHeight } = $("#interval-view"),
-  //       { offsetTop: y, offsetLeft: x } = $("#keyboard-settings > form"),
-  //       offset = offsetTop + offsetHeight - y + x;
-  //     if (scrollTop < offset) el.scrollTo(scrollLeft, 0);
-  //     else el.scrollTo(scrollLeft, scrollTop - offset)
-  //   }
-  // },
-  "#keyboard-select > select": { change () { app.emit("keyboard-select", this.value) } },
+  "#keyboard-menuitem > select": { change () { app.emit("keyboard-select", this.value) } },
   "#keyboard-name-text": { click () {
     $("#keyboard-name").classList.add("editing");
     $("#keyboard-name-field").focus()
@@ -1586,9 +1577,9 @@ $.queries({
 
   "#temperament-list": { change () { app.emit("update-temperament-filter") } },
 
-  "#generate-temperaments": { click () { app.emit("menu-select", [ "temperaments" ]) } },
+  "#temperament-menuitem": { click () { app.emit("menu-select", [ "temperaments" ]) } },
 
-  "#clipboard-item-select": {
+  "#scrapbook-menuitem": {
     "dragenter dragover" (e) {
       e.preventDefault();
       this.classList.add("active")
@@ -1635,6 +1626,7 @@ $.queries({
         } else if (pointerType === "touch" && phase === 1) 
           Listeners.dragDropTouch.touchmove.call(this, { changedTouches: [ { identifier: pointerId, pageX, pageY } ] });
         else if (phase === 2) {
+          this.classList.add("cycling");
           keyboard.cycle("clipboard", (pageX - prevX) * 4);
           if (keyboard.clipboardPeekIndex !== clipboardPeekIndex) {
             data.stop(pointerId);
@@ -1652,7 +1644,8 @@ $.queries({
           this.releasePointerCapture(pointerId);
         }
         data.stop(pointerId);
-        phase = null
+        phase = null;
+        this.classList.remove("cycling")
       },
       dragstart (e) {
         if (Math.abs(prevX - x) > Math.abs(prevY - y)) {
@@ -1684,7 +1677,11 @@ $.queries({
     }))()
   },
 
-  "#track-select > select": { change () {
+  "#track-menuitem": { "click pointerdown" (e) {
+    if ($.all("select, option", this).includes(e.target) &&
+      (e.target.localName === "option" || e.pointerType === "mouse")) $("#expression-menu").focus();
+  } },
+  "#track-menuitem > select": { change (e) {
     if (this.value === "None") app.emit("menu-cancel");
     else app.emit("menu-select", [ "track-editor" ], ...(this.value === "New" ? [] : [ this.value ]))
   } },

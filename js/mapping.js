@@ -453,7 +453,6 @@ class Temperament {
     chord.withInversion(i, true);
     return result
   }
-  // BUG use getTemperedInterval
   getChordByIntervals (ivs) {
     for (let i = 0, subtrie = this.#chords; i < ivs.length; i++) {
       const mbIv = this.getTemperedInterval(...ivs[i]);

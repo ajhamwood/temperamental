@@ -70,12 +70,12 @@ body {
     flex-flow: column;
     user-select: none }
     nav > * {
-      padding: .5em;
       flex-flow: row;
       justify-content: space-between;
       align-items: center }
     nav:not(:focus-within) { cursor: pointer }
     #controls {
+      padding: .5em;
       display: grid;
       grid-template-columns: repeat(4, auto) 1fr auto;
       grid-gap: 0 .5em }
@@ -83,11 +83,15 @@ body {
         min-width: 1.2em;
         padding: 0 }
       #volume { --val: 0 }
-      #octave-range {
-        width: max-content;
-        display: inline-flex;
-        flex-flow: row nowrap;
-        & > * { margin: 0 .3em } }
+      #octaves { min-width: max-content }
+        #octave-range {
+          width: max-content;
+          display: inline-flex;
+          flex-flow: row nowrap;
+          & > * { margin: 0 .3em } }
+      #logo {
+        display: inline-block;
+        font-variant: small-caps }
       #info {
         width: 100%;
         min-width: max-content;
@@ -106,15 +110,48 @@ body {
       #track-controls.activeControls { display: flex }
         #track-play:not(.trackPlaying)::before { content: "Play ⏵" }
         #track-play.trackPlaying::before { content: "Pause ⏸" }
-    nav:focus-within:not(:has(.non-focus:focus)) > #dropdown, .copying #dropdown { display: flex }
+    nav:focus-within:not(:has(.non-focus:focus)) > #dropdown, .copying #dropdown {
+      display: grid;
+      grid-template-columns: repeat(3, auto) 1fr auto }
     #dropdown {
       display: none;
-      background-color: #000 }
-      #dropdown > :nth-last-child(n+2) { margin-right: 2em }
-        #dropdown > * > * { vertical-align: middle }
-        #keyboard-select option[disabled]:not(:nth-last-child(3)) { display: none }
-      #clipboard-item-select:has(#clipboard-peek:empty) { color: #666 }
-      .copying #clipboard-item-select {
+      background-color: #000;
+      border-bottom: 1px solid #444 }
+      .dropdown {
+        display: grid;
+        position: relative;
+        cursor: pointer }
+      .dropdown > ul {
+        display: none;
+        position: absolute;
+        top: 1em;
+        background-color: #ddd;
+        z-index: 3;
+        list-style: none;
+        top: 1em;
+        padding: 0;
+        border: 1px solid #444 }
+        .dropdown > span,
+        .dropdown > ul > li { padding: .5em .8em }
+        .dropdown > ul > li { min-width: max-content }
+      .dropdown:hover > span, .copying #expression-menu > span,
+      .dropdown:has(select:focus) > span { background-color: #444 }
+      .dropdown:hover > ul, .copying #expression-menu > ul,
+      .dropdown:has(select:focus) > ul {
+        display: initial;
+        background-color: #ddd;
+        color:#222 }
+      .dropdown > ul > li:hover,
+      .dropdown > ul > li:has(select:focus) { background-color: #aaa; }
+      #keyboard-menuitem option[disabled]:not(:last-child) { display: none }
+      #dropdown > :not(.dropdown) { margin: .5em }
+      #reset-menuitem {
+        background-color: crimson;
+        font-weight: bold;
+        color: #222 }
+      .copying #expression-menu { z-index: 2 }
+      .copying #scrapbook-menuitem:has(#clipboard-peek:empty) { color: #666 }
+      .copying #scrapbook-menuitem {
         position: absolute;
         top: 0;
         left: 0;
@@ -124,14 +161,16 @@ body {
         line-height: calc(var(--nav-height) - 4px);
         background-color: #000;
         border: 2px dashed #ddd8;
-        z-index: 1 }
-      .copying #clipboard-item-select.active {
+        z-index: 2 }
+      .copying #scrapbook-menuitem:not(.active):has(#clipboard-peek:not(:empty)) { background-color: #000 }
+      #scrapbook-menuitem:has(#clipboard-peek:not(:empty)),
+      .copying #scrapbook-menuitem.active {
         color: #ddd !important;
         background-color: #222 }
         #clipboard-peek {
           display: none;
           line-height: normal }
-        #clipboard-item-select > #clipboard-peek:not(:empty) { display: inline-block }
+        #scrapbook-menuitem > #clipboard-peek:not(:empty) { display: inline-block }
         #clipboard-peek {
           border: 1px solid #333;
           margin: -1px }
@@ -154,7 +193,8 @@ body {
             display: inline-block }
           .split-colours.item-colour {
             background: linear-gradient(to bottom right, var(--colour-1) 50%, var(--colour-2) 50%) }
-      #track-select { flex: 1 }
+        #clipboard-peek.cycling { cursor: ew-resize }
+      .info { grid-column-start: 5 }
   menu {
     background-color: #222;
     padding: 0;
@@ -504,7 +544,8 @@ body {
         color: #222;
         display: inline;
         padding: .5em .8em;
-      }
+        max-width: 30dvw;
+        word-break: break-all }
       #notifications > * > .key-wrapper::after { content: ":" }
       #notifications > * > .initial-wrapper::after { content: "⋯" }
       #notifications > * > .prevValue-wrapper::after { content: "→" }

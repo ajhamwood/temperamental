@@ -11,39 +11,12 @@
 </head>
 <body>
   <nav tabindex="0">
-    <div id="dropdown">
-      <div id="keyboard-select">
-        <span>Keyboard</span>
-        <select>
-          <option name="Empty" disabled>Empty</option>
-        </select>
-        <button id="keyboard-settings-button" type="button">⛭</button>
-      </div>
-      <div id="temperament-menu">
-        <span>Temperaments</span>
-        <button id="generate-temperaments" type="button">💡</button>
-      </div>
-      <div id="clipboard-item-select">
-        <span>Clipboard</span>
-        <span id="clipboard-peek" draggable="true"></span>
-      </div>
-      <div id="track-select">
-        <span>Track</span>
-        <select>
-          <option name="None">None</option>
-          <hr>
-          <option name="New">New</option>
-        </select>
-      </div>
-      <button id="reset" type="button">Reset</button>
-      <button class="info" type="button">ℹ</button>
-    </div>
     <div id="controls">
       <button id="panic" class="non-focus" type="button" title="Panic">!</button>
       <button id="refresh" class="non-focus" type="button" title="Refresh">⟳</button>
       <div id="volume" class="knob" title="Volume">
         <label for="knob-value" class="dial non-focus" tabindex="0"></label>
-        <input id="knob-value" type="number" min="0" max="100" step="1">
+        <input id="knob-value" type="number" value="50" min="0" max="100" step="1">
       </div>
       <div id="octaves" title="Octave range">
         <span>C</span>
@@ -70,12 +43,68 @@
       <div id="info">
         <span id="edo-info"></span>
         <span id="limit-info"></span>
+        <div id="logo">
+          <div id="logo-img"></div>
+          <span>Temperamental</span>
+        </div>
       </div>
       <div id="track-controls">
         <button id="track-loop" type="button">Loop</button>
         <button id="track-play" type="button"></button>
       </div>
       <button id="fullscreen" class="non-focus" type="button" title="Full Screen"></button>
+    </div>
+    <div id="dropdown">
+      <div id="elements-menu" class="dropdown" tabindex="0">
+        <span>Elements</span>
+        <ul class="menuitems">
+          <li id="keyboard-menuitem">
+            <span>Keyboard</span>
+            <select>
+              <option name="Empty" disabled>Empty</option>
+            </select>
+          </li>
+          <li id="temperament-menuitem">
+            <span>Temperament</span>
+            <div id="hcolour-peek"></div>
+          </li>
+          <li id="scales-menuitem">
+            <span>Scales</span>
+          </li>
+        </ul>
+      </div>
+      <div id="expression-menu" class="dropdown" tabindex="0">
+        <span>Expression</span>
+        <ul class="menuitems">
+          <li id="scrapbook-menuitem">
+            <span>Scrapbook</span>
+            <span id="clipboard-peek" draggable="true"></span>
+          </li>
+          <li id="track-menuitem">
+            <span>Track</span>
+            <select>
+              <option name="None">None</option>
+              <hr>
+              <option name="New">New</option>
+            </select>
+          </li>
+        </ul>
+      </div>
+      <div id="data-menu" class="dropdown" tabindex="0">
+        <span>Data</span>
+        <ul class="menuitems">
+          <li id="jobs-menuitem">
+            <span>Jobs</span>
+          </li>
+          <li id="save-menuitem">
+            <span>Save</span>
+          </li>
+          <li id="reset-menuitem">
+            <span>Reset</span>
+          </li>
+        </ul>
+      </div>
+      <button class="info" type="button" title="Info">ℹ</button>
     </div>
   </nav>
   <menu>
