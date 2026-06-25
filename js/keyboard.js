@@ -1,5 +1,5 @@
 import $ from "./machine.js";
-import Common from "./common.js";
+import { Common } from "./common.js";
 import { app } from "./main.js";
 import { HarmonicMapping } from "./mapping.js";
 import { HexGrid } from "./grid.js"

@@ -40,6 +40,8 @@ class Common {
     const i = a.findIndex(vs => cmp(vs[0], v));  // quadratic in cmp
     return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
   }, [])
+  static quotient = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) =>
+    ~a.findIndex(v0 => cmp(v0, v)) ? a : a.concat(v), [])
   static decomp = (...iv) => iv.map(r => { // use 2s?
     const raw = [], res = new Map();
     let ivh = this.non2(r), i = 1;
@@ -234,6 +236,96 @@ class Common {
       }
     }
   }
-
 }
-export default Common
+
+class MultiSet {
+    static * #subhelp (ar) {
+      if (ar.length === 0) yield [];
+      else for (let i = 0; i <= ar[0][1]; i++)
+        yield * this.#subhelp(ar.slice(1)).map(br => br.concat([[ar[0][0], i]]))
+    }
+    static * enumerateSubsets (m) {
+      yield * this.#subhelp(m.#keys.entries().toArray()).map(ar => new MultiSet().#attachKeys(ar))
+    }
+    #keys = new Map(); #size = 0
+    constructor (ar = []) {
+      const g = Common.group(ar);
+      for (const a of g) {
+        this.#size += a.length;
+        this.#keys.set(a[0], a.length)
+      }
+    }
+    #attachKeys (ar) {
+      this.#keys = ar;
+      return this
+    }
+    * [Symbol.iterator] () { for (const [k, v] of this.#keys) for (let i = 0; i < v; i++) yield k }
+    get [Symbol.toStringTag] () { return "MultiSet" }
+    * keys () { yield * this.#keys.keys() }
+    values = this[Symbol.iterator];
+    * entries () { yield * this.#keys.entries().map(([k, v]) => Array(v).fill(k)) }
+    get size () { return this.#size }
+    set size ({}) {}
+    insert (v) {
+      let k = 1;
+      if (this.#keys.has(v)) this.#keys.set(v, k += this.#keys.get(v));
+      else this.#keys.set(v, 1);
+      return k
+    }
+    delete (v) {
+      if (this.#keys.has(v)) {
+        const k = this.#keys.get(v);
+        if (k === 1) this.#keys.delete(v);
+        else this.#keys.set(v, k - 1);
+        return true
+      } else return false
+    }
+    has (v) { return this.#keys.has(v) }
+    union (ms) {
+      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+      const r = new Map(this.#keys);
+      for (const [k, v] of ms.#keys) r.set(k, r.has(k) ? Math.max(v, r.get(k)) : v);
+      return new MultiSet().#attachKeys(r)
+    }
+    intersection (ms) {
+      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+      const r = new Map();
+      for (const [k, v] of ms.#keys)
+        if (this.#keys.has(k)) r.set(k, Math.min(this.#keys.get(k), v));
+      return new MultiSet().#attachKeys(r)
+    }
+    plus (ms) {
+      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+      const r = new Map(this.#keys);
+      for (const [k, v] of ms.#keys) r.set(k, (r.get(k) ?? 0) + v);
+      return new MultiSet().#attachKeys(r)
+    }
+    minus (ms) {
+      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+      const r = new Map();
+      for (const [k, v] of ms.#keys)
+        if (this.#keys.has(k)) {
+          const v0 = this.#keys.get(k);
+          if (v0 > v) r.set(k, v0 - v);
+        }
+      return new MultiSet().#attachKeys(r)
+    }
+    symmetricDifference (ms) {
+      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+      const r = new Map();
+      for (const [k, v] of ms.#keys)
+        if (this.#keys.has(k)) {
+          const v0 = this.#keys.get(k);
+          if (v0 !== v) r.set(k, Math.abs(v0 - v));
+        }
+      return new MultiSet().#attachKeys(r)
+    }
+    scalarMultiply (k) {
+      if (k < 0 || k !== Math.floor(k)) return null;
+      const r = new Map()
+      if (k !== 0) for (const [k, v] of this.#keys) r.set(k, v * k);
+      return new MultiSet().#attachKeys(r)
+    }
+  }
+
+export { Common, MultiSet }

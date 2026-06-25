@@ -1,5 +1,5 @@
 import $ from "./machine.js";
-import Common from "./common.js";
+import { Common } from "./common.js";
 import { app } from "./main.js";
 import { Keyboard, Tuning } from "./keyboard.js";
 import { HarmonicLattice, IntervalSet, Interval } from "./interval.js";

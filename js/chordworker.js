@@ -1,4 +1,4 @@
-import Common from "./common.js";
+import { Common } from "./common.js";
 import { HarmonicLattice, IntervalSet } from "./interval.js";
 
 class ChordWorker {

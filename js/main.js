@@ -1,5 +1,5 @@
 import $ from "./machine.js";
-import Common from "./common.js";
+import { Common } from "./common.js";
 import Persist from "./storage.js";
 import { Temperament, Chord } from "./mapping.js";
 import { HarmonicLattice, Harmonic, Interval } from "./interval.js";
@@ -211,7 +211,7 @@ $.targets({
 
   // blur () { $("body").classList.remove("copying") },
 
-  async click () {
+  async "click" () {
     $.targets({ click: "click" }, self);
     app.emit("user-activate")
   },
@@ -393,13 +393,13 @@ $.targets({
     async "user-activate" () {
       if (!navigator.userActivation.isActive) return;
       $.targets({ "user-activate": "user-activate" }, app);
-      Keyboard.userActivate();
       const volumeEl = $("#volume > input"), { storage } = this;
       await storage.ready;
       volumeEl.parentElement.style.setProperty("--val", storage.loadItem("masterVolume", 50));
       const audioctx = app.audioctx = new AudioContext(), masterVolume = this.masterVolume = audioctx.createGain();
       masterVolume.connect(audioctx.destination);
       masterVolume.gain.value = Common.scaleVolume(volumeEl.valueAsNumber);
+      Keyboard.userActivate();
     },
 
     "clear-storage": Persist.reset,

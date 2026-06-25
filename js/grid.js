@@ -1,4 +1,4 @@
-import Common from "./common.js";
+import { Common, MultiSet } from "./common.js";
 import { app } from "./main.js";
 import { IntervalSet } from "./interval.js";
 import { Keyboard } from "./keyboard.js";
@@ -67,9 +67,9 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
 
   genOrientations () {
     const { gstep, hstep } = this, { edo } = this.#keyboard, res = [];
-    for (let y = 0; y <= edo / hstep; y++) {
+    for (let y = 1; y <= edo / hstep; y++) {
       const x = (edo - hstep * y) / gstep;
-      if (x === Math.floor(x) && Common.gcd(x, y) === 1) res.push ([ x, y ])
+      if (x === Math.floor(x) && x > 0) res.push ([ x, y ])
     }
     this.orientations = res;
   }
@@ -101,7 +101,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.#edges = new Set();
     this.#notes = new Set();
     const
-      { ranks } = new Scale({ keyboard: this.#keyboard, composition: new Set([g, h]) }).genSymmetricScale()
+      { ranks } = new Scale({ keyboard: this.#keyboard, composition: new MultiSet([g, h]) }).genSymmetricScale()
         .setStepSizes(new Map([[g > h ? "X" : "Y", gstep], [g > h ? "Y" : "X", hstep]])),
       coords = ranks.slice(1).reduce((ar, r, i) => {
         const data = ar.at(-1).slice();
