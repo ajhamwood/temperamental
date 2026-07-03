@@ -48,7 +48,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   coordToRank (g, h) { return Common.mod(this.coordToSteps(g, h), this.#keyboard.edo) }
   coordToOctave (g, h) { return Math.floor(this.coordToSteps(g, h) / this.#keyboard.edo) }
 
-  * [Symbol.iterator]() { yield * this.#hexes.values() }
+  * [Symbol.iterator] () { yield * this.#hexes.values() }
 
   addToActiveClass (name, hex, id) {
     const activeClasses = this.#activeClasses, activeHexes = activeClasses.get(name) ?? new Map();

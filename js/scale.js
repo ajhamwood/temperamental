@@ -314,6 +314,7 @@ class Scale {
     else if (word) this.word = word;
     else if (composition) this.composition = composition;
     else throw new Error("Scale error: must at least provide scale composition");
+    // TODO allow deferral
     if (this.#word) this.#genIntervalData();
     if (mode) this.mode = mode;
     if (equations) this.equations = equations;
@@ -442,13 +443,28 @@ class Scale {
   }
   get ranks () { return this.#ranks ? this.#scaleInMode : null }
 
+
+
+  // Data
+
   #genIntervalData () {
     let gics;
     const mode = this.#primeMode ?? 0, { arity } = this;
     if (this.#ranks) gics = Scale.ranksToGenericIvs(this.ranks);
     else if (this.#word) gics = Scale.mixedWordToGenericIvs(this.pattern ?? this.word);
-    this.#genICs = gics.map((gic, i) => gic.map(({ iv, degrees }) =>
-      new StepInterval({ scale: this, iv, gic: i, degrees: degrees.map(n => (n + mode) % arity) })));
+
+    // Interval set by simple equality
+    const ivs = gics.reduce((m, gic, i) => (gic.forEach(({ iv, degrees: ds }) => {
+      const mbGiv = m.keys().find(iv1 => StepInterval.cmp(iv, iv1) === 0);
+      if (mbGiv) {
+        const { gic, degrees } = m.get(mbGiv);
+        gic.add(i);
+        ds.forEach(d => degrees.add(d))
+      } else m.set(iv, { gic: new Set([i]), degrees: new Set(ds.map(n => (n + mode) % arity)) })
+    }), m), new Map())
+    for (const [iv, { gic, degrees }] of ivs) ivs.set(iv, new StepInterval({ scale: this, iv, gic, degrees }));
+    this.#genICs = gics.map((gic, i) => gic.map(({ iv }) => ivs.entries().find(([iv1]) => StepInterval.cmp(iv, iv1) === 0)[1]));
+
     this.#ivPO = new StepIntervalPO({ scale: this, ivs: Common.quotient(this.#genICs.flat(), (a, b) => a.equal(b)) });
     if (this.#pattern && !this.#ranks) this.mode = this.#primeMode = Common.mod(Scale.mixedWordToGenericIvsInMode(this.#pattern)
       .sort(({ ivs: as }, { ivs: bs }) => as.toReversed().reduce(({ ord, done = false }, str, i) => {
@@ -462,44 +478,78 @@ class Scale {
       }, { ord: 0 }).ord)[0].degree + Math.ceil(this.arity / 2) + 1, this.#modeCount);
 
     if (this.#pattern) {
-      const gicMaxes = [], gicMins = []
       const
-        { intervals } = this,
+        gicMaxes = [], gicMins = [], gicTOSubsets = [], { intervals } = this,
         baseIvs = this.#ranks ? Scale.ranksInMode(this.#ranks, this.#primeMode).map(rank => intervals.getRank(rank)).filter(Boolean) :
           Scale.mixedWordToGenericIvsInMode(this.#pattern)[this.#primeMode].ivs.map(word => intervals.getWord(word));
       Array.from(this.#ivPO).forEach(iv => this.#ivNames.set(iv, new Set()));
       for (let i = 0; i < this.#genICs.length; i++) {
-        const gic = this.#genICs[i], { tOSubsets, cmp } = this.#ivPO.getSubPO(gic);
-        this.#concatAccid(tOSubsets, { rank: i + 2, accid: "" }, 0, 0, baseIvs[i]);
+        const { tOSubsets } = this.#ivPO.getSubPO(this.#genICs[i]);
+        gicTOSubsets.push(tOSubsets);
         gicMaxes.push(Array.from(tOSubsets.at(-1)));
         gicMins.push(Array.from(tOSubsets[0]))
       }
       this.#rothenberg = this.#computeRothenberg(gicMins, gicMaxes, true) ? 1 :
-        this.#computeRothenberg(gicMins, gicMaxes, false) ? 0 : -1
+        this.#computeRothenberg(gicMins, gicMaxes, false) ? 0 : -1;
+      if (this.#ranks && this.#rothenberg >= 0) {
+        const min = [...gicMins[0][0]][0].value, max = [...gicMaxes.at(-1)[0]][0].value;
+        if (min > 0) {
+          this.#rankNames.set(0, { rank: 1, accid: "" });
+          this.#concatAccid([], { rank: 1, accid: "A" }, 1, 1, false, Array(Math.ceil((min - 1) / 2)).fill(0).map((_, i) => i + 1));
+        }
+        for (let i = 0; i < this.#genICs.length; i++) {
+          const
+            curMin = [...gicMins[i][0]][0].value,
+            lower = curMin - Math.floor((curMin - (i === 0 ? 0 : [...gicMaxes[i - 1][0]][0].value) - 1) / 2),
+            curMax = [...gicMaxes[i][0]][0].value,
+            upper = i === this.#genICs.length - 1 ? Math.floor(this.#ranks.at(-1) / 2) :
+              curMax + Math.ceil(([...gicMins[i + 1][0]][0].value - curMax - 1) / 2);
+          this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseIvs[i],
+            Array(upper - lower + 1).fill(0).map((_, i) => i + lower))
+        }
+      }
+      else for (let i = 0; i < this.#genICs.length; i++)
+        this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseIvs[i]);
     }
     const givs = Array.from(this.#ivPO);
     this.#deepScale = givs.length === Common.group(givs.map(giv => giv.values()
       .reduce((s, iv) => (iv.degrees.forEach(d => s.add(d)), s), new Set()).size)).length
   }
   getGenericIntervalClass (n) { return this.#genICs[n] }
+  get intervals () { return this.#ivPO }
+  set intervals (_) {}
 
-  // Interval name by recursive splitting of ordering
-  // TODO not stable under constraint application - leave space for incomparable intervals to be given names
-  #concatAccid (ar, name, level, bias, init) {
-    if (ar.length === 0) return;
+  // Interval name by recursive splitting of ordering, relative to scale
+  #concatAccid (ar, name, level, bias, init, ranks) {
+    if (ar.length === 0 && !ranks?.length) return;
     const
-      si = init ? ar.findIndex(ss => ss.has(init)) : ar.length % 2 === 0 ? ar.length / 2 + bias - 1 : (ar.length - 1) / 2,
-      left = ar.slice(0, si), right = ar.slice(si + 1);
-    this.#concatAccid(left, Object.assign({}, name, { accid: (Scale.#levelChar[level]?.[0] ?? "-") + name.accid }), level + 1, 1);
-    if (ar[si].size > 1) Array.from(ar[si]).forEach((iv, j) => this.#ivNames
+      si = init ? ar.findIndex(ss => ss.has(init)) : ar.length % 2 === 0 ? Math.max(0, ar.length / 2 + bias - 1) : (ar.length - 1) / 2,
+      left = ar.slice(0, si), right = ar.slice(si + 1), leftRanks = [], rightRanks = [];
+    let ri;
+    if (ranks) {
+      ri = ar.length ? ranks.indexOf([...[...ar[si]][0]][0].value) : ranks.length % 2 === 0 ? ranks.length / 2 + bias - 1 : (ranks.length - 1) / 2;
+      leftRanks.splice(0, 0, ...ranks.slice(0, ri));
+      rightRanks.splice(0, 0, ...ranks.slice(ri + 1));
+    }
+    this.#concatAccid(left, Object.assign({}, name, { accid: (Scale.#levelChar[level]?.[0] ?? "-") + name.accid }), level + 1, bias, false, leftRanks);
+    if (ar.length) if (ar[si].size > 1) Array.from(ar[si]).forEach((iv, j) => this.#ivNames
       .get(iv).add(Object.assign({}, name, { accid: `(${Scale.#wordChars[j]})` + name.accid })));
-    else this.#ivNames.get(ar[si].values().next().value).add(name);
-    this.#concatAccid(right, Object.assign({}, name, { accid: (Scale.#levelChar[level]?.[1] ?? "+") + name.accid }), level + 1, 0)
+    else this.#ivNames.get([...ar[si]][0]).add(name);
+    if (ranks) this.#rankNames.set(ranks[ri], name)
+    this.#concatAccid(right, Object.assign({}, name, { accid: (Scale.#levelChar[level]?.[1] ?? "+") + name.accid }), level + 1, 1 - bias, false, rightRanks)
   }
   getNames (iv) {
     const { rank, accid } = this.#ivNames.get(this.#ivPO.get(iv));
     return accid + Common.ordinal(rank) +
       this.arity.toString().split("").map(n => String.fromCodePoint(0x2080 + parseInt(n))).join("")
+  }
+  #rankNames = new Map()
+  getRankNames (rank) {
+    if (this.#ranks) {
+      const { rank, accid } = this.#rankNames.get(rank);
+      return accid + Common.ordinal(rank) +
+        this.arity.toString().split("").map(n => String.fromCodePoint(0x2080 + parseInt(n))).join("")
+    }
   }
 
   // TODO rothenberg, lumma stability on rank scales
@@ -544,9 +594,6 @@ class Scale {
   }
   get equations () { return this.#equations }
 
-  // TODO: use equations
-  get intervals () { return this.#ivPO }
-  set intervals (_) {}
 
 
   // Generation
@@ -656,18 +703,18 @@ class Scale {
 
 
 class StepInterval {
-  // TODO factor through equations - computationally expensive
+  // Simple equality
   static cmp (iv0, iv1) {
-    if (iv0.scale !== iv1.scale) return null;
-    if (iv0.scale.ranks && iv1.scale.ranks)
-      return iv0.value === iv1.value ? 0 : iv0.value > iv1.value ? 1 : -1;
-    const scale = iv0.scale, siv0 = iv0.value, siv1 = iv1.value;
-    // For now...
-    if (siv0.size > siv1.size) return 1;
-    else if (siv1.size > siv0.size) return -1;
+    if (StepInterval.prototype.isPrototypeOf(iv0)) iv0 = iv0.value;
+    if (StepInterval.prototype.isPrototypeOf(iv1)) iv1 = iv1.value;
+    if (iv0.constructor.name !== iv1.constructor.name ||
+      iv0.constructor.name !== "Number" && iv0.constructor.name !== "MultiSet") return null;
+    if (typeof iv0 === "number") return iv0 === iv1 ? 0 : iv0 > iv1 ? 1 : -1;
+    if (iv0.size > iv1.size) return 1;
+    else if (iv1.size > iv0.size) return -1;
     const
-      d0 = Array.from(siv0.minus(siv1)).sort((a, b) => a - b),
-      d1 = Array.from(siv1.minus(siv0)).sort((a, b) => a - b);
+      d0 = Array.from(iv0.minus(iv1)).sort((a, b) => a - b),
+      d1 = Array.from(iv1.minus(iv0)).sort((a, b) => a - b);
     return d0.reduce((ord, char, i) => { switch (ord) {
       case 0: return Scale.charCmp(char, d1[i]);
       case 1: return Scale.charCmp(char, d1[i]) > -1 ? 1 : null;
@@ -694,11 +741,11 @@ class StepInterval {
       this.#strRep = StepInterval.multiSetToString(iv)
     }
     this.#value = iv;
-    if (gic !== undefined && typeof gic !== "number")
-      throw new Error("StepInterval error: generic interval class must be given as a number");
+    if (gic !== undefined && !Set.prototype.isPrototypeOf(gic) && gic.values().some(n => typeof n !== "number"))
+      throw new Error("StepInterval error: generic interval class must be given as a Set of numbers");
     this.#gIC = gic;
-    if (degrees !== undefined && (typeof degrees[Symbol.iterator] !== "function" || degrees.values().some(n => typeof n !== "number")))
-      throw new Error("StepInterval error: degree positions must be an Iterable of Numbers");
+    if (degrees !== undefined && !Set.prototype.isPrototypeOf(degrees) || degrees.values().some(n => typeof n !== "number"))
+      throw new Error("StepInterval error: degree positions must be a Set of numbers");
     this.#degrees = degrees
   }
   get scale () { return this.#scale }
@@ -828,23 +875,23 @@ class StepIntervalPO {
   set scale (_) {}
   get (iv0) { return this.#vertices.values().find(s => ~Array.from(s).findIndex(iv1 => iv0.equal(iv1))) }
   has (iv0) { return !!~this.#vertices.values().toArray().findIndex(s => ~Array.from(s).findIndex(iv1 => iv0.equal(iv1))) }
-  getWord (str) {
-    if (!this.#scale.word) return;
-    const m = new MultiSet(str.split(""));
-    return this.#vertices.values().find(s => ~Array.from(s).findIndex(iv => iv.value.equal(m)));
-  }
-  hasWord (str) {
-    if (!this.#scale.word) return;
-    const m = new MultiSet(str.split(""));
-    return !!~this.#vertices.values().toArray().findIndex(s => ~Array.from(s).findIndex(iv => iv.value.equal(m)));
-  }
+  getWord (str) { return this.getBag(new MultiSet(str.split(""))) }
+  hasWord (str) { return this.hasBag(new MultiSet(str.split(""))) }
   getRank (rank) {
     if (!this.#scale.ranks) return;
     return this.#vertices.values().find(s => ~Array.from(s).findIndex(iv => iv.value === rank));
   }
   hasRank (rank) {
-    if (!this.#scale.ranks) return;
-    return !!~this.#vertices.values().toArray().findIndex(s => ~Array.from(s).findIndex(iv => iv.value === rank));
+    if (!this.#scale.ranks) return false;
+    return Boolean(~this.#vertices.values().toArray().findIndex(s => ~Array.from(s).findIndex(iv => iv.value === rank)));
+  }
+  getBag (m) {
+    if (!this.#scale.word) return;
+    return this.#vertices.values().find(s => ~Array.from(s).findIndex(iv => iv.value.equal(m)));
+  }
+  hasBag (m) {
+    if (!this.#scale.word) return false;
+    return Boolean(~this.#vertices.values().toArray().findIndex(s => ~Array.from(s).findIndex(iv => iv.value.equal(m))));
   }
   // returns a comparator just on the PO subset containing the given intervals, and the greatest total ordering
   getSubPO (ivs) {
@@ -921,7 +968,8 @@ class StepIntervalPO {
           lhs = lhs.scalarMultiply(1 / g);
           rhs = rhs.scalarMultiply(1 / g);
           if (lhs.size === 0 || rhs.size === 0 ||
-            eqs.some(([m0, m1]) => (m0.equal(lhs) && m1.equal(rhs)) || (m1.equal(lhs) && m0.equal(rhs)))) continue;
+            eqs.some(([m0, m1]) => (m0.equal(lhs) && m1.equal(rhs)) || (m1.equal(lhs) && m0.equal(rhs))) ||
+            this.cmp(this.getBag(lhs), this.getBag(rhs)) !== null) continue;
           if (Scale.charCmp(lhs.keys().toArray().sort(Scale.charCmp)[0], rhs.keys().toArray().sort(Scale.charCmp)[0]) === 1)
             eqs.push([rhs, lhs]);
           else eqs.push([lhs, rhs]);
@@ -930,10 +978,12 @@ class StepIntervalPO {
     }
     this.#eqChoices = eqs;
   }
+  showEqChoices () { return this.#eqChoices.map(eq => eq.map(StepInterval.multiSetToString).join(" = ")).join("; ") }
   get eqs () { return this.#eqs.slice() }
   set eqs (_) {}
 
   // TODO: constrain this PO with the given equations
+  // updates to partial order and computing enharmonic intervals are done here
   applyEquations (eqs) {}
   // TODO: minimal set of equations which determines a total ordering between
   //   generic intervals
@@ -944,8 +994,6 @@ class StepIntervalPO {
   // TODO: minimal set of equations which determines given value of rothenberg propriety on scale
   // "wlog choices"
   eqsForRothenberg (gics, rothenberg) {}
-  // TODO: returns [-1,0,1,null] for LT,EQ,GT,not comparable
-  rothenberg (gics) {}
   isTotalOrder () { return this.#edges.values().every(({ inc }) => inc.size === 0) }
 }
 
