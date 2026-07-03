@@ -1,4 +1,4 @@
-import { Common, MultiSet } from "./common.js";
+import { Common, MultiSet, Index } from "./common.js";
 import { app } from "./main.js";
 import { IntervalSet } from "./interval.js";
 import { Keyboard } from "./keyboard.js";
@@ -13,7 +13,8 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   w = 0; h = 0; c; unit; r; octLen
   gstep; hstep; orientations; displayKeyNames; theta = 0; o = 0
   #orientation
-  #hexes = new Map(); #edges; #notes
+  #hexes = new Index({ address: hex => hex.coord, done: ($0, $1, i) => i === 1 });
+  #edges; #notes
   #activeClasses = new Map() // Map([classname, Map([hex, Set(id)])])
   #bgImgCache
 
@@ -35,20 +36,19 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   }
 
   #newHex (g, h, isGhost) {
-    const row = this.#hexes.get(g) ?? this.#hexes.set(g, new Map()).get(g),
-          hex = new HexButton({ keyboard: this.#keyboard, hexGrid: this, g, h, isGhost });
-    row.set(h, hex);
+    const hex = new HexButton({ keyboard: this.#keyboard, hexGrid: this, g, h, isGhost });
+    this.#hexes.insert(hex);
     return hex
   }
 
-  getHex (g, h) { return this.#hexes.get(g)?.get(h) }
-  hasHex (g, h) { return this.#hexes.get(g)?.has(h) ?? false }
+  getHex (g, h) { return this.#hexes.getPath(g, h) }
+  hasHex (g, h) { return this.#hexes.hasPath(g, h) }
 
   coordToSteps (g, h) { return g * this.gstep + h * this.hstep }
   coordToRank (g, h) { return Common.mod(this.coordToSteps(g, h), this.#keyboard.edo) }
   coordToOctave (g, h) { return Math.floor(this.coordToSteps(g, h) / this.#keyboard.edo) }
 
-  * [Symbol.iterator] () { for (const row of this.#hexes.values()) for (const hex of row.values()) yield hex }
+  * [Symbol.iterator]() { yield * this.#hexes.values() }
 
   addToActiveClass (name, hex, id) {
     const activeClasses = this.#activeClasses, activeHexes = activeClasses.get(name) ?? new Map();
@@ -97,7 +97,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       { edo } = this.#keyboard;
 
     // Central line
-    this.#hexes = new Map();
+    this.#hexes.clear();
     this.#edges = new Set();
     this.#notes = new Set();
     const
@@ -363,7 +363,12 @@ class HexButton {
   get #steps () { return this.#hexGrid.coordToSteps(this.#g, this.#h) }
   get rank () { return Common.mod(this.#steps, this.#keyboard.edo) }
   get octave () { return Math.floor(this.#steps / this.#keyboard.edo) }
-  set note (note) { this.#note = note }
+  set note (note) {
+    if (note === this.#note) return;
+    this.#note?.removeButton(this)
+    note.addButton(this);
+    this.#note = note
+  }
   get note () { return this.#note }
 
   colour ({ bgColour, ctx } = {}) {

@@ -60,16 +60,16 @@ class LogItem {
     this.#initial = initial ?? value
   }
   get key () { return this.#key }
-  set key ({}) {}
+  set key (_) {}
   get value () { return this.#value }
   set value (v) {
     if (this.#committed) return null;
     else return this.#value = v
   }
   get initial () { return this.#initial }
-  set initial ({}) {}
+  set initial (_) {}
   get committed () { return this.#committed }
-  set committed ({}) {}
+  set committed (_) {}
   initialise () { return this.#value = this.#initial }
   commit () { this.#committed = true }
 }
@@ -297,7 +297,7 @@ $.targets({
   // TODO recovery?
   "error unhandledrejection" (e) {
     e.preventDefault();
-    app.emitAsync("log", { key: "error", value: e.reason });
+    app.emitAsync("log", { key: "error", value: e.reason ?? e.message });
     if (app.audioctx) app.emit("panic");
     if (app.keyboard) {
       app.emit("resize", true);

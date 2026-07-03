@@ -21,7 +21,8 @@ class Common {
   static sum = ar => ar.reduce((a, b) => a + b, 0)
   static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
-  static arrEq = (a1, a2) => a1.every((v, i) => v === a2[i])
+  static arrEq = (a1, a2) => a1.length === a2.length && a1.every((v, i) => v === a2[i])
+  static pairwiseCmp = (a1, a2, cmp = (a, b) => a === b) => a1.every(i1 => a2.every(i2 => cmp(i1, i2)))
   static bagEq = (a1, a2) => a1.length === a2.length && a1.reduce(([ b, rem ], v) => {
     if (!b) return [ false ];
     const i = rem.findIndex(u => u === v);
@@ -238,94 +239,236 @@ class Common {
   }
 }
 
+
+
 class MultiSet {
-    static * #subhelp (ar) {
-      if (ar.length === 0) yield [];
-      else for (let i = 0; i <= ar[0][1]; i++)
-        yield * this.#subhelp(ar.slice(1)).map(br => br.concat([[ar[0][0], i]]))
-    }
-    static * enumerateSubsets (m) {
-      yield * this.#subhelp(m.#keys.entries().toArray()).map(ar => new MultiSet().#attachKeys(ar))
-    }
-    #keys = new Map(); #size = 0
-    constructor (ar = []) {
-      const g = Common.group(ar);
-      for (const a of g) {
-        this.#size += a.length;
-        this.#keys.set(a[0], a.length)
-      }
-    }
-    #attachKeys (ar) {
-      this.#keys = ar;
-      return this
-    }
-    * [Symbol.iterator] () { for (const [k, v] of this.#keys) for (let i = 0; i < v; i++) yield k }
-    get [Symbol.toStringTag] () { return "MultiSet" }
-    * keys () { yield * this.#keys.keys() }
-    values = this[Symbol.iterator];
-    * entries () { yield * this.#keys.entries().map(([k, v]) => Array(v).fill(k)) }
-    get size () { return this.#size }
-    set size ({}) {}
-    insert (v) {
-      let k = 1;
-      if (this.#keys.has(v)) this.#keys.set(v, k += this.#keys.get(v));
-      else this.#keys.set(v, 1);
-      return k
-    }
-    delete (v) {
-      if (this.#keys.has(v)) {
-        const k = this.#keys.get(v);
-        if (k === 1) this.#keys.delete(v);
-        else this.#keys.set(v, k - 1);
-        return true
-      } else return false
-    }
-    has (v) { return this.#keys.has(v) }
-    union (ms) {
-      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
-      const r = new Map(this.#keys);
-      for (const [k, v] of ms.#keys) r.set(k, r.has(k) ? Math.max(v, r.get(k)) : v);
-      return new MultiSet().#attachKeys(r)
-    }
-    intersection (ms) {
-      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
-      const r = new Map();
-      for (const [k, v] of ms.#keys)
-        if (this.#keys.has(k)) r.set(k, Math.min(this.#keys.get(k), v));
-      return new MultiSet().#attachKeys(r)
-    }
-    plus (ms) {
-      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
-      const r = new Map(this.#keys);
-      for (const [k, v] of ms.#keys) r.set(k, (r.get(k) ?? 0) + v);
-      return new MultiSet().#attachKeys(r)
-    }
-    minus (ms) {
-      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
-      const r = new Map();
-      for (const [k, v] of ms.#keys)
-        if (this.#keys.has(k)) {
-          const v0 = this.#keys.get(k);
-          if (v0 > v) r.set(k, v0 - v);
-        }
-      return new MultiSet().#attachKeys(r)
-    }
-    symmetricDifference (ms) {
-      if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
-      const r = new Map();
-      for (const [k, v] of ms.#keys)
-        if (this.#keys.has(k)) {
-          const v0 = this.#keys.get(k);
-          if (v0 !== v) r.set(k, Math.abs(v0 - v));
-        }
-      return new MultiSet().#attachKeys(r)
-    }
-    scalarMultiply (k) {
-      if (k < 0 || k !== Math.floor(k)) return null;
-      const r = new Map()
-      if (k !== 0) for (const [k, v] of this.#keys) r.set(k, v * k);
-      return new MultiSet().#attachKeys(r)
-    }
+  static * #subhelp (ar) {
+    if (ar.length === 0) yield [];
+    else for (let i = 0; i <= ar[0][1]; i++)
+      yield * this.#subhelp(ar.slice(1)).map(br => br.concat([[ar[0][0], i]]))
+  }
+  static * enumerateSubsets (m) {
+    yield * this.#subhelp(m.#keys.entries().toArray()).map(ar => new MultiSet().#attachKeys(ar))
   }
 
-export { Common, MultiSet }
+  #keys = new Map()
+  constructor (ar = []) {
+    const g = Common.group(ar);
+    for (const a of g) this.#keys.set(a[0], a.length)
+  }
+  #attachKeys (ar) {
+    this.#keys = ar;
+    return this
+  }
+
+  * [Symbol.iterator] () { for (const [k, v] of this.#keys) for (let i = 0; i < v; i++) yield k }
+  get [Symbol.toStringTag] () { return "MultiSet" }
+  * keys () { yield * this.#keys.keys() }
+  values = this[Symbol.iterator];
+  * entries () { yield * this.#keys.entries().map(([k, v]) => [k, Array(v).fill(k)]) }
+
+  get size () { return this.#keys.values().reduce((a, b) => a + b, 0) }
+  set size (_) {}
+
+  insert (v) {
+    let k = 1;
+    if (this.#keys.has(v)) this.#keys.set(v, k += this.#keys.get(v));
+    else this.#keys.set(v, 1);
+    return k
+  }
+  delete (v) {
+    if (this.#keys.has(v)) {
+      const k = this.#keys.get(v);
+      if (k === 1) this.#keys.delete(v);
+      else this.#keys.set(v, k - 1);
+      return true
+    } else return false
+  }
+  has (v) { return this.#keys.has(v) }
+  union (ms) {
+    if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+    const r = new Map(this.#keys);
+    for (const [k, v] of ms.#keys) r.set(k, r.has(k) ? Math.max(v, r.get(k)) : v);
+    return new MultiSet().#attachKeys(r)
+  }
+  intersection (ms) {
+    if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+    const r = new Map();
+    for (const [k, v] of ms.#keys)
+      if (this.#keys.has(k)) r.set(k, Math.min(this.#keys.get(k), v));
+    return new MultiSet().#attachKeys(r)
+  }
+  plus (ms) {
+    if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+    const r = new Map(this.#keys);
+    for (const [k, v] of ms.#keys) r.set(k, (r.get(k) ?? 0) + v);
+    return new MultiSet().#attachKeys(r)
+  }
+  minus (ms) {
+    if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+    const r = new Map(this.#keys);
+    for (const [k, v] of ms.#keys)
+      if (r.has(k)) {
+        const v0 = r.get(k);
+        if (v0 > v) r.set(k, v0 - v);
+        else r.delete(k)
+      }
+    return new MultiSet().#attachKeys(r)
+  }
+  symmetricDifference (ms) {
+    if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+    const r = new Map();
+    for (const [k, v] of ms.#keys)
+      if (this.#keys.has(k)) {
+        const v0 = this.#keys.get(k);
+        if (v0 !== v) r.set(k, Math.abs(v0 - v));
+      }
+    return new MultiSet().#attachKeys(r)
+  }
+  scalarMultiply (n) {
+    const r = new Map()
+    if (n !== 0) for (const [k, v] of this.#keys) {
+      const nv = n * v;
+      if (nv !== Math.floor(nv)) return null;
+      r.set(k, nv);
+    }
+    return new MultiSet().#attachKeys(r)
+  }
+  divide (m) {
+    if (this.#keys.size !== m.#keys.size) return NaN;
+    let n, d;
+    for (const [k, n0] of this.#keys) {
+      if (!m.#keys.has(k)) return NaN;
+      const d0 = m.#keys.get(k);
+      if (n === undefined) {
+        const g = Common.gcd(n0, d0);
+        n = n0 / g;
+        d = d0 / g;
+      } else if (n * d0 !== d * n0) return NaN
+    }
+    return n / d
+  }
+  get gcd () { return this.#keys.size ? this.#keys.values().reduce((a, b) => Common.gcd(a, b)) : NaN }
+  set gcd (_) {}
+  get unique () { return this.#keys.size }
+  set unique (_) {}
+  equal (m) {
+    if (!MultiSet.prototype.isPrototypeOf(m) || this.#keys.size !== m.#keys.size) return false;
+    for (const [k, v] of this.#keys) if (!m.#keys.has(k) || m.#keys.get(k) !== v) return false;
+    return true
+  }
+}
+
+
+// Not for storage of Map objects...
+class Index {
+  #rawMap = new Map(); #addrFn; #doneFn
+  constructor ({ address, done }) {
+    this.#addrFn = address ?? (x => [x]);
+    this.#doneFn = done ?? (() => true)
+  }
+
+  [Symbol.iterator] = this.values
+  keys () { return this.entries().map(([k]) => k) }
+  values () { return this.entries().map(([{}, v]) => v) }
+  entries () {
+    const self = this, gen = function * (m, i, path) {
+      if (Map.prototype.isPrototypeOf(m)) for (const [k, v] of m)
+        if (self.#doneFn(k, v, i, path)) yield [self.pathOf(v), v];
+        else yield * gen(v, i + 1, path.concat(k));
+      else yield [self.pathOf(m), m]
+    }
+    return gen(this.#rawMap, 0, [])
+  }
+
+  pathOf (item) { return this.#addrFn(item) }
+
+  insert (item) {
+    const path = this.#addrFn(item);
+    let focus = this.#rawMap;
+    for (let i = 0; i < path.length; i++) {
+      const key = path[i];
+      if (!focus.has(key)) {
+        focus.set(key, item);
+        return item
+      }
+      const split = focus.get(key);
+      if (Map.prototype.isPrototypeOf(split)) {
+        if (i === path.length - 1) split.set(null, item);
+        else focus = split;
+      } else {
+        const splitPath = this.#addrFn(split);
+        if (Common.arrEq(path, splitPath)) {
+          focus.set(key, item);
+          return item
+        } else focus.set(key, focus = new Map([[
+          i === splitPath.length - 1 ? null : splitPath[i + 1], split
+        ]]));
+      }
+    }
+    focus.set(null, item);
+    return item
+  }
+  insertFrom (iter) {
+    iter.values().forEach(this.insert);
+    return this
+  }
+  delete (item) { return this.deletePath(...this.#addrFn(item)) }
+  get (item) { return this.getPath(...this.#addrFn(item)) }
+  has (item) { return item === this.hasPath(...this.#addrFn(item)) }
+  clear () { this.#rawMap.clear() }
+
+  deletePath (...path) {
+    const spine = [];
+    let focus = this.#rawMap, i = 0;
+    for (; i < path.length; i++) {
+      spine.push(focus);
+      const key = path[i];
+      if (!focus.has(key)) return false;
+      const newFocus = focus.get(key);
+      if (!Map.prototype.isPrototypeOf(newFocus)) {
+        if (Common.arrEq(path, this.pathOf(newFocus))) {
+          focus.delete(key);
+          break
+        } else return false
+      } else {
+        if (i === path.length - 1 && newFocus.has(null)) newFocus.delete(null);
+        focus = newFocus
+      }
+    }
+    while (i > 0 && (focus = spine[i--] ?? focus).size < 2) {
+      if (focus.size === 0) spine[i].delete(path[i]);
+      else if (focus.size === 1) spine[i].set(path[i], focus.values().find(() => true));
+      i--
+    }
+    return true
+  }
+  getPath (...path) {
+    let focus = this.#rawMap;
+    for (let i = 0; i <= path.length; i++) {
+      const key = i === path.length ? null : path[i];
+      if (!focus.has?.(key)) return;
+      focus = focus.get(key);
+      if (!Map.prototype.isPrototypeOf(focus))
+        if (Common.arrEq(path, this.pathOf(focus)) || i === path.length) return focus;
+        else return
+    }
+    return focus
+  }
+  hasPath (...path) {
+    let focus = this.#rawMap;
+    for (let i = 0; i <= path.length; i++) {
+      const key = i === path.length ? null : path[i];
+      if (!focus.has?.(key)) return false;
+      focus = focus.get(key);
+      if (!Map.prototype.isPrototypeOf(focus))
+        if (Common.arrEq(path, this.pathOf(focus)) || i === path.length) return true;
+        else return false
+    }
+    return true
+  }
+}
+
+
+
+export { Common, MultiSet, Index }

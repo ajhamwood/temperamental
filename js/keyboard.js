@@ -182,12 +182,18 @@ class Keyboard {
 
   play (g, h, id) { // Convert g, h to hex?
     const
-      { hexGrid, tuning, touches } = this, rank = hexGrid.coordToRank(g, h), octave = hexGrid.coordToOctave(g, h),
+      { hexGrid, tuning, touches } = this, { gstep, hstep } = hexGrid,
+      rank = hexGrid.coordToRank(g, h), octave = hexGrid.coordToOctave(g, h),
       note = tuning.getNote({ octave, rank }) ?? tuning.addNote({ rank, octave }),
       key  = tuning.getKey(rank), hex = hexGrid.getHex(g, h), hexes = hex ? [hex] : key.hexes;
     let flag = true;
     const to = setTimeout(() => {
-      hexes.forEach(h => hexGrid.addToActiveClass(hex ? "active" : "echo", h, id));
+      hexes.forEach(h0 => {
+        if (hex) {
+          hexGrid.addToActiveClass("active", h0, id);
+          h0.note.buttons.filter(h1 => h0 !== h1).forEach(h1 => hexGrid.addToActiveClass("echo", h1, id))
+        } else hexGrid.addToActiveClass("echo", h0, id)
+      });
       hexGrid.colour();
       note.turnOn(id);
       flag = false;
@@ -199,7 +205,7 @@ class Keyboard {
     const { hexGrid, touches } = this, touch = touches.get(id);
     if (!touch) return;
     if (touch.cb()) return clearTimeout(touch.to);
-    touch.hexes.forEach(hex => hexGrid.removeFromActiveClasses(hex, id)); // remove from single class?
+    touch.hexes.forEach(hex => hex.note.buttons.forEach(h0 => hexGrid.removeFromActiveClasses(h0, id)));
     hexGrid.colour();
     touch.note.turnOff(id);
     touches.delete(id);
@@ -332,7 +338,7 @@ class Key {
 class Note {
   #keyboard; #tuning; rank; octave
   #maxVolume = .333; #attack = .2; #decay = .5
-  #note
+  #note; #buttons = []
   constructor ({ keyboard, tuning, rank, octave }) {
     if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("HexGrid error: must provide Keyboard object");
     if (!Tuning.prototype.isPrototypeOf(tuning)) throw new Error("Note error: must provide Tuning object");
@@ -344,6 +350,17 @@ class Note {
     this.octave = octave
   }
   get key () { return this.#tuning.getKey(this.rank) }
+  addButton (hex) {
+    const i = this.#buttons.findIndex(h => Common.arrEq(h.coord, hex.coord));
+    if (~i) this.#buttons[i] = hex;
+    else this.#buttons.push(hex)
+  }
+  removeButton (hex) {
+    const i = this.#buttons.findIndex(h => Common.arrEq(h.coord, hex.coord));
+    if (~i) this.#buttons.splice(i, i + 1)
+  }
+  get buttons () { return this.#buttons.slice() }
+  set buttons (_) {}
   async start () {
     if (this.#note) return;
     await Keyboard.userIsActive;

@@ -596,11 +596,11 @@ class Chord {
         harmonics.some(h => typeof h !== "number" || !mapping.decomp(h, bass)()))
         throw new Error("Chord error: harmonic not supported by temperament");
       this.adicity = harmonics.length;
-      this.voicing = voicing ?? Array(this.adicity).fill(-1);
+      this.voicing = voicing ?? Array(this.adicity).fill(0);
       this.harmonics = harmonics;
       this.#limit = Math.max(...harmonics);
       this.isSubHarm = isSubHarm;
-      if (isSubHarm) this.harmonics.sort((a, b) => Common.mod(Math.log2(1 / a), 1) > Common.mod(Math.log2(1 / b), 1));
+      if (isSubHarm) this.harmonics.sort((a, b) => Common.mod(-Math.log2(a), 1) > Common.mod(-Math.log2(b), 1));
       else this.harmonics.sort((a, b) => Common.mod(Math.log2(a), 1) > Common.mod(Math.log2(b), 1));
       const
         len = this.adicity = harmonics.length,
@@ -805,7 +805,7 @@ class Chord {
     else if (type === "essentially tempered") opts.internalIntervals = this.#internalIntervals;
     return opts
   }
-  set #repr ({}) {}
+  set #repr (_) {}
 
   toString () {
     const { internalIntervals, ...opts } = this.#repr;
