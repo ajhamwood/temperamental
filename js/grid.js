@@ -9,6 +9,48 @@ import { Scale } from "./scale.js";
 // Keyboard grid
 
 class HexGrid { // TODO: set w, h, theta within HexGrid
+  static octLen ({ g, h }) {
+    const theta = Math.atan(Math.sqrt(3) * h /(2 * g + h));
+    return (g + h/2) * Math.cos(theta) + h * Math.sqrt(3) / 2 * Math.sin(theta)
+  }
+  // TODO use with updateGrid
+  static centralness ({ gstep, hstep, g, h, ranks }) {
+    const { gcd, solution: [g0, h0] } = Common.gcdExt(gstep, hstep);
+    if (gcd !== 1) return null;
+    const
+      theta = Math.atan(Math.sqrt(3) * h /(2 * g + h)),
+      f = (g0, h0) => (g0 + h0/2) * Math.sin(theta) - h0 * Math.sqrt(3) / 2 * Math.cos(theta);
+    return ranks.map(r => {
+      let gi = r * g0, hi = r * h0, adj = Math.round(f(gi, hi) / (f(gi, hi) - f(gi + hstep, hi - gstep)));
+      gi += adj * hstep; hi -= adj * gstep;
+      return { rank: r, g: gi, h: hi, dist: f(gi, hi) }
+    })
+  }
+  static genOrientations ({ edo, gstep, hstep }) {
+    const res = [];
+    for (let y = 1; y <= edo / hstep; y++) {
+      const x = (edo - hstep * y) / gstep;
+      if (x === Math.floor(x) && x > 0) res.push ([ x, y ])
+    }
+    return res
+  }
+  // Close but something is not quite right...
+  // rankHarms = Map(steps -> harmonic)
+  static bestKeyboards ({ edo, rankHarms, norm }) {
+    const maxg = Math.sqrt(edo * 2), maxh = Math.sqrt(edo), results = [];
+    norm = { "tenney": "tenneyNorm", "weil": "weilNorm" }[norm];
+    if (!norm) return null;
+    for (let gstep = 2; gstep < maxg; gstep++) for (let hstep = 1; hstep < Math.min(gstep, maxh); hstep++) {
+      if (Common.gcd(gstep, hstep) !== 1) continue;
+      for (const [ g, h ] of HexGrid.genOrientations({ edo, gstep, hstep })) {
+        const scores = new Map(HexGrid.centralness({ gstep, hstep, g, h, ranks: rankHarms.keys().toArray() })
+          .map(({ rank, dist }) => [ rankHarms.get(rank), dist ]));
+        results.push({ gstep, hstep, g, h, score: Common[norm](scores) * HexGrid.octLen({ g, h }) })
+      }
+    }
+    return results.sort(({ score: s0 }, { score: s1 }) => s0 > s1)
+  }
+
   #keyboard
   w = 0; h = 0; c; unit; r; octLen
   gstep; hstep; orientations; displayKeyNames; theta = 0; o = 0
@@ -28,7 +70,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       orientation[0] * gstep + orientation[1] * hstep !== keyboard.edo) throw new Error("Keyboard error: bad orientation");
     this.gstep = gstep;
     this.hstep = hstep;
-    this.genOrientations();
+    this.orientations = HexGrid.genOrientations({ edo: this.#keyboard.edo, gstep, hstep });
     this.orientation = orientation;
     this.displayKeyNames = Boolean(displayKeyNames);
     this.unit = unit;
@@ -65,25 +107,16 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   }
   clearActiveClasses () { this.#activeClasses.clear() }
 
-  genOrientations () {
-    const { gstep, hstep } = this, { edo } = this.#keyboard, res = [];
-    for (let y = 1; y <= edo / hstep; y++) {
-      const x = (edo - hstep * y) / gstep;
-      if (x === Math.floor(x) && x > 0) res.push ([ x, y ])
-    }
-    this.orientations = res;
-  }
   get orientation () { return this.#orientation }
   set orientation ([g, h]) {
     this.#orientation = [ g, h ];
-    const x = (2 * g + h) * Math.sqrt(3) / 2, y = h * 1.5;
+    const x = 2 * g + h, y = h * Math.sqrt(3);
     this.theta = Math.atan(y / x)
   }
   setLattice ({ gstep, hstep }) {
     Object.assign(this, { gstep, hstep });
-    this.genOrientations();
     const
-      { orientations } = this,
+      orientations = this.orientations = HexGrid.genOrientations({ edo: this.#keyboard.edo, gstep, hstep }),
       orientation = orientations.find(([g, h]) => g + h === 7) || orientations[0];
     if (!orientation) return false;
     this.orientation = orientation;
@@ -101,9 +134,9 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.#edges = new Set();
     this.#notes = new Set();
     const
-      { ranks } = new Scale({ keyboard: this.#keyboard, composition: new MultiSet([g, h]) }).genSymmetricScale()
+      sc = new Scale({ composition: new MultiSet([g, h]) }).genSymmetricScales({ mode: 0 })[0]
         .setStepSizes(new Map([[g > h ? "X" : "Y", gstep], [g > h ? "Y" : "X", hstep]])),
-      coords = ranks.slice(1).reduce((ar, r, i) => {
+      { ranks } = sc, coords = ranks.slice(1).reduce((ar, r, i) => {
         const data = ar.at(-1).slice();
         data[+(r - ranks[i] === hstep)]++;
         data[2] = r;

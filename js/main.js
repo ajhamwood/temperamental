@@ -297,7 +297,8 @@ $.targets({
   // TODO recovery?
   "error unhandledrejection" (e) {
     e.preventDefault();
-    app.emitAsync("log", { key: "error", value: e.reason ?? e.message });
+    console.error(e.reason ?? e.error)
+    app.emitAsync("log", { key: "error", value: e.reason ?? e.error });
     if (app.audioctx) app.emit("panic");
     if (app.keyboard) {
       app.emit("resize", true);
@@ -721,6 +722,9 @@ $.targets({
       const
         tuning = new Tuning({ keyboard, limit, maxError, refNote, freqBasis }), { mapping } = tuning,
         { rawHarmonicList, lattice, intervalSet } = mapping, { harmonicList, primes, indexPrimes } = lattice;
+
+      // console.log(edo, keyboard.hexGrid.constructor.bestKeyboards({ edo,
+      //   rankHarms: new Map(primes.concat(lattice.index).map(h => [rawHarmonicList.get(h), h])), norm: "tenney" }))
 
       for (const [ harmonic, steps ] of rawHarmonicList) {
         const

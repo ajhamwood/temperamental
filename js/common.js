@@ -18,6 +18,14 @@ class Common {
   static non2 = h => h / (h & (~--h))
   static gcd = (a, b) => !b ? a : this.gcd(b, a % b)
   static lcm = (a, b) => a * b / this.gcd(a, b)
+  static gcdExt = (a, b) => {
+    let x0 = 1, y0 = 0, x1 = 0, y1 = 1;
+    while (b !== 0) {
+      const q = Math.floor(a / b), r = a % b;
+      [a, b, x0, y0, x1, y1] = [b, r, x1, y1, x0 - q * x1, y0 - q * y1]
+    }
+    return { gcd: a, solution: [x0, y0] }
+  }
   static sum = ar => ar.reduce((a, b) => a + b, 0)
   static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
@@ -93,6 +101,9 @@ class Common {
     for (const [ k, v ] of this.mapBy(raw)) res.set(parseInt(k), v.length)
     return res
   })
+
+  static tenneyNorm = m => Math.sqrt(m.entries().reduce((acc, [h, v]) => acc + (v / Math.log2(h)) ** 2, 0))
+  static weilNorm = (m, k = 1) => Math.sqrt(this.tenneyNorm(m) ** 2 + (k * m.entries().reduce((acc, [h, v]) => acc + v / Math.log2(h), 0)) ** 2)
 
   static colourMix = (hc1, hc2, t) => {
     if (![hc1, hc2].every(hc => hc.match(/#\p{Hex_Digit}{6,8}/ug))) return null;
@@ -248,7 +259,7 @@ class MultiSet {
       yield * this.#subhelp(ar.slice(1)).map(br => br.concat([[ar[0][0], i]]))
   }
   static * enumerateSubsets (m) {
-    yield * this.#subhelp(m.#keys.entries().toArray()).map(ar => new MultiSet().#attachKeys(ar))
+    yield * this.#subhelp(m.#keys.entries().toArray()).map(ar => new MultiSet().attach(ar))
   }
 
   #keys = new Map()
@@ -256,10 +267,18 @@ class MultiSet {
     const g = Common.group(ar);
     for (const a of g) this.#keys.set(a[0], a.length)
   }
-  #attachKeys (ar) {
-    this.#keys = ar;
+  attach (m) {
+    this.#keys = m;
     return this
   }
+  from (m) {
+    if (!Map.prototype.isPrototypeOf(m)) return false;
+    const ms = new MultiSet()
+    ms.#keys = m;
+    return ms
+  }
+  get repr () { return this.#keys.entries().toArray() }
+  set repr (_) {}
 
   * [Symbol.iterator] () { for (const [k, v] of this.#keys) for (let i = 0; i < v; i++) yield k }
   get [Symbol.toStringTag] () { return "MultiSet" }
@@ -289,20 +308,20 @@ class MultiSet {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
     const r = new Map(this.#keys);
     for (const [k, v] of ms.#keys) r.set(k, r.has(k) ? Math.max(v, r.get(k)) : v);
-    return new MultiSet().#attachKeys(r)
+    return new MultiSet().attach(r)
   }
   intersection (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
     const r = new Map();
     for (const [k, v] of ms.#keys)
       if (this.#keys.has(k)) r.set(k, Math.min(this.#keys.get(k), v));
-    return new MultiSet().#attachKeys(r)
+    return new MultiSet().attach(r)
   }
   plus (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
     const r = new Map(this.#keys);
     for (const [k, v] of ms.#keys) r.set(k, (r.get(k) ?? 0) + v);
-    return new MultiSet().#attachKeys(r)
+    return new MultiSet().attach(r)
   }
   minus (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
@@ -313,7 +332,7 @@ class MultiSet {
         if (v0 > v) r.set(k, v0 - v);
         else r.delete(k)
       }
-    return new MultiSet().#attachKeys(r)
+    return new MultiSet().attach(r)
   }
   symmetricDifference (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
@@ -323,7 +342,7 @@ class MultiSet {
         const v0 = this.#keys.get(k);
         if (v0 !== v) r.set(k, Math.abs(v0 - v));
       }
-    return new MultiSet().#attachKeys(r)
+    return new MultiSet().attach(r)
   }
   scalarMultiply (n) {
     const r = new Map()
@@ -332,7 +351,7 @@ class MultiSet {
       if (nv !== Math.floor(nv)) return null;
       r.set(k, nv);
     }
-    return new MultiSet().#attachKeys(r)
+    return new MultiSet().attach(r)
   }
   divide (m) {
     if (this.#keys.size !== m.#keys.size) return NaN;

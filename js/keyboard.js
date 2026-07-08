@@ -176,7 +176,7 @@ class Keyboard {
       const el = $.load("option", "", orientationSelectEl)[0][0];
       el.innerText = coord;
       el.setAttribute("name", coord)
-    })
+    });
     orientationSelectEl.namedItem(hexGrid.orientation).selected = true
   }
 
