@@ -23,6 +23,12 @@ class Scale {
     if (i0 === undefined || i1 === undefined) return null; // Not comparable
     else return i0 > i1 ? -1 : i0 < i1 ? 1 : 0
   }
+  static findMode = str0 => {
+    const sq = Array(str0.length).fill(0).map((_, i) => str0.slice(i) + str0.slice(0, i));
+    return str1 => str0.length === str1.length ? sq.indexOf(str1) : -1 }
+  static findRanksMode = ar0 => {
+    const sq = Array(ar0.length).fill(0).map((_, i) => ar0.slice(i).concat(ar0.slice(0, i)));
+    return ar1 => ar0.length === ar1.length ? sq.findIndex(ar => Common.arrEq(ar, ar1)) : -1 }
   static normalisePermutation (str) {
     let symbols = [], remain = str, newStr = "", prev = str.length;
     while (remain.length) {
@@ -217,6 +223,15 @@ class Scale {
     else for (; i <= array.length - choose; i++)
       yield * Scale.genUniqueCombs(array, choose - 1, i + 1).map(ar => [array[i]].concat(ar))
   }
+  static * cartProd (array) {
+    if (array.length === 0) yield [];
+    else if (array.length === 1) yield array[0].map(el => [el]);
+    else {
+      const [ a0, ...rest ] = array;
+      for (let i = 0; i < a0.length; i++)
+        yield * Scale.cartProd(rest).flatMap(ars => ars.map(ar => [a0[i]].concat(ar)))
+    }
+  }
   static * seqPerms (array) {
     if (array.length === 0) yield [];
     else {
@@ -262,6 +277,27 @@ class Scale {
       }
       const mapping = new Map(steps.toReversed().map((k, i) => [chars[i], k]));
       results.push({ mapping, edo })
+    }
+  }
+
+  // Infinite list of step size mappings ordered by scale edo
+  // TODO I could probably do better...
+  static * genStepSizeMappingsStream ({ pattern, composition }) {
+    if (pattern) {
+      const givCounts = new MultiSet(pattern.split("")).entries().toArray()
+        .sort(([k0], [k1]) => Scale.charCmp(k0, k1)).map(([, v]) => v.length);
+      yield * Scale.genIvMappingsFromPatCharCounts(givCounts);
+    } else if (MultiSet.prototype.isPrototypeOf(composition)) {
+      const gen = Scale.genIvMappingsFromComposition(composition);
+      if (this.#word) {
+        const givCounts = new MultiSet(this.#word.split("")).entries()
+          .reduce((m, [k, v]) => m.concat([[k, v.length]]), []);
+        yield * gen.map(({ mapping, edo }) => {
+          const m = new Map();
+          for (const [s, n0] of mapping) m.set(givCounts.find(([, n1]) => n0 === n1)[0], s);
+          return { mapping: m, edo }
+        })
+      } else yield * gen
     }
   }
 
@@ -319,15 +355,213 @@ class Scale {
 
 
   // Global data
-  // TODO: cache partial order of scales by ancestor relation, use during generation
-  // static scaleData
+
+  // data: Map(vertex -> { (in, out): Map(vertex -> [{ mapping, modeMap }]) })
+  // vertex: { str, ordered: boolean }
+  // mapping: { rules: [ MultiSet(char) ], ordered: boolean }
+  // TODO non-TO scales
+  static data = new Map()
+  static #graphVertices = [];
+  static #getWord (s) {
+    const eq = Scale.findMode(s);
+    return Scale.#graphVertices.find(({ str }) => ~eq(str))
+  }
+  static #getWordWithOffset (s) {
+    const eq = Scale.findMode(s), vertex = Scale.#graphVertices.find(({ str }) => ~eq(str));
+    return vertex && { vertex, o: eq(vertex.str) }
+  }
+  static modeOffset (s) {
+    const eq = Scale.findMode(s), w = Scale.#graphVertices.find(({ str }) => ~eq(str))?.str, o = w && eq(w);
+    return o ?? 0
+  }
+  static #markCached (v) { if (v) v.cached = true }
+
+  // Edges go towards ancestor scale, indexed by mapping
+  static addData ({ sOut, sIn, mapping, ...edgeData }) {
+    // Maybe we need addVertex after all...
+    const { str: str0, ordered: o0, ...outData } = sOut, { str: str1, ordered: o1, ...inData } = sIn;
+    if (str0.length <= str1.length) return null;
+    const
+      { data } = Scale,
+      s0 = Scale.#getWord(str0) ?? (Scale.#graphVertices.push(sOut = { str: str0, ordered: o0 }), sOut),
+      s1 = Scale.#getWord(str1) ?? (Scale.#graphVertices.push(sIn = { str: str1, ordered: o1 }), sIn);
+    if (Scale.#getConnected(s0, s1).some(m => Scale.equalScaleMappings(m, mapping))) return data;
+    const
+      s0Val = data.get(s0) ?? { out: new Map(), in: new Map(), ...outData },
+      s1Val = data.get(s1) ?? { out: new Map(), in: new Map(), ...inData };
+    data.set(s0, s0Val);
+    data.set(s1, s1Val);
+    s0Val.out.set(s1, (s0Val.out.get(s1) ?? []).concat([{ mapping, ...edgeData }]));
+    s1Val.in.set(s0, (s1Val.in.get(s0) ?? []).concat([{ mapping, ...edgeData }]));
+    for (const [ outV, ds ] of s0Val.out) if (outV !== s0) for (const { mapping: m } of ds)
+      if (Scale.#getConnected(s1, outV).some(m0 =>
+        Scale.composeScaleMappings(mapping, m0).some(m1 => Scale.equalScaleMappings(m1, m)) ||
+        Scale.composeScaleMappings(mapping, m).some(m1 => Scale.equalScaleMappings(m0, m1)))) {
+        s0Val.out.delete(outV);
+        data.get(outV).in.delete(s0)
+      }
+    for (const [ inV, ds ] of s1Val.in) if (inV !== s1) for (const { mapping: m } of ds)
+      if (Scale.#getConnected(inV, s0).some(m0 =>
+        Scale.composeScaleMappings(m, mapping).some(m1 => Scale.equalScaleMappings(m0, m1)) ||
+        Scale.composeScaleMappings(m0, mapping).some(m1 => Scale.equalScaleMappings(m1, m)))) {
+        s1Val.in.delete(inV);
+        data.get(inV).out.delete(s1)
+      }
+    return data
+  }
+
+  static cmpScales (str0, str1) {
+    const s0 = Scale.#getWord(str0), s1 = Scale.#getWord(str1);
+    if (s0 === undefined || s1 === undefined) return;
+    return Scale.#getConnected(s0, s1)
+  }
+  // Collects all connected scales and their mapping
+  static #getConnected (s0, s1) { return this.#connectedHelper(s0, s1, [null], new Map()).filter(Boolean) }
+  // visited: Map(vertex -> [{ mapping, modeMap }]) - mappings are all out of the s0 applied to getConnected
+  static #connectedHelper(s0, s1, mappings, visited) {
+    if (s0 === s1) return mappings;
+    const s = visited.get(s0) ?? [];
+    visited.set(s0, s.concat(mappings = mappings.filter(m0 => !s.some(m1 => Scale.equalScaleMappings(m0, m1)))));
+    let nextMappings = [];
+    for (const [next, data] of Scale.data.get(s0)?.out ?? []) {
+      const comps = Scale.cartProd([mappings, data.map(({ mapping }) => mapping)])
+        .flatMap(([m0, m1]) => Scale.composeScaleMappings(m0, m1)).toArray();
+      nextMappings = nextMappings.concat(Scale.#connectedHelper(next, s1, comps, visited))
+    }
+    return Common.group(nextMappings, Scale.equalScaleMappings).map(([m]) => m)
+  }
+
+  // TODO function which returns path arrays, or general iterator
+  // Collects all connected scales and their associated data
+  static paths (str0, str1) {
+    const { vertex: s0, o: o0 } = Scale.#getWordWithOffset(str0), { vertex: s1, o: o1 } = Scale.#getWordWithOffset(str1);
+    if (s0 == null || s1 == null) return;
+    const
+      pre = Array(s0.str.length).keys().map(i => [i, Common.mod(i + o0, s0.str.length)]).toArray(),
+      post = Array(s1.str.length).keys().map(i => [i, Common.mod(i + o1, s1.str.length)]).toArray();
+    return this.#pathHelper(s0, s1, [{ modeMap: pre }], new Map()).filter(Boolean)
+      .flatMap(d => Scale.#composeScaleEntries(d, { modeMap: post }))
+  }
+  // data: [{ mapping, modeMap }]
+  static #pathHelper (s0, s1, data, visited) {
+    if (s0 === s1) return data;
+    const s = visited.get(s0) ?? [];
+    visited.set(s0, s.concat(data = data.filter(d => d && !s.some(({ mapping }) => Scale.equalScaleMappings(d.mapping, mapping)))));
+    let nextData = [];
+    for (const [next, ds] of Scale.data.get(s0)?.out ?? []) {
+      const comps = Scale.cartProd([data, ds]).flatMap(([d0, d1]) => Scale.#composeScaleEntries(d0, d1)).toArray();
+      nextData = nextData.concat(Scale.#pathHelper(next, s1, comps, visited))
+    }
+    return Common.group(nextData, ({ mapping: m0 }, { mapping: m1 }) => Scale.equalScaleMappings(m0, m1)).map(([d]) => d)
+  }
+
+  // returns list m0⨟m1 where m1's character set agrees with m0's ordered status
+  // if m0 is ordered, returns one composition. if m1 is unordered, return all possible compositions
+  static composeScaleMappings (m0, m1) {
+    if (m0 == null) return [m1];
+    if (m1 == null) return [m0];
+    if (m1.rules.some(m0.ordered ? 
+      ms => ms.keys().some(c => !Scale.#patChars.includes(c)) :
+      ms => ms.keys().some(c => !Scale.#wordChars.includes(c)))) return [];
+    if (m0.rules.length !== m1.rules.reduce((a, b) => a.union(b), new MultiSet()).repr.length) return [];
+    // TODO: This could be avoided with a scale mapping class
+    const charOrd = [...m1.rules.reduce((a, b) => a.union(new Set(b.keys())), new Set())].sort((a, b) => Scale.charCmp(b, a));
+    return (m0.ordered ? [m0.rules] : Scale.genUniquePerms(m0.rules).toArray())
+      .map(mleft => ({ ordered: m1.ordered,
+        rules: m1.rules.map(ms => new MultiSet(ms.repr.flatMap(([c, k]) => [...mleft[charOrd.indexOf(c)].scalarMultiply(k)])))
+      }))
+  }
+  static equalScaleMappings ({ ordered: o0, rules: r0 } = {}, { ordered: o1, rules: r1 } = {}) {
+    if (o0 !== o1) return false;
+    if (o0) return r0.every((ms, i) => ms.equal(r1[i]));
+    else {
+      const [b, rem] = r0.reduce(([b, rRem], ms0) => {
+        if (!b) return [false];
+        const i = rRem.findIndex(ms1 => ms1.equal(ms0));
+        return ~i ? [true, rRem.toSpliced(i, 1)] : [false]
+      }, [true, r1]);
+      return b && rem.length === 0
+    }
+  }
+
+  // TODO compose constraints (lts)
+  static #composeScaleEntries (d0, d1) {
+    const { mapping: m1, modeMap: o1 } = d1;
+    if (d0 == null) return [d1];
+    if (d1 == null) return [d0];
+    const
+      { mapping: m0, modeMap: o0 } = d0,
+      prev = Map.groupBy(o0, ([, b]) => b), next = Map.groupBy(o1, ([a]) => a),
+      modeMap = Common.quotient(next.entries().flatMap(([m0, m1s]) => (prev.get(m0) ?? [])
+        .flatMap(m => m1s.map(([, m1]) => m.with(1, m1)))).toArray(), Common.arrEq).sort();
+    return Scale.composeScaleMappings(m0, m1).map(m => ({ mapping: m, modeMap }))
+  }
+
+  // returns all ancestor scales which contain the given interval
+  // iv: Multiset (later, step size for ranks?)
+  static getAncestorsByIv (str, iv) {
+    const v = Scale.#getWord(str);
+    if (v) return Scale.#getAncestorsByIv(str, v, iv, new Map([[v, [{ ordered: v.ordered, rules: [] }]]]))
+  }
+  static * #getAncestorsByIv (strInit, v, iv, visited) {
+    const { out, in: _, ...scaleData } = Scale.data.get(v);
+    for (const [vOut] of out) {
+      const { cached, ...ret } = vOut;
+      for (const { mapping, ...edgeData } of Scale.paths(strInit, vOut.str))
+        if (!visited.get(vOut)?.some(m => Scale.equalScaleMappings(m, mapping))) {
+          let rec = false;
+          for (const m of mapping.rules) {
+            if (m.symmetricDifference(iv).size === 0) {
+              const s = visited.get(vOut) ?? [];
+              visited.set(vOut, Common.quotient(s.concat(mapping), Scale.equalScaleMappings));
+              yield { mapping, ...ret, ...scaleData, ...edgeData };
+            }
+            if (m.minus(iv).size === 0) rec = true
+          }
+          if (rec) yield * Scale.#getAncestorsByIv(strInit, vOut, iv, visited)
+        }
+    }
+  }
+
+  // Caching
+  static ancestors (str) {
+    const v = Scale.#getWord(str);
+    if (v?.cached) return Scale.#ancestors(v, v, new Map([[v, [{ ordered: v.ordered, rules: [] }]]]))
+  }
+  static * #ancestors (vinit, v, visited) {
+    const { in:_, out, ...scaleData } = Scale.data.get(v) ?? {};
+    const s = visited.get(v) ?? [], newPaths = [];
+    for (const { mapping, modeMap } of Scale.paths(vinit.str, v.str)){
+      if (!visited.get(v)?.some(m => Scale.equalScaleMappings(m, mapping))) {
+        newPaths.push(mapping);
+        yield { [v.ordered ? "pattern" : "word"]: v.str, isOrdered: v.ordered,
+          ...(mapping ? { mapping } : {}), modeMap, ...scaleData };
+        }}
+    visited.set(v, Common.quotient(s.concat(newPaths), Scale.equalScaleMappings));
+    for (const [ { str } ] of out) yield * Scale.#ancestors(vinit, Scale.#getWord(str), visited)
+  }
+  static ancestorScales (str) {
+    const v = Scale.#getWord(str);
+    if (v?.cached) return Scale.#ancestorScales(v, new Set())
+  }
+  static * #ancestorScales (v, visited) {
+    visited.add(v.str);
+    yield v.str;
+    const { out } = Scale.data.get(v);
+    for (const [ { str } ] of out) if (!visited.has(str)) yield * Scale.#ancestorScales(Scale.#getWord(str), visited)
+  }
+  // Dangerous for now...
+  static cacheAllScales () {
+    const vs = Scale.data.keys().filter(({ cached }) => !cached).toArray().sort(({ str: s0 }, { str: s1 }) => s0.length - s1.length);
+    for (const { str, ordered } of vs)
+      new Scale(ordered ? { pattern: str } : { word: str }).genAncestorScales()
+  }
 
 
 
   // Instance
 
   #keyboard; #mapping; arity; #composition; #equations; #word; #pattern; #mode; #ranks;
-  #ivPO; #genICs; #ivNames = new Map()
   // Optional: keyboard, mapping, word, equations, pattern, mode, ranks
   constructor ({ keyboard, mapping, composition, equations, word, pattern, mode, ranks }) {
     if (keyboard) {
@@ -344,8 +578,6 @@ class Scale {
     else if (word) this.word = word;
     else if (composition) this.composition = composition;
     else throw new Error("Scale error: must at least provide scale composition");
-    // TODO allow deferral
-    if (this.#word) this.#genIntervalData();
     // Mode behaviour: not definable for composition scale, no default for word scale,
     //   default is primeMode for pattern scale+
     if (mode !== undefined || this.#primeMode !== undefined) this.mode = mode ?? this.#primeMode;
@@ -377,17 +609,15 @@ class Scale {
   set mapping (hm) { if (HarmonicMapping.prototype.isPrototypeOf(kb)) return this.#mapping = hm }
   get mapping () { return this.#mapping }
 
-  // Set (abstract intervals counts) or Map (interval size-count pairs)
+  // MultiSet (abstract intervals counts) or Map (interval size-count pairs)
   // Remember to test implied edo when composition is a Map and being used in the context of a keyboard
   set composition (comp) {
     const mbEdo = this.#keyboard?.edo ?? 210;
     if (MultiSet.prototype.isPrototypeOf(comp)) {
-      if (comp.keys().some(v => typeof v !== "number" || v < 1 || v > mbEdo || v !== Math.floor(v)))
-        throw new Error("Scale error: malformed composition")
-    }
-    else if (Map.prototype.isPrototypeOf(comp)) {
-      if (comp.entries().some(([k, v]) => typeof k !== "number" || typeof v !== "number" || k < 1 || v < 1 || k > mbEdo || v > mbEdo ||
-        k !== Math.floor(k) || v !== Math.floor(v))) throw new Error("Scale error: malformed composition");
+      if (comp.keys().some(v => parseInt(v) !== v || !Common.between(1, mbEdo, v))) throw new Error("Scale error: malformed composition")
+    } else if (Map.prototype.isPrototypeOf(comp)) {
+      if (comp.entries().some(([k, v]) => parseInt(k) !== k || parseInt(v) !== v || !Common.between(1, mbEdo, k) || !Common.between(1, mbEdo, v)))
+        throw new Error("Scale error: malformed composition");
     } else throw new Error("Scale error: composition must be either a MultiSet or a Map")
     this.arity ??= comp.values().reduce((a, b) => a + b, 0);
     if (this.#keyboard && Map.prototype.isPrototypeOf(comp) && comp.entries().reduce((a, [k, v]) => a + k * v, 0) !== mbEdo)
@@ -397,12 +627,11 @@ class Scale {
   }
   get composition () { return this.#composition }
 
-  #wordInMode
+  #wordInMode; isBalanced
   set word (word) {
-    let init = false;
-    if (this.#initialised) {
-      this.#initialised = false;
-      init = true
+    if (this.#word) {
+      const ix = Scale.findMode(this.#word)(word);
+      return ~ix && (this.mode = ix);
     }
     if (typeof word !== "string") throw new Error("Scale error: word must be a string");
     else if (this.arity !== undefined) {
@@ -421,30 +650,19 @@ class Scale {
       }
     } else this.composition = comp;
     this.#word = word;
-    { // TODO This shit...
-      let rep = this.arity;
-      const
-        ps = Common.decomp(rep)[0].entries()
-          .reduce((m, [p, k]) => m.plus(new MultiSet([p]).scalarMultiply(k)),
-            new MultiSet([2]).scalarMultiply(31 - Math.clz32(rep & -rep)));
-      MultiSet.enumerateSubsets(ps).forEach(m => {
-        const f = m.values().reduce((a, b) => a * b, 1);
-        if (Common.quotient(word.match(new RegExp(`.{1,${f}}`, "g"))).length === 1 && f < rep) rep = f
-      });
-      this.#modeCount = rep
-    }
-    // isSymmetric
-    if (init) {
-      this.#genIntervalData();
-      // this.mode = this.#mode ?? 0;
-      this.#initialised = true
-    }
+    this.#modeCount = Scale.findMode(word)(word.at(-1) + word.slice(0, -1)) + 1;
+    // TODO affected by equations
+    this.isBalanced = Scale.mixedWordToGenericIvs(word).every(ar => ar.length <= this.#composition.size)
     return this.word
   }
   get word () { return this.#word ? this.#wordInMode ?? this.#word : null }
 
   #primeMode; #patternInMode
   set pattern (pattern) {
+    if (this.#pattern) {
+      const ix = Scale.findMode(this.#pattern)(pattern);
+      return ~ix && (this.mode = ix);
+    }
     let init = false;
     if (this.#initialised) {
       this.#initialised = false;
@@ -461,8 +679,19 @@ class Scale {
       if (this.#word !== word) throw new Error("Scale error: concrete pattern does not match abstract pattern")
     } else this.word = word;
     this.#pattern = pattern;
+    const { intervals } = this;
+    this.#primeMode = Common.mod(Scale.mixedWordToGenericIvsInMode(this.#pattern)
+      .sort(({ ivs: as }, { ivs: bs }) => as.toReversed().reduce(({ ord, done = false }, str, i) => {
+        if (done) return { ord, done };
+        switch (intervals.cmp(intervals.getWord(str), intervals.getWord(bs[bs.length - i - 1]))) {
+          case 1: return ord > -1 ? { ord: 1 } : { done: true, ord: -1 };
+          case 0: return { ord };
+          case -1: return ord < 1 ? { ord: -1 } : { done: true, ord: 1 };
+          default: return { done: true, ord }
+        }
+      }, { ord: 0 }).ord)[0].degree + 1, this.#modeCount);
     if (init) {
-      this.#genIntervalData();
+      this.#genIvData();
       this.mode = this.#primeMode ?? this.#mode;
       this.#initialised = true
     }
@@ -473,6 +702,10 @@ class Scale {
    //TODO list of numbers or intervals
   #ranksInMode
   set ranks (ranks) {
+    if (this.#ranks) {
+      const ix = Scale.findRanksMode(this.#ranks)(ranks);
+      return ~ix && (this.mode = ix);
+    }
     let init = false;
     if (this.#initialised) {
       this.#initialised = false;
@@ -499,7 +732,8 @@ class Scale {
     this.#primeMode ??= Common.mod(Array(this.arity).fill(0)
       .map((_, i) => [Scale.ranksInMode(ranks, i).map(r => ranks.at(-1) - r), i]).sort().at(-1)[1] + 1, this.#modeCount);
     if (init) {
-      this.#genIntervalData();
+      this.#genIvPO();
+      this.#genIvData();
       this.mode = this.#mode ?? this.#primeMode;
       this.#initialised = true
     }
@@ -511,86 +745,87 @@ class Scale {
 
   // Data
 
-  #intervalsInMode
-  #genIntervalData () {
+  #intervals; #genICs
+  getGenericIntervalClass (n) { return (this.#genICs ?? (this.#genIvPO().genICs))[n] }
+  get intervals () { return this.#intervals ?? (this.#genIvPO()).intervals }
+  set intervals (_) {}
+  #genIvPO () {
     let gics;
-    const mode = this.#primeMode ?? 0, { arity } = this;
     if (this.#ranks) gics = Scale.ranksToGenericIvs(this.ranks);
     else if (this.#word) gics = Scale.mixedWordToGenericIvs(this.pattern ?? this.word);
-
-    // Interval set by simple equality
-    const ivs = gics.reduce((m, gic, i) => (gic.forEach(({ iv, degrees: ds }) => {
-      const mbGiv = m.keys().find(iv1 => StepInterval.cmp(iv, iv1) === 0);
-      if (mbGiv) {
-        const { gic, degrees } = m.get(mbGiv);
-        gic.add(i);
-        ds.forEach(d => degrees.add(d))
-      } else m.set(iv, { gic: new Set([i]), degrees: new Set(ds.map(n => (n + mode) % arity)) })
-    }), m), new Map())
-    for (const [iv, { gic, degrees }] of ivs) ivs.set(iv, new StepInterval({ scale: this, iv, gic, degrees }));
-    this.#genICs = gics.map((gic, i) => gic.map(({ iv }) => ivs.entries().find(([iv1]) => StepInterval.cmp(iv, iv1) === 0)[1]));
-
-    this.#ivPO = new StepIntervalPO({ scale: this, ivs: Common.quotient(this.#genICs.flat(), (a, b) => a.equal(b)) });
-    const givs = Array.from(this.#ivPO);
-    this.#deepScale = givs.length === Common.group(givs.map(giv => giv.values()
-      .reduce((s, iv) => (iv.degrees.forEach(d => s.add(d)), s), new Set()).size)).length;
-
-    if (this.#pattern) {
-      if (!this.#ranks) this.#primeMode = Common.mod(Scale.mixedWordToGenericIvsInMode(this.#pattern)
-        .sort(({ ivs: as }, { ivs: bs }) => as.toReversed().reduce(({ ord, done = false }, str, i) => {
-          if (done) return { ord, done };
-          switch (this.#ivPO.cmp(this.#ivPO.getWord(str), this.#ivPO.getWord(bs[bs.length - i - 1]))) {
-            case 1: return ord > -1 ? { ord: 1 } : { done: true, ord: -1 };
-            case 0: return { ord };
-            case -1: return ord < 1 ? { ord: -1 } : { done: true, ord: 1 };
-            default: return { done: true, ord }
-          }
-        }, { ord: 0 }).ord)[0].degree + 1, this.#modeCount);
-
-      const
-        gicMaxes = [], gicMins = [], gicTOSubsets = [], { intervals } = this,
-        baseIvs = this.#ranks ? Scale.ranksInMode(this.#ranks, this.#primeMode).map(rank => intervals.getRank(rank)).filter(Boolean) :
-          Scale.mixedWordToGenericIvsInMode(this.#pattern)[this.#primeMode].ivs.map(word => intervals.getWord(word));
-      givs.forEach(giv => this.#ivNames.set(giv, new Set()));
-      for (let i = 0; i < this.#genICs.length; i++) {
-        const
-          { tOSubsets } = this.#ivPO.getSubPO(this.#genICs[i]),
-          tOThis = tOSubsets.map(ss => new Set([...ss].map(([iv]) => this.#ivPO.get(iv))));
-        gicTOSubsets.push(tOThis);
-        gicMaxes.push(Array.from(tOThis.at(-1)));
-        gicMins.push(Array.from(tOThis[0]))
-      }
-      this.#rothenberg = this.#computeRothenberg(gicMins, gicMaxes, true) ? 1 :
-        this.#computeRothenberg(gicMins, gicMaxes, false) ? 0 : -1;
-      if (this.#ranks && this.#rothenberg >= 0) {
-        for (let i = 0; i < this.#ranks.at(-1); i++) this.#rankNames.set(i, new Set());
-        const min = [...gicMins[0][0]][0].value, max = [...gicMaxes.at(-1)[0]][0].value;
-        if (min > 0) {
-          this.#rankNames.get(0).add({ rank: 1, accid: "" });
-          this.#concatAccid([], { rank: 1, accid: "A" }, 1, 1, false, Array(Math.ceil((min - 1) / 2)).fill(0).map((_, i) => i + 1));
-        }
-        for (let i = 0; i < arity - 1; i++) {
-          const
-            curMin = [...gicMins[i][0]][0].value,
-            lower = curMin - Math.max(0, Math.floor((curMin - (i === 0 ? 0 : [...gicMaxes[i - 1][0]][0].value) - 1) / 2)),
-            curMax = [...gicMaxes[i][0]][0].value,
-            upper = curMax + Math.ceil(((i === arity - 2 ? this.#ranks.at(-1) - 1 : [...gicMins[i + 1][0]][0].value) - curMax - 1) / 2);
-          this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseIvs[i],
-            Array(upper - lower + 1).fill(0).map((_, i) => i + lower))
-        }
-        if (max < this.#ranks.at(-1) - 1) {
-          this.#concatAccid([], { rank: arity + 1, accid: "d" }, 1, 0, false,
-            Array(Math.ceil((this.#ranks.at(-1) - max - 1) / 2)).fill(0).map((_, i) => this.#ranks.at(-1) - i - 1).reverse());
-        }
-      }
-      else for (let i = 0; i < this.#genICs.length; i++)
-        this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseIvs[i]);
-    }
+    else return {};
+    const { genICs, intervals } = StepIntervalPO.create({ scale: this, gics });
+    this.#genICs = genICs;
+    this.#intervals = intervals;
+    return { intervals, genICs }
   }
-  getGenericIntervalClass (n) { return this.#genICs[n] }
-  get intervals () { return this.#ivPO }
-  set intervals (_) {}
 
+  #isDeepScale
+  get isDeepScale () { return this.#isDeepScale ??= this.intervals.size === Common.group(this.intervals.values().map(giv => giv.values()
+    .reduce((s, iv) => (iv.degrees.forEach(d => s.add(d)), s), new Set()).size).toArray()).length }
+  set isDeepScale (_) {}
+
+  #ivNames; #rankNames; #rothenberg
+  getNames (iv) {
+    if (!StepInterval.prototype.isPrototypeOf(iv)) return null;
+    return (this.#ivNames ??= this.#genIvData().ivNames).get(this.intervals.get(iv)).values()
+      .map(({ rank, accid }) => accid + Common.ordinal(rank) +
+        this.arity.toString().split("").map(n => String.fromCodePoint(0x2080 + parseInt(n))).join("")).toArray().join("; ") }
+  getRankNames (rank) {
+    if (this.#ranks) return Array.from((this.#rankNames ??= this.#genIvData().rankNames).get(rank)).map(({ rank, accid }) => accid + Common.ordinal(rank) +
+      this.arity.toString().split("").map(n => String.fromCodePoint(0x2080 + parseInt(n))).join("")) }
+  // TODO rothenberg, lumma stability on rank scales
+  #computeRothenberg = (mins, maxes, strict) =>
+    maxes.reduce((b, max, i) => b && mins.slice(i + 1).every(min => Common.pairwiseCmp(max, min, strict ?
+      ((a, b) => this.intervals.cmp(a, b) === -1) : ((a, b) => this.intervals.cmp(a, b) < 1))), true) &&
+    mins.reduce((b, min, i) => b && maxes.slice(0, i).every(max => Common.pairwiseCmp(min, max, strict ?
+      ((a, b) => this.intervals.cmp(a, b) === 1) : ((a, b) => this.intervals.cmp(a, b) > -1))), true)
+  get rothenberg () { return this.#rothenberg ??= this.#genIvData().rothenberg }
+  set rothenberg (_) {}
+
+  #genIvData () {
+    const
+      { arity, intervals } = this, gicMaxes = [], gicMins = [], gicTOSubsets = [], ivNames = this.#ivNames = new Map(),
+      baseIvs = this.#ranks ? Scale.ranksInMode(this.#ranks, this.#primeMode).map(rank => intervals.getRank(rank)).filter(Boolean) :
+        Scale.mixedWordToGenericIvsInMode(this.#pattern)[this.#primeMode].ivs.map(word => intervals.getWord(word));
+    intervals.values().forEach(giv => ivNames.set(giv, new Set()));
+    for (let i = 0; i < arity - 1; i++) {
+      const
+        { tOSubsets } = intervals.getSubPO(this.getGenericIntervalClass(i)),
+        tOThis = tOSubsets.map(ss => new Set([...ss].map(([iv]) => intervals.get(iv))));
+      gicTOSubsets.push(tOThis);
+      gicMaxes.push(Array.from(tOThis.at(-1)));
+      gicMins.push(Array.from(tOThis[0]))
+    }
+    const
+      rothenberg = this.#rothenberg = this.#computeRothenberg(gicMins, gicMaxes, true) ? 1 :
+        this.#computeRothenberg(gicMins, gicMaxes, false) ? 0 : -1,
+      rankNames = this.#rankNames = new Map(), result = { ivNames, rothenberg, rankNames };
+    if (this.#ranks && rothenberg >= 0) {
+      for (let i = 0; i < this.#ranks.at(-1); i++) this.#rankNames.set(i, new Set());
+      const min = [...gicMins[0][0]][0].value, max = [...gicMaxes.at(-1)[0]][0].value;
+      if (min > 0) {
+        this.#rankNames.get(0).add({ rank: 1, accid: "" });
+        this.#concatAccid([], { rank: 1, accid: "A" }, 1, 1, false, Array(Math.ceil((min - 1) / 2)).fill(0).map((_, i) => i + 1));
+      }
+      for (let i = 0; i < arity - 1; i++) {
+        const
+          curMin = [...gicMins[i][0]][0].value,
+          lower = curMin - Math.max(0, Math.floor((curMin - (i === 0 ? 0 : [...gicMaxes[i - 1][0]][0].value) - 1) / 2)),
+          curMax = [...gicMaxes[i][0]][0].value,
+          upper = curMax + Math.ceil(((i === arity - 2 ? this.#ranks.at(-1) - 1 : [...gicMins[i + 1][0]][0].value) - curMax - 1) / 2);
+        this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseIvs[i],
+          Array(upper - lower + 1).fill(0).map((_, i) => i + lower))
+      }
+      if (max < this.#ranks.at(-1) - 1) {
+        this.#concatAccid([], { rank: arity + 1, accid: "d" }, 1, 0, false,
+          Array(Math.ceil((this.#ranks.at(-1) - max - 1) / 2)).fill(0).map((_, i) => this.#ranks.at(-1) - i - 1).reverse());
+      }
+    }
+    else for (let i = 0; i < arity - 1; i++)
+      this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseIvs[i]);
+    return result
+  }
   // Interval name by recursive splitting of ordering, relative to scale
   #concatAccid (ar, name, level, bias, init, ranks) {
     if (ar.length === 0 && !ranks?.length) return;
@@ -610,31 +845,8 @@ class Scale {
     if (ranks?.length) this.#rankNames.get(ranks[ri]).add(name)
     this.#concatAccid(right, Object.assign({}, name, { accid: (Scale.#levelChar[level]?.[1] ?? "+") + name.accid }), level + 1, 1 - bias, false, rightRanks)
   }
-  getNames (iv) {
-    const { rank, accid } = this.#ivNames.get(this.#ivPO.get(iv));
-    return accid + Common.ordinal(rank) +
-      this.arity.toString().split("").map(n => String.fromCodePoint(0x2080 + parseInt(n))).join("")
-  }
-  #rankNames = new Map()
-  getRankNames (rank) {
-    if (this.#ranks) return Array.from(this.#rankNames.get(rank)).map(({ rank, accid }) => accid + Common.ordinal(rank) +
-      this.arity.toString().split("").map(n => String.fromCodePoint(0x2080 + parseInt(n))).join("")) 
-  }
 
-  // TODO rothenberg, lumma stability on rank scales
-  #rothenberg
-  #computeRothenberg = (mins, maxes, strict) =>
-    maxes.reduce((b, max, i) => b && mins.slice(i + 1).every(min => Common.pairwiseCmp(max, min, strict ?
-      ((a, b) => this.#ivPO.cmp(a, b) === -1) : ((a, b) => this.#ivPO.cmp(a, b) < 1))), true) &&
-    mins.reduce((b, min, i) => b && maxes.slice(0, i).every(max => Common.pairwiseCmp(min, max, strict ?
-      ((a, b) => this.#ivPO.cmp(a, b) === 1) : ((a, b) => this.#ivPO.cmp(a, b) > -1))), true)
-  get rothenberg () { return this.#rothenberg }
-  set rothenberg (_) {}
-  #deepScale
-  get deepScale () { return this.#deepScale }
-  set deepScale (_) {}
-
-  #modeCount
+  #modeCount; #intervalsInMode
   set mode (mode) {
     if (!this.#word) throw new Error("Scale error: mode requires an abstract scale pattern");
     mode = Common.mod(parseInt(mode), this.#modeCount);
@@ -645,13 +857,15 @@ class Scale {
     if (pattern) this.#patternInMode = pattern.slice(mode) + pattern.slice(0, mode);
     if (word) {
       this.#wordInMode = word.slice(mode) + word.slice(0, mode);
-      if (ranks) this.#intervalsInMode = this.#ranksInMode.slice(1, -1).map(r => this.#ivPO.getRank(r));
-      else this.#intervalsInMode = Scale.mixedWordToGenericIvsInMode(pattern ?? word)[mode].ivs.map(str => this.#ivPO.getWord(str));
+      if (ranks) this.#intervalsInMode = this.#ranksInMode.slice(1, -1).map(r => this.intervals.getRank(r));
+      else this.#intervalsInMode = Scale.mixedWordToGenericIvsInMode(pattern ?? word)[mode].ivs.map(str => this.intervals.getWord(str));
     }
     return mode
   }
   get mode () { return this.#mode }
-  getInterval (n) { return this.#intervalsInMode[n - 2]}
+  get primeMode () { return this.#primeMode }
+  set primeMode (_) {}
+  getInterval (n) { return this.#mode === undefined ? undefined : this.#intervalsInMode[n - 2]}
 
   // TODO use renaming from earlier if required
   set equations (eqs) {
@@ -690,85 +904,75 @@ class Scale {
   setPattern (stepOrder) {
     if (!this.#word) throw new Error("Scale error: requires abstract scale pattern");
     if (!Array.prototype.isPrototypeOf(stepOrder) || stepOrder.length < this.#composition.keys().toArray().length ||
-      !Common.arrEq(stepOrder.sort(), Array(stepOrder.length).fill(0).map((_, i) => i))) return null;
+      !Common.arrEq(stepOrder.toSorted(), Array(stepOrder.length).fill(0).map((_, i) => i))) return null;
     const newScale = this.clone();
     newScale.pattern = this.#word.split("").map(c => Scale.#patChars[stepOrder.indexOf(Scale.#wordChars.indexOf(c))]).join("");
     return newScale
   }
-  // Infinite list of step size mappings ordered by scale edo
-  // TODO I could probably do better...
-  * genStepSizeMappingsStream () {
-    if (this.#pattern) {
-      const givCounts = new MultiSet(this.#pattern.split("")).entries().toArray()
-        .sort(([k0], [k1]) => Scale.charCmp(k0, k1)).map(([, v]) => v.length);
-      yield * Scale.genIvMappingsFromPatCharCounts(givCounts);
-    } else if (MultiSet.prototype.isPrototypeOf(this.#composition)) {
-      const gen = Scale.genIvMappingsFromComposition(this.#composition);
-      if (this.#word) {
-        const givCounts = new MultiSet(this.#word.split("")).entries()
-          .reduce((m, [k, v]) => m.concat([[k, v.length]]), []);
-        yield * gen.map(({ mapping, edo }) => {
-          const m = new Map();
-          for (const [s, n0] of mapping) m.set(givCounts.find(([, n1]) => n0 === n1)[0], s);
-          return { mapping: m, edo }
-        })
-      } else yield * gen
-    }
-  }
-  // Constrain mappings to the keyboard edo
+  // Skips all mappings except the keyboard edo
   genAllStepSizeMappings () {
     if (!this.#keyboard) throw new Error("Scale error: requires keyboard");
-    const { edo } = this.#keyboard, gen = this.genStepSizeMappingsStream();
+    const
+      { edo } = this.#keyboard,
+      gen = Scale.genStepSizeMappingsStream({ pattern: this.#pattern, composition: this.#composition });
     let value;
     while (({ value } = gen.next()).value?.edo < edo);
     const result = value?.edo === edo ? [value] : [];
     while (({ value } = gen.next()).value?.edo === edo) result.push(value);
     return result.map(({ mapping }) => mapping)
   }
-  setStepSizes (ivMap) {
+  setStepSizes (ivSizes) {
     if (!this.#word) throw new Error("Scale error: requires scale word");
-    const mbEdo = this.#keyboard?.edo ?? 210;
-    if (!Map.prototype.isPrototypeOf(ivMap) || ivMap.entries().some(([k, v]) =>
-      (!this.#pattern && this.#word && !Scale.#wordChars.includes(k)) || (this.#pattern && !Scale.#patChars.includes(k)) ||
-      parseInt(v) !== v || !Common.between(0, mbEdo, v))) return null;
-    const newScale = this.clone();
-    const v = (this.#pattern ?? this.#word).split("")
-      .map(c => ivMap.get(c)).reduce((ar, v) => ar.concat([ ar.at(-1) + v ]), [0]);
-    newScale.ranks = v;
+    const mbEdo = this.#keyboard?.edo ?? 210, newScale = this.clone();
+    if (this.#pattern) {
+      if (typeof ivSizes[Symbol.iterator] !== "function" || ivSizes.values().some(v => parseInt(v) !== v)) return null;
+      ivSizes.sort((a, b) => b - a);
+      const chars = new MultiSet(this.#pattern.split("")).keys().toArray().sort((a, b) => Scale.charCmp(b, a));
+      newScale.ranks = this.#pattern.split("").reduce((ar, c) => ar.concat([ ar.at(-1) + ivSizes[chars.indexOf(c)] ]), [0])
+    } else {
+      if (!Map.prototype.isPrototypeOf(ivSizes) || ivSizes.entries().some(([k, v]) =>
+       !Scale.#wordChars.includes(k) || parseInt(v) !== v || !Common.between(0, mbEdo, v))) return null;
+      newScale.ranks = this.#word.split("").map(c => ivSizes.get(c)).reduce((ar, v) => ar.concat([ ar.at(-1) + v ]), [0])
+    }
     if (this.#keyboard && this.#keyboard.edo !== newScale.ranks.at(-1))
       throw new Error("Scale error: mismatch between ranks and keyboard");
     return newScale
   }
+  // All scales on this keyboard that fit the current constraints
+  * genAllConcreteScales () {}
 
-  genAncestorScales () {
+  genAncestorScales (sv = this.#composition.size) {
+    if (!this.#word) return;
+    const vertex = Scale.#getWord(this.#pattern ?? this.#word);
+    if (vertex?.cached) return Scale.ancestors(vertex.str).toArray();
+
     const
-      ivs = Array.from(this.#ivPO),
-      // modes = unique [outerMode, innerMode]
-      sq = w => Array(w.length).fill(0).map((_, i) => w.slice(i) + w.slice(0, i)),
+      ivs = Array.from(this.intervals),
+      // modeMap: [unique [outerMode, innerMode]]
       rec = (mapping, mode, offset, pos) => {
-        if (offset === this.#modeCount) {
+        if (offset === this.arity) {
           const m = mapping.entries().toArray().sort(([a], [b]) => a < b);
-          if (pos > sv) {
+          if (pos >= m.length) {
             let i = 0, ix, word = "";
             while ((ix = m.findIndex(([, poss]) => poss[0] === i)) >= 0) {
               m[ix][1].shift();
               word += Scale.#wordChars[ix];
               i++
             }
-            const wsq = sq(word);
-            for (const { word, mapping, modes } of patterns) {
+            const strMode = Scale.findMode([...word].reverse().join(""));
+            for (const { word, mapping, modeMap } of patterns) {
               if (!Common.arrEq(mapping, m.map(([ix]) => ix))) continue;
-              const ix = wsq.indexOf(word);
+              const ix = strMode([...word].reverse().join(""));
               if (!~ix) continue;
-              modes.push([mode, ix]);
+              modeMap.push([mode, ix]);
               return 
             }
-            patterns.push({ modes: [[mode, 0]], mapping: m.map(([ivIx]) => ivIx), word })
+            patterns.push({ modeMap: [[mode, 0]], mapping: m.map(([ivIx]) => ivIx), word })
           }
           return
         }
-        let i = offset === 0 ? 2 : 1;
-        while (offset + i <= this.#modeCount) {
+        let i = 1;
+        while (offset + i <= this.arity) {
           this.mode = mode + offset;
           const
             ivIx = ivs.indexOf(this.getInterval(i + 1)),
@@ -780,24 +984,36 @@ class Scale {
           i++
         }
       },
-      mode = this.mode, patterns = [], sv = Array.from(this.#composition.keys()).length;
+      mode = this.mode, patterns = [];
     this.mode = 0;
+    const o = Boolean(this.pattern), thisStr = o ? this.pattern : this.word, offset = Scale.modeOffset(thisStr);
     for (let i = 0; i < this.#modeCount; i++) {
       rec(new Map(), i, 0, 0);
       this.mode++
     }
     if (mode) this.mode = mode;
-    return patterns.map(({ modes, mapping: m, word }) => {
+    const { true: ordered = [], false: unordered = [] } = Common.groupBy(patterns.map(({ modeMap, mapping: m, word }) => {
       const
-        isBalanced = Scale.mixedWordToGenericIvs(word).every(ar => ar.length <= sv),
+        isBalanced = Scale.mixedWordToGenericIvs(word).every(ar => ar.length <= m.length),
         mapping = m.map(n => ivs[n]),
-        po = this.#ivPO.getSubPO(mapping.reduce((a, b) => a.union(b), new Set()));
+        po = this.intervals.getSubPO(mapping.reduce((a, b) => a.union(b), new Set())),
+        topOrd = [...po].map(([iv]) => iv).reverse(),
+        pattern = Scale.normalisePattern(word.split("")
+          .map(c => Scale.#patChars[topOrd.indexOf([...mapping[Scale.#wordChars.indexOf(c)]][0])]).join(""));
+      Scale.addData({
+        sOut: { str: thisStr, ordered: o, isBalanced: this.isBalanced },
+        sIn: { str: po.isTotalOrder ? pattern : word, ordered: po.isTotalOrder, isBalanced },
+        mapping: { rules: mapping.map(si => [...si][0].value), ordered: po.isTotalOrder },
+        modeMap: modeMap.map(([o, i]) => [ Common.mod(o - offset, this.#modeCount), i ]).sort(),
+        lts: po.graph
+      });
       return po.isTotalOrder ?
-        { modes, mapping, isBalanced, pattern: Scale.normalisePattern(word.split("")
-          .map(c => Scale.#patChars[Scale.#wordChars.indexOf(c)]).join("")) } :
-        { modes, mapping, isBalanced, word, lts: po.graph }
-    }).sort(({ word: w0, pattern: p0 }, { word: w1, pattern: p1 }) =>
-      !!w0 - !!w1 || (w0 ? w1.length - w0.length : p1.length - p0.length))
+        { modeMap, mapping, isBalanced, isOrdered: true, pattern } :
+        { modeMap, mapping, isBalanced, isOrdered: false, word, lts: po.graph }
+    }), ({ isOrdered }) => isOrdered);
+    Scale.#markCached(Scale.#getWord(thisStr));
+    return ordered.sort(({ pattern: p0 }, { pattern: p1 }) => p1.length - p0.length)
+      .concat(unordered.sort(({ word: w0 }, { word: w1 }) => w1.length - w0.length))
   }
 
 
@@ -838,6 +1054,7 @@ class Scale {
 
 
 
+// TODO remove scale => ordered: boolean; po: StepIntervalPO|null
 class StepInterval {
   // Simple equality
   static cmp (iv0, iv1) {
@@ -868,8 +1085,7 @@ class StepInterval {
     this.#scale = scale;
     const chars = (scale.pattern ?? scale.word).split("");
     if (scale.ranks) {
-      if (typeof iv !== "number" || iv < 0 || iv > scale.ranks.at(-1) || iv !== Math.floor(iv))
-        throw new Error("StepInterval error: must be an allowed step size");
+      if (parseInt(iv) !== iv || !Common.between(0, scale.ranks.at(-1), iv)) throw new Error("StepInterval error: must be an allowed step size");
       this.#strRep = String(iv)
     } else if (scale.word) {
       if (!MultiSet.prototype.isPrototypeOf(iv) || iv.keys().find(char => !chars.includes(char)))
@@ -877,11 +1093,11 @@ class StepInterval {
       this.#strRep = StepInterval.multiSetToString(iv)
     }
     this.#value = iv;
-    if (gic !== undefined && !Set.prototype.isPrototypeOf(gic) && gic.values().some(n => typeof n !== "number"))
-      throw new Error("StepInterval error: generic interval class must be given as a Set of numbers");
+    if (gic !== undefined && !Set.prototype.isPrototypeOf(gic) && gic.values().some(n => parseInt(n) !== n || n < 0))
+      throw new Error("StepInterval error: generic interval class must be given as a Set of positive integers");
     this.#gIC = gic;
-    if (degrees !== undefined && !Set.prototype.isPrototypeOf(degrees) || degrees.values().some(n => typeof n !== "number"))
-      throw new Error("StepInterval error: degree positions must be a Set of numbers");
+    if (degrees !== undefined && !Set.prototype.isPrototypeOf(degrees) || degrees.values().some(n => parseInt(n) !== n || n < 0))
+      throw new Error("StepInterval error: degree positions must be a Set of positive integers");
     this.#degrees = degrees
   }
   get scale () { return this.#scale }
@@ -912,13 +1128,34 @@ class StepInterval {
 
 
 
+// TODO remove scale => ordered: boolean; octave: str|ranks?
+// Necklace class?
 // Partial ordering on generic intervals. Edges point in descending order.
 class StepIntervalPO {
-  static fromPattern (pattern) {}
+  // Interval set by simple equality
+  static create ({ scale, gics }) {
+    if (typeof gics[Symbol.iterator] !== "function" || gics.values().some(gic => typeof gics[Symbol.iterator] !== "function" ||
+      gic.values().some(obj => typeof obj?.degrees[Symbol.iterator] !== "function" ||
+        !(typeof obj?.iv === "number" || MultiSet.prototype.isPrototypeOf(obj?.iv)))))
+      throw new Error("StepIntervalPO error: generic interval class array malformed");
+    const ivs = new Map(), { arity, primeMode } = scale, mode = primeMode ?? 0;
+    for (let i = 0; i < gics.length; i++) for (const { iv, degrees: ds } of gics[i]) {
+      const mbGiv = ivs.keys().find(iv1 => StepInterval.cmp(iv, iv1) === 0);
+      if (mbGiv) {
+        const { gic, degrees } = ivs.get(mbGiv);
+        gic.add(i);
+        for (const d of ds) degrees.add(d)
+      } else ivs.set(iv, { gic: new Set([i]), degrees: new Set(ds.map(n => (n + mode) % arity)) })
+    }
+    for (const [ iv, { gic, degrees } ] of ivs) ivs.set(iv, new StepInterval({ scale, iv, gic, degrees }));
+    const
+      genICs = gics.map((gic, i) => gic.map(({ iv }) => ivs.entries().find(([iv1]) => StepInterval.cmp(iv, iv1) === 0)[1])),
+      intervals = new StepIntervalPO({ scale, ivs: Common.quotient(genICs.flat(), (a, b) => a.equal(b)) });
+    return { genICs, intervals }
+  }
 
   #scale; #vertices = new Set(); #edges = new Map() // Map(iv -> Set(iv))
-  min = new Set(); max = new Set(); tOSubsets = []; #eqs = []
-  // TODO accept gics, compute second po with gic ordering
+  min = new Set(); max = new Set(); #eqs = []
   constructor ({ scale, ivs = [] }) {
     if (!Scale.prototype.isPrototypeOf(scale)) throw new Error("StepIntervalPO error: scale must be Scale object");
     this.#scale = scale;
@@ -929,10 +1166,12 @@ class StepIntervalPO {
     const ord = this.#topOrder();
     this.#vertices = new Set(ord);
     this.#edges = new Map(ord.map(giv => [giv, this.#edges.get(giv)]));
-    this.tOSubsets = this.#genTOSubsets();
     if (this.#scale.word && !this.#scale.ranks) this.#genEquations();
   }
   [Symbol.iterator] = () => this.#vertices[Symbol.iterator]()
+  values = this[Symbol.iterator]
+  get size () { return this.#vertices.size }
+  set size (_) {}
 
   add (iv0) {
     const mbGIv = this.#vertices.values().find(iv1 => StepInterval.cmp(iv0, iv1) === 0);
@@ -950,14 +1189,14 @@ class StepIntervalPO {
         rhIns.add(lhs);
         for (const lhOut of lhOuts)
           if (this.cmp(rhs, lhOut) === 1) {
-          lhOuts.delete(lhOut);
-          this.#edges.get(lhOut).in.delete(lhs);
-        }
+            lhOuts.delete(lhOut);
+            this.#edges.get(lhOut).in.delete(lhs);
+          }
         for (const rhIn of rhIns)
           if (this.cmp(rhIn, lhs) === 1) {
-          rhIns.delete(rhIn);
-          this.#edges.get(rhIn).out.delete(rhs)
-        }
+            rhIns.delete(rhIn);
+            this.#edges.get(rhIn).out.delete(rhs)
+          }
       });
     } else mbGIv.add(iv0);
     iv0.po = this
@@ -1062,13 +1301,16 @@ class StepIntervalPO {
     }
   }
 
-  #genTOSubsets (edges = this.#edges) {
-    return Array.from(edges.entries()).reduce(({ result, state }, [v, { inc }], i) => {
+  #tOSubsets
+  get tOSubsets () { return this.#tOSubsets ??= this.#genTOSubsets() }
+  set tOSubsets (_) {}
+  #genTOSubsets () {
+    return Array.from(this.#edges.entries()).reduce(({ result, state }, [v, { inc }], i) => {
       if (inc.size === 0) return {
         result: state.size ? result.concat(state, new Set([v])) : result.concat(new Set([v])),
         state: new Set()
       };
-      else if (i === edges.size - 1)
+      else if (i === this.#edges.size - 1)
         return { result: state.size ? result.concat(state.add(v)) : result.concat(new Set([v])) };
       else return { result, state: state.add(v) }
     }, { result: [], state: new Set() }).result

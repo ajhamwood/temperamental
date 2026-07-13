@@ -44,7 +44,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       if (Common.gcd(gstep, hstep) !== 1) continue;
       for (const [ g, h ] of HexGrid.genOrientations({ edo, gstep, hstep })) {
         const scores = new Map(HexGrid.centralness({ gstep, hstep, g, h, ranks: rankHarms.keys().toArray() })
-          .map(({ rank, dist }) => [ rankHarms.get(rank), dist ]));
+          .map(({ rank, dist }) => [ 1 / Math.log2(rankHarms.get(rank)), dist ]));
         results.push({ gstep, hstep, g, h, score: Common[norm](scores) * HexGrid.octLen({ g, h }) })
       }
     }

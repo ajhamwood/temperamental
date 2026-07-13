@@ -50,7 +50,7 @@ class Common {
     return ~i ? a.with(i, a[i].concat([v])) : a.concat([[v]])
   }, [])
   static quotient = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) =>
-    ~a.findIndex(v0 => cmp(v0, v)) ? a : a.concat(v), [])
+    ~a.findIndex(v0 => cmp(v0, v)) ? a : a.concat([v]), [])
   static decomp = (...iv) => iv.map(r => { // use 2s?
     const raw = [], res = new Map();
     let ivh = this.non2(r), i = 1;
@@ -102,8 +102,8 @@ class Common {
     return res
   })
 
-  static tenneyNorm = m => Math.sqrt(m.entries().reduce((acc, [h, v]) => acc + (v / Math.log2(h)) ** 2, 0))
-  static weilNorm = (m, k = 1) => Math.sqrt(this.tenneyNorm(m) ** 2 + (k * m.entries().reduce((acc, [h, v]) => acc + v / Math.log2(h), 0)) ** 2)
+  static tenneyNorm = m => Math.sqrt(m.entries().reduce((acc, [b, v]) => acc + (b * v) ** 2, 0))
+  static weilNorm = (m, k = 1) => Math.sqrt(this.tenneyNorm(m) ** 2 + (k * m.entries().reduce((acc, [b, v]) => acc + b * v, 0)) ** 2)
 
   static colourMix = (hc1, hc2, t) => {
     if (![hc1, hc2].every(hc => hc.match(/#\p{Hex_Digit}{6,8}/ug))) return null;
@@ -288,6 +288,8 @@ class MultiSet {
 
   get size () { return this.#keys.values().reduce((a, b) => a + b, 0) }
   set size (_) {}
+  get uniques () { return this.#keys.size }
+  set uniques (_) {}
 
   insert (v) {
     let k = 1;
@@ -336,12 +338,14 @@ class MultiSet {
   }
   symmetricDifference (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
-    const r = new Map();
-    for (const [k, v] of ms.#keys)
-      if (this.#keys.has(k)) {
-        const v0 = this.#keys.get(k);
+    const r = new Map(this.#keys);
+    for (const [k, v] of ms.#keys) {
+      if (r.has(k)) {
+        const v0 = r.get(k);
         if (v0 !== v) r.set(k, Math.abs(v0 - v));
-      }
+        else r.delete(k)
+      } else r.set(k, v)
+    }
     return new MultiSet().attach(r)
   }
   scalarMultiply (n) {
@@ -377,6 +381,7 @@ class MultiSet {
     return true
   }
 }
+
 
 
 // Not for storage of Map objects...

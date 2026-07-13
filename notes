@@ -4,7 +4,6 @@ Make work in Chrome and Safari
 * User-editable wheel sensitivity => app settings menu?
 * Limit notes to frequencies between 10 and 40000 Hz; shade echo notes according to octave difference
 * Refactor keyboard data lifecycle
-* let -> const in main.js
 Temperaments!
   * Copyable Key (changes key of keyboard)
   * Colour coding on harmonic mapping?
