@@ -1,5 +1,5 @@
 import $ from "./machine.js";
-import { Common } from "./common.js";
+import { Common, MultiSet } from "./common.js";
 import { app } from "./main.js";
 import { HarmonicMapping } from "./mapping.js";
 import { HexGrid } from "./grid.js"
@@ -301,6 +301,19 @@ class Tuning {
     }
   }
   refresh () { this.#active = new Map() }
+
+  playScale (sc) {
+    const { edo } = this.#keyboard;
+    if (!sc.embeddingScale?.composition.equal(new MultiSet([edo]))) return null;
+    sc.ranks.reduce((p, ms) => p.then(() => {
+      this.#keyboard.stop();
+      const [hex] = this.getNote({
+        rank: Common.mod((ms.repr.get("X") ?? 0), edo),
+        octave: Math.floor((ms.repr.get("X") ?? 0) / edo)
+      }).buttons.filter(hex => !hex.isGhost);
+      this.#keyboard.play(...hex.coord)
+    }).then(Common.wait(500)), Promise.resolve()).then(() => this.#keyboard.stop())
+  }
 }
 
 
@@ -351,12 +364,12 @@ class Note {
   }
   get key () { return this.#tuning.getKey(this.rank) }
   addButton (hex) {
-    const i = this.#buttons.findIndex(h => Common.arrEq(h.coord, hex.coord));
+    const i = this.#buttons.findIndex(h => Common.zipCmp(h.coord, hex.coord));
     if (~i) this.#buttons[i] = hex;
     else this.#buttons.push(hex)
   }
   removeButton (hex) {
-    const i = this.#buttons.findIndex(h => Common.arrEq(h.coord, hex.coord));
+    const i = this.#buttons.findIndex(h => Common.zipCmp(h.coord, hex.coord));
     if (~i) this.#buttons.splice(i, i + 1)
   }
   get buttons () { return this.#buttons.slice() }

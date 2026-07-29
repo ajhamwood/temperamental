@@ -133,10 +133,13 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.#hexes.clear();
     this.#edges = new Set();
     this.#notes = new Set();
+
     const
-      sc = new Scale({ composition: new MultiSet([g, h]) }).genSymmetricScales({ mode: 0 })[0]
-        .setStepSizes(new Map([[g > h ? "X" : "Y", gstep], [g > h ? "Y" : "X", hstep]])),
-      { ranks } = sc, coords = ranks.slice(1).reduce((ar, r, i) => {
+      sc = new Scale({
+        word: Scale.genBilliards(new MultiSet([g, h]))[0],
+        embedding: Scale.edoEmbedding(g > h ? [gstep, hstep] : [hstep, gstep]) }),
+      ranks = sc.ranks.map(ms => ms.size),
+      coords = ranks.slice(1).reduce((ar, r, i) => {
         const data = ar.at(-1).slice();
         data[+(r - ranks[i] === hstep)]++;
         data[2] = r;

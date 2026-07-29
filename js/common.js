@@ -29,11 +29,13 @@ class Common {
   static sum = ar => ar.reduce((a, b) => a + b, 0)
   static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
-  static arrEq = (a1, a2) => a1.length === a2.length && a1.every((v, i) => v === a2[i])
+  static arrCmp = (ar0, ar1) => { for (let i = 0; i < ar0.length; i++)
+    if (ar0[i] !== ar1[i]) return Math.sign(ar0[i] - ar1[i]); return Math.sign(ar0.length - ar1.length) }
   static pairwiseCmp = (a1, a2, cmp = (a, b) => a === b) => a1.every(i1 => a2.every(i2 => cmp(i1, i2)))
-  static bagEq = (a1, a2) => a1.length === a2.length && a1.reduce(([ b, rem ], v) => {
+  static zipCmp = (a1, a2, cmp = (a, b) => a === b) => a1.length === a2.length && a1.every((v, i) => cmp(v, a2[i]))
+  static bagEq = (a1, a2, cmp = (a, b) => a === b) => a1.length === a2.length && a1.reduce(([ b, rem ], v) => {
     if (!b) return [ false ];
-    const i = rem.findIndex(u => u === v);
+    const i = rem.findIndex(u => cmp(u, v));
     return ~i ? [ true, rem.toSpliced(i, 1) ] : [ false ]
   }, [ true, a2 ])[0]
   static groupBy = (ar, groupFn = x => x, mapFn = x => x) => ar.reduce((a, v) => {
@@ -51,6 +53,8 @@ class Common {
   }, [])
   static quotient = (ar, cmp = (a, b) => a === b) => ar.reduce((a, v) =>
     ~a.findIndex(v0 => cmp(v0, v)) ? a : a.concat([v]), [])
+  static mapCompose = (m0, m1) => new Map(m1.entries().map(([k, v]) => [m0.get(k), v]))
+  
   static decomp = (...iv) => iv.map(r => { // use 2s?
     const raw = [], res = new Map();
     let ivh = this.non2(r), i = 1;
@@ -252,14 +256,178 @@ class Common {
 
 
 
+class Iter {
+  // Generator convenience methods
+
+  // All ways to partition a number into (up to k) smaller numbers
+  static partitions = (v, max, cuml) => {
+    const rec = (n, as) => n >= v ?
+      cuml ? as.toReversed().map(a => Iterator.concat(...a)) : Iterator.concat(...as[0]) :
+      rec(n + 1, [ as.map((ps, i) => ps.slice(0, i + 1)
+        .flatMap(ms => ms.filter(m => !max || m.size < max)
+          .map(m => ((m = MultiSet.from(m)).insert(i + 1), m)))) ].concat(as))
+    return rec(0, [[[ new MultiSet() ]]])
+  }
+
+  // TODO replace in chordworker.js
+  static genAllNecklaces (comp, chars) {
+    const
+      total = Common.sum(comp.values()),
+      ns = comp.values().map((k, i) => k - !i).toArray(),
+      word = Array(total).fill(0);
+    function * necklaces (t, p) {
+      if (t > total && total % p === 0)
+        yield word.reduce((s, n) => s + chars[n], "");
+      else for (let i = word[t - p - 1]; i < comp.size; i++) if (ns[i] > 0) {
+        word[t - 1] = i;
+        ns[i]--;
+        if (i === word[t - p - 1]) yield * necklaces(t + 1, p);
+        else yield * necklaces(t + 1, t);
+        ns[i]++
+      }
+    }
+    return necklaces(2, 1)
+  }
+
+  // All ways to split a MultiSet into the given set of smaller MultiSets
+  static * genDecompositions (ms, gens) {
+    const rec = (gen, m) => function * (...as) {
+      const max = as.reduce((ac, [{}, x], i) => ac.minus(gens[i].scalarMultiply(x)), ms).divSat(m);
+      for (let y = 1; y <= max; y++) yield * gen(...as, [m, y])
+    };
+    let gen = function * (...as) {
+      const z = as.reduce((ac, [{}, x], i) => ac.minus(gens[i].scalarMultiply(x)), ms).divide(gens.at(-1));
+      if (z && z === Math.floor(z)) yield [ ...as, [ gens.at(-1), z ] ]
+    };
+    for (const g of gens.toReversed().slice(1)) gen = rec(gen, g);
+    yield * gen().map(v => new Map(v))
+  }
+  // All the sets of MultiSets which cleanly divide a given composition
+  static * genGensByComp (comp, sv = comp.size, chars) {
+    const
+      cs = [...comp], bijs = Iter.bijections(cs, cs).toArray(),
+      index = new Index({ address: x => x, done: ($0, v, i) => i === v.length - 1, cmp: Common.zipCmp }),
+      combs = Iter.cartProd(cs.map(n => Array(n + 1).keys().toArray())).map((ar, i) => [i, ar]).toArray();
+    function * rec (a, v, j) {
+      if (Common.sum(a) === 0 && v >= 0) yield [];
+      else if (v < 0) return;
+      for (const [ k, ar ] of combs.slice(j)) {
+        const max0 = Math.min(...a.map((n, i) => ar[i] ? Math.floor(n / ar[i]) : Infinity));
+        for (let i = 1; i <= max0; i++)
+          yield * rec(a.map((n, h) => n - i * ar[h]), v - 1, k + 1).map(ars => [ar].concat(ars))
+      }
+    }
+    yield * Index.quotient(
+      index, rec(cs, sv, 1).filter(ars => ars.some(ar => Common.sum(ar) !== 1)),
+      ars => bijs.map(bij => ars.map(ar => Iter.reorder(ar, bij)).toSorted())
+    ).map(ars => ars.map(gen => new MultiSet(gen.flatMap((n, i) => chars[i].repeat(n).split("")))))
+  }
+
+  // All permutations of unique array elements, ignoring equality
+  static * genUniquePerms (array, choose = array.length) {
+    if (choose === 0 || array.length === 0) yield [];
+    else for (let i = 0; i < array.length; i++)
+      yield * Iter.genUniquePerms(array.toSpliced(i, 1), choose - 1).map(ar => [array[i]].concat(ar))
+  }
+  // All combinations of unique array elements, ignoring equality
+  static * genUniqueCombs (array, choose, i = 0) {
+    if (choose === 0 || array.length === 0) yield [];
+    else for (; i <= array.length - choose; i++)
+      yield * Iter.genUniqueCombs(array, choose - 1, i + 1).map(ar => [array[i]].concat(ar))
+  }
+  // All combinations of possibly non-unique array elements, ignoring equality
+  static * genCombs (array, choose, i = 0) {
+    if (choose === 0 || array.length === 0) yield [];
+    else for (; i < array.length; i++)
+      yield * Iter.genCombs(array, choose - 1, i).map(ar => [array[i]].concat(ar))
+  }
+  static * cartPower (array, choose) {
+    if (choose === 0) yield [];
+    else for (let i = 0; i < array.length; i++)
+      yield * Iter.cartPower(array, choose - 1).map(ar => [array[i]].concat(ar))
+  }
+  // Cartesian product of series of arrays
+  static * cartProd (array) {
+    if (array.length === 0) yield [];
+    else if (array.length === 1) yield * array[0].map(el => el == null ? [] : [el]);
+    else {
+      const [ a0, ...rest ] = array;
+      for (let i = 0; i < a0.length; i++)
+        yield * Iter.cartProd(rest).map(ar => a0[i] == null ? ar : [a0[i]].concat(ar))
+    }
+  }
+  // Sequences of all permutations of the series of arrays
+  static * seqPerms (array) {
+    if (array.length === 0) yield [];
+    else {
+      const [ a0, ...rest ] = array;
+      yield * Iter.genUniquePerms(a0).flatMap(ar0 => Iter.seqPerms(rest).map(ar1 => ar0.concat(ar1)))
+    }
+  }
+  // All permutations of MultiSet elements
+  static * genMultiPerms (ms) {
+    if (ms.size === 0) yield [];
+    else for (const k of ms.keys()) {
+      const subMs = MultiSet.from(ms);
+      subMs.delete(k);
+      yield * Iter.genMultiPerms(subMs).map(ar => ar.concat([k]))
+    }
+  }
+  // All total orders on a DAG
+  // graph: Map(any -> { in: [any] })
+  static * genTotalOrders (graph, inDeg = new Map(graph.entries().map(([k, { in: ins }]) => [k, ins.length]))) {
+    if (graph.size === 0) yield [];
+    for (const v of graph.keys()) {
+      if (inDeg.get(v) !== 0) continue;
+      const
+        m = new Map(graph),
+        d = new Map(inDeg.entries().map(([k, n]) => [ k, n - (graph.get(k)?.in.includes(v) ?? 0) ]));
+      m.delete(v);
+      yield * Iter.genTotalOrders(m, d).map(ar => [v].concat(ar))
+    }
+  }
+  // All the ways two Maps can pair keys having the same value
+  static genMaps (m0, m1) {
+    const
+      a0 = m0.entries().toArray().sort(([, a], [, b]) => a > b),
+      a1 = m1.entries().toArray().sort(([, a], [, b]) => a > b);
+    if (!Common.zipCmp(a0, a1, ([, a], [, b]) => a === b)) return null;
+    const gs = Map.groupBy(m0.keys(), k => m0.get(k));
+    return Iter.seqPerms(gs.entries().toArray().sort(([a], [b]) => a > b).map(([, ar]) => ar))
+      .map(cs => new Map(cs.map((c, i) => [c, a1[i][0]])))
+  }
+
+  static * bijections (a0, a1, cmp = (a, b) => a === b, ar = []) {
+    if (ar.length === 0 && a0.length !== a1.length) return;
+    if (a0.length === 0) yield ar;
+    for (let j = 0; j < a1.length; j++) if (!ar.includes(j) && cmp(a0[0], a1[j]))
+      yield * Iter.bijections(a0.slice(1), a1, cmp, ar.concat([j]))
+  }
+  static reorder (ar, bij) {
+    if (ar.length !== bij.length && Common.zipCmp(bij.toSorted((a, b) => a - b), Array(bij.length).keys().toArray())) return;
+    return bij.reduce((ac, j, i) => ac.with(j, ar[i]), Array(ar.length).fill(0))
+  }
+  
+}
+
+
+
 class MultiSet {
   static * #subhelp (ar) {
     if (ar.length === 0) yield [];
     else for (let i = 0; i <= ar[0][1]; i++)
       yield * this.#subhelp(ar.slice(1)).map(br => br.concat([[ar[0][0], i]]))
   }
+  // Iter?
   static * enumerateSubsets (m) {
     yield * this.#subhelp(m.#keys.entries().toArray()).map(ar => new MultiSet().attach(ar))
+  }
+  static from (m) {
+    if (MultiSet.prototype.isPrototypeOf(m)) return new MultiSet().attach(structuredClone(m.#keys));
+    if (!Map.prototype.isPrototypeOf(m)) return false;
+    const ms = new MultiSet();
+    ms.#keys = m;
+    return ms
   }
 
   #keys = new Map()
@@ -271,19 +439,13 @@ class MultiSet {
     this.#keys = m;
     return this
   }
-  from (m) {
-    if (!Map.prototype.isPrototypeOf(m)) return false;
-    const ms = new MultiSet()
-    ms.#keys = m;
-    return ms
-  }
-  get repr () { return this.#keys.entries().toArray() }
+  get repr () { return new Map(this.#keys) }
   set repr (_) {}
 
   * [Symbol.iterator] () { for (const [k, v] of this.#keys) for (let i = 0; i < v; i++) yield k }
   get [Symbol.toStringTag] () { return "MultiSet" }
   * keys () { yield * this.#keys.keys() }
-  values = this[Symbol.iterator];
+  * values () { yield * this[Symbol.iterator]() }
   * entries () { yield * this.#keys.entries().map(([k, v]) => [k, Array(v).fill(k)]) }
 
   get size () { return this.#keys.values().reduce((a, b) => a + b, 0) }
@@ -306,24 +468,25 @@ class MultiSet {
     } else return false
   }
   has (v) { return this.#keys.has(v) }
+  count (v) { return this.#keys.get(v) ?? 0 }
   union (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
     const r = new Map(this.#keys);
     for (const [k, v] of ms.#keys) r.set(k, r.has(k) ? Math.max(v, r.get(k)) : v);
-    return new MultiSet().attach(r)
+    return MultiSet.from(r)
   }
   intersection (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
     const r = new Map();
     for (const [k, v] of ms.#keys)
       if (this.#keys.has(k)) r.set(k, Math.min(this.#keys.get(k), v));
-    return new MultiSet().attach(r)
+    return MultiSet.from(r)
   }
   plus (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
     const r = new Map(this.#keys);
     for (const [k, v] of ms.#keys) r.set(k, (r.get(k) ?? 0) + v);
-    return new MultiSet().attach(r)
+    return MultiSet.from(r)
   }
   minus (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
@@ -332,9 +495,21 @@ class MultiSet {
       if (r.has(k)) {
         const v0 = r.get(k);
         if (v0 > v) r.set(k, v0 - v);
+        else if (v0 === v) r.delete(k);
+        else return null
+      } else return null;
+    return MultiSet.from(r)
+  }
+  minusSat (ms) {
+    if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
+    const r = new Map(this.#keys);
+    for (const [k, v] of ms.#keys)
+      if (r.has(k)) {
+        const v0 = r.get(k);
+        if (v0 > v) r.set(k, v0 - v);
         else r.delete(k)
       }
-    return new MultiSet().attach(r)
+    return MultiSet.from(r)
   }
   symmetricDifference (ms) {
     if (!MultiSet.prototype.isPrototypeOf(ms)) return null;
@@ -346,7 +521,7 @@ class MultiSet {
         else r.delete(k)
       } else r.set(k, v)
     }
-    return new MultiSet().attach(r)
+    return MultiSet.from(r)
   }
   scalarMultiply (n) {
     const r = new Map()
@@ -355,14 +530,14 @@ class MultiSet {
       if (nv !== Math.floor(nv)) return null;
       r.set(k, nv);
     }
-    return new MultiSet().attach(r)
+    return MultiSet.from(r)
   }
-  divide (m) {
-    if (this.#keys.size !== m.#keys.size) return NaN;
+  divide (ms) {
+    if (this.#keys.size !== ms.#keys.size) return NaN;
     let n, d;
     for (const [k, n0] of this.#keys) {
-      if (!m.#keys.has(k)) return NaN;
-      const d0 = m.#keys.get(k);
+      if (!ms.#keys.has(k)) return NaN;
+      const d0 = ms.#keys.get(k);
       if (n === undefined) {
         const g = Common.gcd(n0, d0);
         n = n0 / g;
@@ -371,10 +546,17 @@ class MultiSet {
     }
     return n / d
   }
-  get gcd () { return this.#keys.size ? this.#keys.values().reduce((a, b) => Common.gcd(a, b)) : NaN }
+  divSat (ms) {
+    let n = Infinity;
+    const d = ms.gcd || 0;
+    for (const [k, d0] of ms.#keys) {
+      if (!this.#keys.has(k)) return 0;
+      n = Math.min(n, Math.floor(this.#keys.get(k) * d / d0))
+    }
+    return n / d
+  }
+  get gcd () { return this.#keys.size ? this.#keys.values().reduce(Common.gcd) : NaN }
   set gcd (_) {}
-  get unique () { return this.#keys.size }
-  set unique (_) {}
   equal (m) {
     if (!MultiSet.prototype.isPrototypeOf(m) || this.#keys.size !== m.#keys.size) return false;
     for (const [k, v] of this.#keys) if (!m.#keys.has(k) || m.#keys.get(k) !== v) return false;
@@ -384,12 +566,100 @@ class MultiSet {
 
 
 
+class Setoid {
+  #values = []; #eq
+  constructor (eq = (a, b) => a === b) { this.#eq = eq }
+  from (s) {
+    if (Setoid.prototype.isPrototypeOf(s) && s.#eq !== this.#eq)
+      return new Setoid(this.#eq).attach(structuredClone(s.#values));
+    if (typeof s[Symbol.iterator] !== "function") return false;
+    const r = new Setoid(this.#eq);
+    for (const a of s) r.insert(a);
+    return r
+  }
+  attach (s) {
+    this.#values = s;
+    return this
+  }
+  get repr () { return this.#values.slice() }
+  set repr (_) {}
+
+  * [Symbol.iterator] () { yield * this.#values.values() }
+  get [Symbol.toStringTag] () { return "Setoid" }
+  * keys () { yield * this[Symbol.iterator]() }
+  * values () { yield * this[Symbol.iterator]() }
+  * entries () { yield * this.#values.values.map(a => [a, a]) }
+
+  get size () { return this.#values.length }
+  set size (_) {}
+  get cmp () { return this.#eq }
+  set cmp (_) {}
+
+  insert (a) {
+    const i = this.#values.findIndex(b => this.#eq(a, b));
+    if (~i) this.#values.splice(i, 1);
+    this.#values.push(a);
+    return Boolean(~i)
+  }
+  delete (a) {
+    const i = this.#values.findIndex(b => this.#eq(a, b));
+    if (~i) this.#values.splice(i, 1);
+    return Boolean(~i)
+  }
+  has (a) { return Boolean(~this.#values.findIndex(b => this.#eq(a, b))) }
+  union (s) {
+    if (!Setoid.prototype.isPrototypeOf(s) || s.#eq !== this.#eq) return null;
+    const r = this.#values.slice();
+    for (const a of s.#values)
+      if (!~r.findIndex(b => this.#eq(a, b))) r.push(a);
+    return s.from(r)
+  }
+  intersection (s) {
+    if (!Setoid.prototype.isPrototypeOf(s) || s.#eq !== this.#eq) return null;
+    const r = [];
+    for (const a of this.#values)
+      if (~s.#values.findIndex(b => this.#eq(a, b))) r.push(a);
+    return s.from(r)
+  }
+  minus (s) {
+    if (!Setoid.prototype.isPrototypeOf(s) || s.#eq !== this.#eq) return null;
+    const r = this.#values.slice();
+    for (const a of s.#values) {
+      const i = r.findIndex(b => this.#eq(a, b));
+      if (~i) r.splice(i, 1)
+    }
+    return s.from(r)
+  }
+  symmetricDifference (s) {
+    if (!Setoid.prototype.isPrototypeOf(s) || s.#eq !== this.#eq) return null;
+    const r = this.#values.slice();
+    for (const a of s.#values) {
+      const i = r.findIndex(b => this.#eq(a, b));
+      if (~i) r.splice(i, 1);
+      else r.push(a)
+    }
+    return s.from(r)
+  }
+  equal (s) {
+    if (!Setoid.prototype.isPrototypeOf(s) || s.#eq !== this.#eq ||
+      this.#values.length !== s.#values.length) return false;
+    for (const a of this.#values) if (!~s.#values.findIndex(b => this.#eq(a, b))) return false;
+    return true
+  }
+}
+
+
+
 // Not for storage of Map objects...
 class Index {
-  #rawMap = new Map(); #addrFn; #doneFn
-  constructor ({ address, done }) {
+  static quotient = (index, gen, equiv = x => [x]) => (gen.forEach(v0 =>
+    equiv(v0).some(v1 => index.has(v1)) || index.insert(v0)), [...index])
+
+  #rawMap = new Map(); #addrFn; #doneFn; #cmpFn
+  constructor ({ address, done, cmp }) {
     this.#addrFn = address ?? (x => [x]);
     this.#doneFn = done ?? (() => true)
+    this.#cmpFn = cmp
   }
 
   [Symbol.iterator] = this.values
@@ -406,23 +676,24 @@ class Index {
   }
 
   pathOf (item) { return this.#addrFn(item) }
+  #pathValueOf (v, m) { return this.#cmpFn ? m.keys().find(v0 => v0 === null ? false : this.#cmpFn(v, v0)) ?? v : v }
 
   insert (item) {
     const path = this.#addrFn(item);
     let focus = this.#rawMap;
     for (let i = 0; i < path.length; i++) {
-      const key = path[i];
+      const key = this.#pathValueOf(path[i], focus);
       if (!focus.has(key)) {
         focus.set(key, item);
         return item
       }
       const split = focus.get(key);
       if (Map.prototype.isPrototypeOf(split)) {
-        if (i === path.length - 1) split.set(null, item);
+        if (i === path.length) split.set(null, item);
         else focus = split;
       } else {
         const splitPath = this.#addrFn(split);
-        if (Common.arrEq(path, splitPath)) {
+        if (Common.zipCmp(path, splitPath, this.#cmpFn)) {
           focus.set(key, item);
           return item
         } else focus.set(key, focus = new Map([[
@@ -439,7 +710,7 @@ class Index {
   }
   delete (item) { return this.deletePath(...this.#addrFn(item)) }
   get (item) { return this.getPath(...this.#addrFn(item)) }
-  has (item) { return item === this.hasPath(...this.#addrFn(item)) }
+  has (item) { return this.hasPath(...this.#addrFn(item)) }
   clear () { this.#rawMap.clear() }
 
   deletePath (...path) {
@@ -447,11 +718,11 @@ class Index {
     let focus = this.#rawMap, i = 0;
     for (; i < path.length; i++) {
       spine.push(focus);
-      const key = path[i];
+      const key = this.#pathValueOf(path[i], focus);
       if (!focus.has(key)) return false;
       const newFocus = focus.get(key);
       if (!Map.prototype.isPrototypeOf(newFocus)) {
-        if (Common.arrEq(path, this.pathOf(newFocus))) {
+        if (Common.zipCmp(path, this.pathOf(newFocus), this.#cmpFn)) {
           focus.delete(key);
           break
         } else return false
@@ -470,11 +741,11 @@ class Index {
   getPath (...path) {
     let focus = this.#rawMap;
     for (let i = 0; i <= path.length; i++) {
-      const key = i === path.length ? null : path[i];
+      const key = i === path.length ? null : this.#pathValueOf(path[i], focus);
       if (!focus.has?.(key)) return;
       focus = focus.get(key);
       if (!Map.prototype.isPrototypeOf(focus))
-        if (Common.arrEq(path, this.pathOf(focus)) || i === path.length) return focus;
+        if (Common.zipCmp(path, this.pathOf(focus), this.#cmpFn) || i === path.length) return focus;
         else return
     }
     return focus
@@ -482,11 +753,11 @@ class Index {
   hasPath (...path) {
     let focus = this.#rawMap;
     for (let i = 0; i <= path.length; i++) {
-      const key = i === path.length ? null : path[i];
+      const key = i === path.length ? null : this.#pathValueOf(path[i], focus);
       if (!focus.has?.(key)) return false;
       focus = focus.get(key);
       if (!Map.prototype.isPrototypeOf(focus))
-        if (Common.arrEq(path, this.pathOf(focus)) || i === path.length) return true;
+        if (Common.zipCmp(path, this.pathOf(focus), this.#cmpFn) || i === path.length) return true;
         else return false
     }
     return true
@@ -495,4 +766,4 @@ class Index {
 
 
 
-export { Common, MultiSet, Index }
+export { Common, Iter, MultiSet, Setoid, Index }
