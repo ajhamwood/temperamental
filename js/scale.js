@@ -95,6 +95,11 @@ class Scale {
         ({ iv: iv ?? iv0, degrees: degrees.concat(degree) }), { iv: null, degrees: [] })))
   }
 
+  static equalMapping (m0, m1) {
+    if (m0.size !== m1.size) return null;
+    return Boolean(Iter.genMaps(new Map(Scale.wordChars.split("").slice(0, m0.size).map(x => [x])))
+      .find(ren => Common.mapCompose(ren, m1).entries().every(([c, m]) => m0.get(c).equal(m))))
+  }
   static gensToMapping (gens) { return gens.reduce((m, g, i) => m.set(Scale.wordChars[i], g), new Map()) }
 
   static mappingToRanks (word, mapping) {
@@ -227,10 +232,13 @@ class Scale {
           .map(word => ({ word, mappings: Iter.genMaps(new MultiSet(word.split("")).repr, m).toArray() }))))
   }
   static * genBilliardScalesByComposition (comp, sv = comp?.size) {
-    yield * Iter.genGensByComp(comp, sv, Scale.wordChars)
+    yield * Map.groupBy(Iter.genGensByComp(comp, sv, Scale.wordChars)
       .flatMap(gens => Iter.genDecompositions(new MultiSet([...comp].flatMap((n, i) => Scale.wordChars[i].repeat(n).split(""))), gens)
         .flatMap(comp => Scale.genBilliards(new MultiSet(comp.values().toArray().sort((a, b) => b - a)))
-          .map(word => ({ word, mappings: Iter.genMaps(new MultiSet(word.split("")).repr, comp).toArray() }))).toArray())
+          .map(word => ({ word, mappings: Iter.genMaps(new MultiSet(word.split("")).repr, comp).toArray() }))).toArray()),
+      ({word}) => word
+    ).entries().map(([word, ar]) => ({ word, mappings: Common.quotient(
+      ar.reduce((a, { mappings }) => a.concat(mappings), []), Scale.equalMapping) }))
   }
 
 
@@ -300,7 +308,7 @@ class Scale {
     const
       steps = this.getGenericIntervalClass(0),
       chars = Scale.normalisePattern(Scale.#patChars.slice(-steps.length));
-    return this.genericIntervals.values().filter(giv => steps.some(iv => giv.has(iv))).toArray()
+    return this.#intervals.generic.values().filter(giv => steps.some(iv => giv.has(iv))).toArray()
       .reduce((m, giv, i) => {
         const eqs = giv.values().filter(iv => steps.includes(iv)).toArray();
         if (eqs.length === 1) return m.set([...eqs[0].value.keys()][0], chars.at(-i - 1));
@@ -310,6 +318,8 @@ class Scale {
   }
 
   #embedding; #ranksInMode; #embeddingScale; #embeddingImage
+  get embedding () { if (this.#embedding) return new Map(this.#embedding) }
+  set embedding (_) {}
   get ranks () { return this.#ranksInMode ?? (this.mode = this.primeMode, this.#ranksInMode) }
   set ranks (_) {}
   get embeddingScale () { if (this.#embedding) return this.#embeddingScale }
@@ -371,15 +381,13 @@ class Scale {
 
   #intervals; #genICs
   getGenericIntervalClass (n) { return (this.#genICs ?? this.#createIntervalStore().genICs)[n] }
-  get genericIntervals () { return this.#intervals?.generic ?? this.#createIntervalStore().intervals.generic }
-  set genericIntervals (_) {}
   get intervals () { return this.#intervals ?? this.#createIntervalStore().intervals }
   set intervals (_) {}
   #isBalanced; get isBalanced () { return this.#isBalanced ?? this.#createIntervalStore().isBalanced } set isBalanced (_) {}
 
   #isDeepScale
   get isDeepScale () { return this.#isDeepScale ??= Math.floor((this.intervals.size + 1) / 2) ===
-    new Set(this.genericIntervals.values().map(giv => giv.values()
+    new Set(this.intervals.generic.values().map(giv => giv.values()
       .reduce((s, iv) => (iv.degrees.forEach(d => s.add(d)), s), new Set()).size)).size }
   set isDeepScale (_) {}
 
@@ -397,9 +405,9 @@ class Scale {
   // TODO rothenberg, lumma stability on rank scales
   #computeRothenberg = (mins, maxes, strict) =>
     maxes.reduce((b, max, i) => b && mins.slice(i + 1).every(min => Common.pairwiseCmp(max, min, strict ?
-      ((a, b) => this.intervals.cmp(a, b) === -1) : ((a, b) => this.intervals.cmp(a, b) < 1))), true) &&
+      ((a, b) => [...a][0].store.cmpg(a, b) === -1) : ((a, b) => [...a][0].store.cmpg(a, b) < 1))), true) &&
     mins.reduce((b, min, i) => b && maxes.slice(0, i).every(max => Common.pairwiseCmp(min, max, strict ?
-      ((a, b) => this.intervals.cmp(a, b) === 1) : ((a, b) => this.intervals.cmp(a, b) > -1))), true)
+      ((a, b) => [...a][0].store.cmpg(a, b) === 1) : ((a, b) => [...a][0].store.cmpg(a, b) > -1))), true)
   get rothenberg () { return this.#rothenberg ?? this.#computePatternData().rothenberg }
   set rothenberg (_) {}
 
@@ -434,7 +442,7 @@ class Scale {
     const
       { arity, intervals } = this, gicMaxes = [], gicMins = [], gicTOSubsets = [], gIvNames = this.#gIvNames = new Map(),
       baseGIvs = this.#embedding ? Scale.mappingToRanks(Scale.wordInMode(this.#word, this.primeMode), this.#embedding)
-        .map(ms => this.embeddingScale.intervals.getBag(ms)) :
+        .slice(1).map(ms => this.embeddingScale.intervals.getBag(ms)) :
         Scale.wordToGenericIvsInMode(this.#word)[this.primeMode].ivs.map(str => intervals.getWord(str));
     intervals.generic.values().forEach(giv => gIvNames.set(giv, new Set()));
     for (let i = 0; i < arity - 1; i++) {
@@ -442,39 +450,49 @@ class Scale {
         { tOSubsets } = intervals.substore(this.getGenericIntervalClass(i)),
         tOThis = tOSubsets.map(ss => new Set([...ss].map(([iv]) => intervals.getBag(iv.value))));
       gicTOSubsets.push(tOThis);
-      gicMaxes.push(Array.from(tOThis.at(-1)));
-      gicMins.push(Array.from(tOThis[0]))
+      if (this.#embedding) {
+        gicMaxes.push(Array.from(tOThis.at(-1)).map(giv => Common.maxBy(
+          giv.values().map(iv => this.getEmbeddingImage(iv)),
+          iGiv => Math.max(...iGiv.values().map(iIv => iIv.value.size))
+        )));
+        gicMins.push(Array.from(tOThis[0]).map(giv => Common.minBy(
+          giv.values().map(iv => this.getEmbeddingImage(iv)),
+          iGiv => Math.min(...iGiv.values().map(iIv => iIv.value.size))
+        )))
+      } else {
+        gicMaxes.push(Array.from(tOThis.at(-1)));
+        gicMins.push(Array.from(tOThis[0]));
+      }
     }
     const
       rothenberg = this.#rothenberg = this.#computeRothenberg(gicMins, gicMaxes, true) ? 1 :
         this.#computeRothenberg(gicMins, gicMaxes, false) ? 0 : -1,
       rankNames = this.#rankNames = [];
     if (this.#embedding && rothenberg >= 0) {
-      for (let i = 0; i < this.#ranksInMode.at(-1).size; i++) this.#rankNames[i] = new Set();
+      for (let i = 0; i < this.embeddingScale.arity; i++) this.#rankNames[i] = new Set();
       const
-        min = Math.min(...gicMins[0].map(giv => [...this.getEmbeddingImage([...giv][0])][0].value.size)),
-        max = Math.max(...gicMaxes.at(-1).map(giv => [...this.getEmbeddingImage([...giv][0])][0].value.size));
+        min = Math.min(...gicMins[0].map(giv => [...giv][0].value.size)),
+        max = Math.max(...gicMaxes.at(-1).map(giv => [...giv][0].value.size));
       if (min > 0) {
         this.#rankNames[0].add({ rank: 1, accid: "" });
         this.#concatAccid([], { rank: 1, accid: "A" }, 1, 1, false, Array(Math.ceil((min - 1) / 2)).fill(0).map((_, i) => i + 1));
       }
       for (let i = 0; i < arity - 1; i++) {
         const
-          // MultiSet.size for now, TODO embeddingScale.intervals.cmp
-          curMin = Math.min(...gicMins[i].map(giv => [...this.getEmbeddingImage([...giv][0])][0].value.size)),
+          // MultiSet.size for now, TODO embeddingScale.intervals.cmp/iv.store.cmp
+          curMin = Math.min(...gicMins[i].map(giv => [...giv][0].value.size)),
           lower = curMin - Math.max(0, Math.floor((curMin - (i === 0 ? 0 :
-            Math.max(...gicMaxes[i - 1].map(giv => [...this.getEmbeddingImage([...giv][0])][0].value.size))) - 1) / 2)),
-          curMax = Math.max(...gicMaxes[i].map(giv => [...this.getEmbeddingImage([...giv][0])][0].value.size)),
-          upper = curMax + Math.ceil(((i === arity - 2 ? this.#ranksInMode.at(-1).size - 1 :
-            Math.min(...gicMins[i + 1].map(giv => [...this.getEmbeddingImage([...giv][0])][0].value.size))) - curMax - 1) / 2),
-          ar = gicTOSubsets[i].flatMap(givs => Map.groupBy(givs, g => this.getEmbeddingImage([...g][0])).values().toArray());
-        this.#concatAccid(ar, { rank: i + 2, accid: "" }, 0, 0, baseGIvs[i],
+            Math.max(...gicMaxes[i - 1].map(giv => [...giv][0].value.size))) - 1) / 2)),
+          curMax = Math.max(...gicMaxes[i].map(giv => [...giv][0].value.size)),
+          upper = curMax + Math.ceil(((i === arity - 2 ? this.embeddingScale.arity - 1 :
+            Math.min(...gicMins[i + 1].map(giv => [...giv][0].value.size))) - curMax - 1) / 2);
+        this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseGIvs[i],
           Array(upper - lower + 1).fill(0).map((_, i) => i + lower))
       }
-      if (max < this.#ranksInMode.at(-1).size - 1) {
+      if (max < this.embeddingScale.arity - 1) {
         this.#concatAccid([], { rank: arity + 1, accid: "d" }, 1, 0, false,
-          Array(Math.ceil((this.#ranksInMode.at(-1).size - max - 1) / 2)).fill(0)
-            .map((_, i) => this.#ranksInMode.at(-1).size - i - 1).reverse());
+          Array(Math.ceil((this.embeddingScale.arity - max - 1) / 2)).fill(0)
+            .map((_, i) => this.embeddingScale.arity - i - 1).reverse());
       }
     }
     else for (let i = 0; i < arity - 1; i++)
@@ -587,7 +605,7 @@ class Scale {
 
   allAncestors (sv = this.variety) {
     const
-      ivs = Array.from(this.genericIntervals), { mode, arity, modeCount } = this, patterns = [],
+      ivs = Array.from(this.intervals.generic), { mode, arity, modeCount } = this, patterns = [],
       // modeMap: [unique [outerMode, innerMode]]
       rec = (mapping, mode, offset, pos) => {
         if (offset === arity) {
@@ -667,9 +685,6 @@ class Scale {
 
   withEmbedding (embedding) { return new Scale({ ...this.#repr(), embedding }) }
 
-
-
-  // Expression -> for now, attach to Tuning and play from there
 }
 
 
@@ -864,7 +879,7 @@ class IntervalStore {
           this.#edges.get(vl[j]).inc.add(vl[i]);
         }
     const ord = this.#topOrder();
-    this.#ivs = Iterator.concat(...ord).toArray()
+    this.#ivs = new Set(Iterator.concat(...ord));
     this.#vertices = new Set(ord);
     this.#edges = new Map(ord.map(giv => [giv, this.#edges.get(giv)]));
     this.#finalised = true;
@@ -976,6 +991,11 @@ class IntervalStore {
   get incomparables () { return (this.#incomparables ?? this.#genIncs()).map(([lhs, rhs]) => [ MultiSet.from(lhs), MultiSet.from(rhs) ]) }
   set incomparables (_) {}
   // Only constraints listed in incomparables may be applied?
+
+  // Concrete scales
+
+  intervalRanges (word) {}
+
 }
 
 
@@ -1167,9 +1187,9 @@ class ScaleStore {
         embeddingScale.mode = i;
         sc.mode = j;
         if (sc.word.split("").every(c => {
-          const i = embeddingScale.genericIvs.indexOf(embeddingScale.intervals.getBag(mapping.get(c)));
-          if (!~i) return false;
-          embeddingScale.mode += i + 1;
+          const k = embeddingScale.genericIvs.indexOf(embeddingScale.intervals.getBag(mapping.get(c)));
+          if (!~k) return false;
+          embeddingScale.mode += k + 1;
           return true;
         })) modeMap.push([i, j])
       }

@@ -28,6 +28,8 @@ class Common {
   }
   static sum = ar => ar.reduce((a, b) => a + b, 0)
   static bigMax = ar => ar.reduce((a, b) => a > b ? a : b)
+  static maxBy = (ar, fn = x => x) => ar.reduce(([x, a, b], y) => (b = fn(y)) <= a ? [x, a] : [y, b], [,])[0]
+  static minBy = (ar, fn = x => x) => ar.reduce(([x, a, b], y) => (b = fn(y)) >= a ? [x, a] : [y, b], [,])[0]
   static LTE = (a1, a2) => [a1, a2].sort()[1].every((v, i) => v === a2[i])
   static arrCmp = (ar0, ar1) => { for (let i = 0; i < ar0.length; i++)
     if (ar0[i] !== ar1[i]) return Math.sign(ar0[i] - ar1[i]); return Math.sign(ar0.length - ar1.length) }
@@ -387,7 +389,7 @@ class Iter {
     }
   }
   // All the ways two Maps can pair keys having the same value
-  static genMaps (m0, m1) {
+  static genMaps (m0, m1 = m0) {
     const
       a0 = m0.entries().toArray().sort(([, a], [, b]) => a > b),
       a1 = m1.entries().toArray().sort(([, a], [, b]) => a > b);
@@ -654,6 +656,8 @@ class Setoid {
 class Index {
   static quotient = (index, gen, equiv = x => [x]) => (gen.forEach(v0 =>
     equiv(v0).some(v1 => index.has(v1)) || index.insert(v0)), [...index])
+  static group = (index, gen, equiv = x => [x], comb = (a, b) => b) => 
+    (gen.forEach(v0 => comb(index.get(equiv(v0).find(v1 => index.has(v1))), v0)), [...index])
 
   #rawMap = new Map(); #addrFn; #doneFn; #cmpFn
   constructor ({ address, done, cmp }) {

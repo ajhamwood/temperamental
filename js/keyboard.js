@@ -257,7 +257,7 @@ class Tuning {
     if (typeof limit !== "number" || limit < 3 || limit > app.maxHarmonic || limit % 2 !== 1) throw new Error("Tuning error: bad harmonic limit");
     if (typeof refNote !== "number" || refNote < 0 || refNote >= edo || refNote % 1) throw new Error("Tuning error: bad reference note");
     if (typeof freqBasis !== "number" || freqBasis < 10 || freqBasis > 4e4) throw new Error("Tuning error: bad reference frequency");
-    if (typeof maxError !== "number" || freqBasis < 0 || freqBasis > 1200) throw new Error("Tuning error: bad max pitch variation");
+    if (typeof maxError !== "number" || maxError < 0 || maxError > 1200) throw new Error("Tuning error: bad max pitch variation");
     this.limit = limit;
     this.maxError = maxError;
     this.refNote = refNote;
@@ -302,17 +302,17 @@ class Tuning {
   }
   refresh () { this.#active = new Map() }
 
-  playScale (sc) {
+  playScale (sc, speed = 500) {
     const { edo } = this.#keyboard;
     if (!sc.embeddingScale?.composition.equal(new MultiSet([edo]))) return null;
-    sc.ranks.reduce((p, ms) => p.then(() => {
+    return sc.ranks.reduce((p, ms) => p.then(() => {
       this.#keyboard.stop();
       const [hex] = this.getNote({
         rank: Common.mod((ms.repr.get("X") ?? 0), edo),
         octave: Math.floor((ms.repr.get("X") ?? 0) / edo)
       }).buttons.filter(hex => !hex.isGhost);
       this.#keyboard.play(...hex.coord)
-    }).then(Common.wait(500)), Promise.resolve()).then(() => this.#keyboard.stop())
+    }).then(Common.wait(speed)), Promise.resolve()).then(() => this.#keyboard.stop())
   }
 }
 
