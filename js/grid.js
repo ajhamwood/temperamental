@@ -319,6 +319,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
   }
 
   redraw (force) {
+    if (!app.loaded) return;
     const { gridctx, canvas } = app.state(), { width, height } = canvas;
     this.updateGrid(force);
     this.classifyKeys(force);

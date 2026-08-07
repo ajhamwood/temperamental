@@ -1,5 +1,4 @@
 import { Common, Iter, MultiSet, Index } from "./common.js";
-import { Keyboard } from "./keyboard.js";
 
 
 
@@ -86,7 +85,7 @@ class Scale {
   }
   static wordToGenericIvs (str) {
     return Array(str.length).fill(0).map((_, i) =>
-      Common.group(Array(str.length - 1).fill(0).map((_, j) => ({
+      Common.group(Array(str.length).fill(0).map((_, j) => ({
         degree: j,
         iv: new MultiSet((i + j + 1 > str.length ?
           str.slice(j) + str.slice(0, i + j + 1 - str.length) : str.slice(j, j + i + 1)).split(""))
@@ -108,7 +107,7 @@ class Scale {
   static ranksToMapping (ranks) {
     const [ b, w, m ] = ranks.slice(1).reduce(([b, word, mapping], ms, i) => {
       if (b) return [b];
-      const span = ms.minus(ranks[i - 1]);
+      const span = ms.minus(ranks[i]);
       if (span === null) return [true];
       const j = mapping.findIndex(([, m]) => span.equal(m));
       if (!~j) mapping.push([Scale.wordChars[mapping.length], span]);
@@ -159,6 +158,7 @@ class Scale {
       .map(comp => [ comp, Scale.genByComposition(comp) ]))
   }
   // All billiard necklaces for the given word composition
+  // TODO not seqPerms... compute n-dim epsilon for each region around vector axis
   static genBilliards (composition) {
     const
       comp = composition.values().toArray(),
@@ -245,13 +245,7 @@ class Scale {
 
   // Constructor
 
-  #keyboard
-  constructor ({ keyboard, word, pattern, embedding, constraints, mode }) {
-    if (keyboard) {
-      if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("Scale error: keyboard must be Keyboard object");
-      this.#keyboard = keyboard;
-    }
-    
+  constructor ({ word, pattern, embedding, constraints, mode }) {
     if (embedding) this.#setEmbedding({ embedding, word, constraints });
     else if (pattern) this.#setPattern({ pattern, constraints });
     else if (word) this.#setWord({ word, constraints });
@@ -264,7 +258,6 @@ class Scale {
   }
   #repr () {
     const opt = {};
-    if (this.#keyboard) opt.keyboard = this.#keyboard;
     opt.word = this.#word;
     if (this.#pattern) opt.pattern = this.#pattern;
     if (!this.intervals.constraints.isEmpty) opt.constraints = this.intervals.constraints;
@@ -277,9 +270,6 @@ class Scale {
 
   // Accessors
 
-  set keyboard (kb) { if (Keyboard.prototype.isPrototypeOf(kb)) return this.#keyboard = kb }
-  get keyboard () { return this.#keyboard }
-
   #word; #wordInMode
   get word () { return this.#wordInMode ?? (this.mode = this.primeMode, this.#wordInMode) }
   set word (_) {}
@@ -288,8 +278,10 @@ class Scale {
   get primeMode () { return this.#primeMode ??= Common.mod(Scale.wordToGenericIvsInMode(this.#word)
     .sort(({ ivs: as }, { ivs: bs }) => {
       const
-        aCmp = as.map(a => bs.reduce((n, b) => n + (this.intervals.cmpg(this.intervals.getWord(a), this.intervals.getWord(b)) === 1), 0)),
-        bCmp = bs.map(b => as.reduce((n, a) => n + (this.intervals.cmpg(this.intervals.getWord(b), this.intervals.getWord(a)) === 1), 0));
+        // aCmp = as.map(a => bs.reduce((n, b) => n + (this.intervals.cmpg(this.intervals.getWord(a), this.intervals.getWord(b)) === 1), 0)),
+        // bCmp = bs.map(b => as.reduce((n, a) => n + (this.intervals.cmpg(this.intervals.getWord(b), this.intervals.getWord(a)) === 1), 0));
+        aCmp = as.map(a => bs.reduce((n, b) => n + (StepInterval.cmpCons(this.intervals.getWordIv(a).value, this.intervals.getWordIv(b).value, this.intervals.constraints) === 1), 0)),
+        bCmp = bs.map(b => as.reduce((n, a) => n + (StepInterval.cmpCons(this.intervals.getWordIv(b).value, this.intervals.getWordIv(a).value, this.intervals.constraints) === 1), 0));
       return Common.arrCmp(aCmp, bCmp)
     })[0].degree + 1, this.modeCount) }
   set primeMode (_) {}
@@ -317,7 +309,7 @@ class Scale {
       }, new Map())
   }
 
-  #embedding; #ranksInMode; #embeddingScale; #embeddingImage
+  #embedding; #ranksInMode; #embeddingScale; #embeddingImage; #embeddingPreimage
   get embedding () { if (this.#embedding) return new Map(this.#embedding) }
   set embedding (_) {}
   get ranks () { return this.#ranksInMode ?? (this.mode = this.primeMode, this.#ranksInMode) }
@@ -332,11 +324,26 @@ class Scale {
     if (!this.#embeddingImage) {
       this.#embeddingImage = new Map();
       for (const iv of intervals) {
-        const imIv = this.embeddingScale.intervals.getBag(Scale.multisetImage(iv.value, this.#embedding));
+        const imIv = this.embeddingScale.intervals.getBagIv(Scale.multisetImage(iv.value, this.#embedding));
         this.#embeddingImage.set(iv, imIv)
       }
     }
     return this.#embeddingImage.get(iv)
+  }
+  getEmbeddingPreimage (iv) {
+    if (!this.#embedding) return;
+    const { intervals } = this.embeddingScale;
+    if (typeof iv === "string") iv = new MultiSet(iv.split(""));
+    iv = intervals.values().find(iv0 => iv0.value.equal(iv) || iv0.value === iv) ?? iv;
+    if (!this.#embeddingPreimage) {
+      this.#embeddingPreimage = new Map();
+      this.getEmbeddingImage();
+      for (const iv of intervals) {
+        const preimIv = new Set(this.#embeddingImage.entries().flatMap(([preimIv, imIv]) => imIv.equal(iv) ? [preimIv] : []));
+        this.#embeddingPreimage.set(iv, preimIv)
+      }
+    }
+    return this.#embeddingPreimage.get(iv)
   }
 
   #mode; #givsInMode; #ivRanks
@@ -438,80 +445,81 @@ class Scale {
     }
     this.#setWord({ word, constraints: constraints?.combine(cons) ?? cons, mode: mode - m })
   }
-  #computePatternData () {
+  #computePatternData = () => {
     const
-      { arity, intervals } = this, gicMaxes = [], gicMins = [], gicTOSubsets = [], gIvNames = this.#gIvNames = new Map(),
-      baseGIvs = this.#embedding ? Scale.mappingToRanks(Scale.wordInMode(this.#word, this.primeMode), this.#embedding)
-        .slice(1).map(ms => this.embeddingScale.intervals.getBag(ms)) :
-        Scale.wordToGenericIvsInMode(this.#word)[this.primeMode].ivs.map(str => intervals.getWord(str));
-    intervals.generic.values().forEach(giv => gIvNames.set(giv, new Set()));
-    for (let i = 0; i < arity - 1; i++) {
-      const
-        { tOSubsets } = intervals.substore(this.getGenericIntervalClass(i)),
-        tOThis = tOSubsets.map(ss => new Set([...ss].map(([iv]) => intervals.getBag(iv.value))));
-      gicTOSubsets.push(tOThis);
+      { arity, intervals } = this, gicMaxes = [], gicMins = [], gicTOSubsets = [],
+      baseGIvs = Scale.wordToGenericIvsInMode(this.#word)[this.primeMode].ivs.map(str => intervals.getWord(str));
+    for (let i = 0; i < arity; i++) {
+      // Needs: embedding ordering, base intervals
+      let tOThis;
       if (this.#embedding) {
-        gicMaxes.push(Array.from(tOThis.at(-1)).map(giv => Common.maxBy(
-          giv.values().map(iv => this.getEmbeddingImage(iv)),
-          iGiv => Math.max(...iGiv.values().map(iIv => iIv.value.size))
-        )));
-        gicMins.push(Array.from(tOThis[0]).map(giv => Common.minBy(
-          giv.values().map(iv => this.getEmbeddingImage(iv)),
-          iGiv => Math.min(...iGiv.values().map(iIv => iIv.value.size))
-        )))
+        const { tOSubsets } = this.embeddingScale.intervals.substore([...new Set(this.getGenericIntervalClass(i).map(iv => this.getEmbeddingImage(iv)))]);
+        tOThis = tOSubsets.map(ss => new Set([...ss].map(([iv]) => this.embeddingScale.intervals.getBag(iv.value))))
+        gicTOSubsets.push(tOSubsets.map(ss => new Set([...ss].flatMap(([iv]) => this.getEmbeddingPreimage(this.embeddingScale.intervals.getBagIv(iv.value))
+          .values().flatMap(iv => this.getGenericIntervalClass(i).includes(iv) ? [intervals.get(iv)] : []).toArray()))))
       } else {
-        gicMaxes.push(Array.from(tOThis.at(-1)));
-        gicMins.push(Array.from(tOThis[0]));
+        const { tOSubsets } = intervals.substore(this.getGenericIntervalClass(i));
+        tOThis = tOSubsets.map(ss => new Set([...ss].map(([iv]) => intervals.getBag(iv.value))))
+        gicTOSubsets.push(tOThis);
       }
+      gicMaxes.push(Array.from(tOThis.at(-1)));
+      gicMins.push(Array.from(tOThis[0]));
     }
-    const
-      rothenberg = this.#rothenberg = this.#computeRothenberg(gicMins, gicMaxes, true) ? 1 :
+    const 
+      rothFn = () => this.#rothenberg = this.#computeRothenberg(gicMins, gicMaxes, true) ? 1 :
         this.#computeRothenberg(gicMins, gicMaxes, false) ? 0 : -1,
-      rankNames = this.#rankNames = [];
-    if (this.#embedding && rothenberg >= 0) {
-      for (let i = 0; i < this.embeddingScale.arity; i++) this.#rankNames[i] = new Set();
-      const
-        min = Math.min(...gicMins[0].map(giv => [...giv][0].value.size)),
-        max = Math.max(...gicMaxes.at(-1).map(giv => [...giv][0].value.size));
-      if (min > 0) {
-        this.#rankNames[0].add({ rank: 1, accid: "" });
-        this.#concatAccid([], { rank: 1, accid: "A" }, 1, 1, false, Array(Math.ceil((min - 1) / 2)).fill(0).map((_, i) => i + 1));
-      }
-      for (let i = 0; i < arity - 1; i++) {
-        const
-          // MultiSet.size for now, TODO embeddingScale.intervals.cmp/iv.store.cmp
-          curMin = Math.min(...gicMins[i].map(giv => [...giv][0].value.size)),
-          lower = curMin - Math.max(0, Math.floor((curMin - (i === 0 ? 0 :
-            Math.max(...gicMaxes[i - 1].map(giv => [...giv][0].value.size))) - 1) / 2)),
-          curMax = Math.max(...gicMaxes[i].map(giv => [...giv][0].value.size)),
-          upper = curMax + Math.ceil(((i === arity - 2 ? this.embeddingScale.arity - 1 :
-            Math.min(...gicMins[i + 1].map(giv => [...giv][0].value.size))) - curMax - 1) / 2);
-        this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseGIvs[i],
-          Array(upper - lower + 1).fill(0).map((_, i) => i + lower))
-      }
-      if (max < this.embeddingScale.arity - 1) {
-        this.#concatAccid([], { rank: arity + 1, accid: "d" }, 1, 0, false,
-          Array(Math.ceil((this.embeddingScale.arity - max - 1) / 2)).fill(0)
-            .map((_, i) => this.embeddingScale.arity - i - 1).reverse());
-      }
-    }
-    else for (let i = 0; i < arity - 1; i++)
-      this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseGIvs[i]);
-    return { gIvNames, rothenberg, rankNames }
+      nameFn = () => {
+        const rankNames = this.#rankNames = [], gIvNames = this.#gIvNames = new Map();
+        intervals.generic.values().forEach(giv => gIvNames.set(giv, new Set()));
+        if (this.#embedding && this.rothenberg >= 0) {
+          for (let i = 0; i < this.embeddingScale.arity; i++) this.#rankNames[i] = new Set();
+          const
+            min = Math.min(...gicMins[0].map(giv => [...giv][0].value.size)),
+            max = Math.max(...gicMaxes.at(-1).map(giv => [...giv][0].value.size));
+          if (min > 0) {
+            this.#rankNames[0].add({ rank: 1, accid: "" });
+            this.#concatAccid([], { rank: 1, accid: "A" }, 1, 1, false, Array(Math.ceil((min - 1) / 2)).fill(0).map((_, i) => i + 1));
+          }
+          for (let i = 0; i < arity - 1; i++) {
+            const
+              // MultiSet.size for now, TODO embeddingScale.intervals.cmp/iv.store.cmp
+              curMin = Math.min(...gicMins[i].map(giv => [...giv][0].value.size)),
+              lower = curMin - Math.max(0, Math.floor((curMin - (i === 0 ? 0 :
+                Math.max(...gicMaxes[i - 1].map(giv => [...giv][0].value.size))) - 1) / 2)),
+              curMax = Math.max(...gicMaxes[i].map(giv => [...giv][0].value.size)),
+              upper = curMax + Math.ceil(((i === arity - 2 ? this.embeddingScale.arity - 1 :
+                Math.min(...gicMins[i + 1].map(giv => [...giv][0].value.size))) - curMax - 1) / 2);
+            this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseGIvs[i],
+              Array(upper - lower + 1).fill(0).map((_, i) => i + lower))
+          }
+          if (max < this.embeddingScale.arity - 1) {
+            this.#concatAccid([], { rank: arity + 1, accid: "d" }, 1, 0, false,
+              Array(Math.ceil((this.embeddingScale.arity - max - 1) / 2)).fill(0)
+                .map((_, i) => this.embeddingScale.arity - i - 1).reverse());
+          }
+          this.#gIvNames.get([...gicTOSubsets.at(-1)[0]][0]).add({ rank: arity + 1, accid: "" })
+        }
+        else for (let i = 0; i < arity; i++)
+          this.#concatAccid(gicTOSubsets[i], { rank: i + 2, accid: "" }, 0, 0, baseGIvs[i]);
+        return { gIvNames, rankNames }
+      };
+    return (this.#computePatternData = () => ({
+      get rothenberg () { return rothFn() },
+      get gIvNames () { return nameFn().gIvNames },
+      get rankNames () { return nameFn().rankNames }
+    }))()
   }
   // Interval name by recursive splitting of ordering, relative to scale
   #concatAccid (ar, name, level, bias, init, ranks) {
     if (ar.length === 0 && !ranks?.length) return;
     const
-      si = init ? this.#embedding ?
-          ar.findIndex(givs => givs.values().find(([iv]) => init.intersection(this.getEmbeddingImage(iv)).size)) :
-          ar.findIndex(givs => givs.has(init)) :
+      si = init ? ar.findIndex(givs => givs.has(init)) :
         ar.length % 2 === 0 ? Math.max(0, ar.length / 2 + bias - 1) : (ar.length - 1) / 2,
       left = ar.slice(0, si), right = ar.slice(si + 1), leftRanks = [], rightRanks = [];
     let ri;
     if (ranks?.length) {
       ri = ar.length ?
-        ranks.findIndex(r => ar[si].values().find(giv => r === [...this.getEmbeddingImage([...giv][0])][0].value.size)) :
+        ranks.findIndex(r => ar[si].values().find(giv => r === this.getEmbeddingImage([...giv][0]).value.size)) :
         ranks.length % 2 === 0 ? ranks.length / 2 + bias - 1 : (ranks.length - 1) / 2;
       leftRanks.splice(0, 0, ...ranks.slice(0, ri));
       rightRanks.splice(0, 0, ...ranks.slice(ri + 1));
@@ -535,7 +543,7 @@ class Scale {
     this.#embedding = embedding;
 
     const
-      embeddingScale = this.#embeddingScale = new Scale({ word: w }),
+      embeddingScale = this.#embeddingScale = ScaleStore.get(w)?.scale ?? new Scale({ word: w }),
       gens = embedding.entries().map(([c, m]) => [...embeddingScale.intervals.getBag(m)][0]),
       store = embeddingScale.intervals.substore(gens);
     if (store.isTotalOrder) {
@@ -543,7 +551,8 @@ class Scale {
         chars = Scale.normalisePattern(Scale.#patChars.slice(-embedding.size)),
         mapping = new Map([...store].map((iv, i) => [ embedding.entries().find(([, k]) => iv.value.equal(k))[0], chars.at(-i - 1) ]));
       this.#setPattern({ pattern: word.split("").map(c => mapping.get(c)).join(""), constraints, mode: -mode })
-    } else this.#setWord({ word, constraints, mode: -mode })
+    } else this.#setWord({ word, constraints, mode: -mode });
+    ScaleStore.addDescendant(this)
   }
 
   #createIntervalStore () {
@@ -586,7 +595,7 @@ class Scale {
       mapping = stepOrder
     }
     const pattern = this.#word.split("").map(c => Scale.#patChars[stepOrder.indexOf(Scale.#wordChars.indexOf(c))]).join("");
-    return new Scale({ pattern, constraints: this.intervals.constraints.clone(), keyboard: this.#keyboard })
+    return new Scale({ pattern, constraints: this.intervals.constraints.clone() })
   }
   // TODO use constraints
   genAllPatterns () {
@@ -596,7 +605,7 @@ class Scale {
   withConstraint ({ eq, lt }) {
     if (!this.intervals.incomparables.some(inc => Constraints.symEqual(inc, eq ?? lt))) return null;
     const { eqs, lts } = this.intervals.constraints;
-    return new Scale({ word: this.#word, pattern: this.#pattern, keyboard: this.#keyboard,
+    return new Scale({ word: this.#word, pattern: this.#pattern,
       constraints: new Constraints({
         eqs: eqs?.map(([lhs, rhs]) => [ MultiSet.from(lhs),MultiSet.from(rhs) ]),
         lts: lts?.map(([lhs, rhs]) => [ MultiSet.from(lhs), MultiSet.from(rhs) ])
@@ -643,7 +652,7 @@ class Scale {
         }
       };
     this.mode = 0;
-    const { word } = this, { mode: offset = 0 } = ScaleStore.get(word) ?? {};
+    const { word } = this, { mode: offset = 0 } = ScaleStore.getMode(word) ?? {};
     for (let i = 0; i < modeCount; i++) {
       rec(new Map(), i, 0, 0);
       this.mode = i + 1
@@ -667,7 +676,7 @@ class Scale {
   // // TODO: iterate over outs the mappings which can still assign each gen to a different step,
   // //       yielding when all equal
   // ancestorsByGenerators (gens) {
-  //   const v = ScaleStore.getWord(this.#word);
+  //   const v = ScaleStore.get(this.#word);
   //   if (v) return this.#ancestorsByGenerators(v, gens)
   // }
   // #ancestorsByGenerators (v, gens) {}
@@ -929,6 +938,13 @@ class IntervalStore {
   getWord (str) { return this.getBag(new MultiSet(str.split(""))) }
   hasWord (str) { return this.hasBag(new MultiSet(str.split(""))) }
 
+  getIv (iv) { return this.#ivs.values().find(iv0 => iv0.equal(iv)) }
+  hasIv (iv) { return Boolean(~this.#ivs.values().toArray().findIndex(iv0 => iv0.equal(iv))) }
+  getBagIv (m) { return this.#ivs.values().find(iv0 => iv0.value.equal(m)) }
+  hasBagIv (m) { return Boolean(~this.#ivs.values().toArray().findIndex(iv0 => iv0.value.equal(m))) }
+  getWordIv (str) { return this.getBagIv(new MultiSet(str.split(""))) }
+  hasWordIv (str) { return this.hasBagIv(new MultiSet(str.split(""))) }
+
   // returns a new partial ordering on the given ivs
   substore (ivs) {
     const store = new IntervalStore({ scale: this.#scale, constraints: this.#constraints });
@@ -994,7 +1010,29 @@ class IntervalStore {
 
   // Concrete scales
 
-  intervalRanges (word) {}
+  #concreteRanges;
+  get concreteRanges () { return new Map(this.#concreteRanges ??= this.#genConcreteRanges()) }
+  set concreteRanges (_) {}
+  #genConcreteRanges () {
+    const [[ { value: oct } ]] = this.max, result = new Map();
+    for (const iv of this.#ivs) {
+      let min = 1, max = 0;
+      for (const c of Scale.wordChars.slice(0, this.#scale.variety)) {
+        const v = (iv.value.repr.get(c) ?? 0) / oct.repr.get(c);
+        if (v < min) min = v;
+        if (v > max) max = v
+      }
+      result.set(iv, [min, max])
+    }
+    return result
+  }
+  solveForHarmonics (harms) { return this.solve(harms.map(h => Common.mod(Math.log2(h), 1))) }
+  solve (target) {
+    const
+      { variety } = this.#scale,
+      fixed = Iter.genUniqueCombs(Scale.wordChars.slice(0, variety), Math.min(target.length, variety)).toArray();
+    console.log(fixed)
+  }
 
 }
 
@@ -1018,12 +1056,13 @@ class ScaleStore {
   // Edges go towards ancestor scale, indexed by mapping
   // graph vertices must be referentially equal to mapping elements
   static #addData ({ sOut, sIn, mapping, ...edgeData }) {
-    const { str: str0 } = sOut, { str: str1 } = sIn;
+    const { str: str0, scale: sc0 } = sOut, { str: str1 } = sIn;
     if (str0.length <= str1.length) return null;
     const
       { data } = ScaleStore,
-      s0 = ScaleStore.getWord(str0) ?? (ScaleStore.#vertices.push(sOut = { str: str0 }), sOut),
-      s1 = ScaleStore.getWord(str1) ?? (ScaleStore.#vertices.push(sIn = { str: str1 }), sIn);
+      s0 = ScaleStore.get(str0) ?? (ScaleStore.#vertices.push(sOut = { str: str0 }), sOut),
+      s1 = ScaleStore.get(str1) ?? (ScaleStore.#vertices.push(sIn = { str: str1 }), sIn);
+    s0.scale ??= sc0;
     if (ScaleStore.#cmp(s0, s1).some(m => ScaleStore.#indexEq(m, mapping))) return data;
     const
       s0Val = data.get(s0) ?? { out: new Map(), in: new Map() },
@@ -1064,7 +1103,7 @@ class ScaleStore {
 
   // Collects all mappings which transform first scale word into second
   static cmp (str0, str1) {
-    const s0 = ScaleStore.getWord(str0), s1 = ScaleStore.getWord(str1);
+    const s0 = ScaleStore.get(str0), s1 = ScaleStore.get(str1);
     if (s0 === undefined || s1 === undefined) return;
     if (str0.length < str1.length) return [];
     return ScaleStore.#cmp(s0, s1)
@@ -1083,11 +1122,11 @@ class ScaleStore {
     return Common.quotient(nextMappings, ScaleStore.#indexEq)
   }
 
-  static getWord (str) {
+  static get (str) {
     const eq = Scale.findMode(str);
     return ScaleStore.#vertices.find(({ str }) => ~eq(str))
   }
-  static get (str) {
+  static getMode (str) {
     const eq = Scale.findMode(str), index = ScaleStore.#vertices.find(({ str }) => ~eq(str));
     return index && { index, mode: eq(index.str) }
   }
@@ -1116,7 +1155,7 @@ class ScaleStore {
   static transforms (str0, str1) {
     if (str0 == null || str1 == null) return;
     const
-      { index: i0, mode: o0 } = ScaleStore.get(str0), { index: i1, mode: o1 } = ScaleStore.get(str1),
+      { index: i0, mode: o0 } = ScaleStore.getMode(str0), { index: i1, mode: o1 } = ScaleStore.getMode(str1),
       pre = Array(str0.length).keys().map(i => [i, Common.mod(i - o0, str0.length)]).toArray(),
       post = Array(str1.length).keys().map(i => [i, Common.mod(i + o1, str1.length)]).toArray();
     return this.#transforms(i0, i1, [ { modeMap: pre } ], new Map()).filter(Boolean)
@@ -1152,18 +1191,18 @@ class ScaleStore {
   // TODO incorporate Scale generators
   // TODO return substore?
   static allAncestors (sc, sv) {
-    if (typeof sc === "string") sc = new Scale({ word: sc });
+    if (typeof sc === "string") sc = ScaleStore.get(sc).scale ?? new Scale({ word: sc });
     if (parseInt(sv) !== sv) sv = sc.variety;
-    const v = ScaleStore.getWord(sc.word);
+    const v = ScaleStore.get(sc.word);
     if (v?.cached) return ScaleStore.#allAncestors(sc.word, sc.word, new Map([[ v, [] ]]));
     const result = sc.allAncestors(sv).toArray();
     for (const { word: wr, mapping, modeMap } of result)
-      ScaleStore.#addData({ sOut: { str: sc.word }, sIn: { str: wr }, mapping, modeMap })
-    ScaleStore.#markCached(ScaleStore.getWord(sc.word));
+      ScaleStore.#addData({ sOut: { str: sc.word, scale: sc }, sIn: { str: wr }, mapping, modeMap })
+    ScaleStore.#markCached(ScaleStore.get(sc.word));
     return result
   }
   static * #allAncestors (strInit, strV, visited) {
-    const v = ScaleStore.getWord(strV),
+    const v = ScaleStore.get(strV),
       { in: _, out } = ScaleStore.data.get(v) ?? {},
       s = visited.get(strV) ?? [], newPaths = [];
     for (const { mapping, ...edgeData } of ScaleStore.transforms(strInit, strV))
@@ -1175,18 +1214,17 @@ class ScaleStore {
     for (const [ { str } ] of out) yield * ScaleStore.#allAncestors(strInit, str, visited)
   }
   static addDescendant (sc, ranks) {
-    if (typeof sc === "string") sc = new Scale({ word: sc });
+    if (typeof sc === "string") sc = ScaleStore.get(w)?.scale ?? new Scale({ word: sc });
     else if (typeof ranks === "undefined") ({ ranks } = sc);
     if (!ranks) return null;
     const { word, mapping } = Scale.ranksToMapping(ranks);
     if (!~Scale.findMode(word, sc.word)) return null;
-    sc = sc.withEmbedding(mapping);
-    const { embeddingScale } = sc, modeMap = [];
+    const scale = sc.embedding ? sc : sc.withEmbedding(mapping), { embeddingScale } = scale, modeMap = [];
     for (let i = 0; i < embeddingScale.modeCount; i++)
-      for (let j = 0; j < sc.modeCount; j++) {
+      for (let j = 0; j < scale.modeCount; j++) {
         embeddingScale.mode = i;
-        sc.mode = j;
-        if (sc.word.split("").every(c => {
+        scale.mode = j;
+        if (scale.word.split("").every(c => {
           const k = embeddingScale.genericIvs.indexOf(embeddingScale.intervals.getBag(mapping.get(c)));
           if (!~k) return false;
           embeddingScale.mode += k + 1;
@@ -1194,7 +1232,7 @@ class ScaleStore {
         })) modeMap.push([i, j])
       }
     // TODO unify mapping representations...
-    ScaleStore.#addData({ sOut: { str: embeddingScale.word }, sIn: { str: word }, modeMap,
+    ScaleStore.#addData({ sOut: { str: embeddingScale.word, scale: embeddingScale }, sIn: { str: word, scale: sc }, modeMap,
       mapping: mapping.entries().reduce((ar, [c, m]) => ar.with(Scale.wordChars.indexOf(c), m), Array(mapping.size)) })
     return { inner: word, outer: embeddingScale.word, mapping, modeMap };
   }
@@ -1208,7 +1246,7 @@ class ScaleStore {
 
   // Generates strings
   static listAncestors (str) {
-    const v = ScaleStore.getWord(str);
+    const v = ScaleStore.get(str);
     if (v) return ScaleStore.#listAncestors(v, new Set())
   }
   static * #listAncestors (v, visited) {
@@ -1216,14 +1254,14 @@ class ScaleStore {
     yield v.str;
     const { out } = ScaleStore.data.get(v);
     for (const [ { str } ] of out) if (!visited.has(str))
-      yield * ScaleStore.#listAncestors(ScaleStore.getWord(str), visited)
+      yield * ScaleStore.#listAncestors(ScaleStore.get(str), visited)
   }
 
   // // TODO
   // static subgraphBetween (s0, s1) {}
 
   static ancestorsByIv (str, iv) {
-    const v = ScaleStore.getWord(str);
+    const v = ScaleStore.get(str);
     if (typeof iv === "string") iv = new MultiSet(iv.split(""));
     if (v) return ScaleStore.#ancestorsByIv(str, v, iv, new Map([[ v, [] ]]))
   }

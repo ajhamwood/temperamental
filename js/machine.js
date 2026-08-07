@@ -25,7 +25,7 @@ return Object.assign((sel, node = document) => sel ? node.querySelector(sel) : n
     (test(ors, Array) && Promise.race(ors.map(fn => fn(v)))) || (test(ors, Function) && ors(v))))))({}),
 
 //   $.targets recursively adds event listeners to objects and removes them by name, indexed by regex
-  targets (obj, target = window) {
+  targets (obj, target = self) {
     for (const ts in obj) if (test(obj[ts], Function)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.on(t, obj[ts]));
       else if (test(target, EventTarget)) ts.split(' ').forEach(t => add(target, ...t.match(/([^*#]*)(\*|#)?/).slice(1), obj[ts].bind(target))) }
     else if (test(obj[ts], String)) { if (test(target, $.Machine)) ts.split(' ').forEach(t => target.stop(t, obj[ts]));

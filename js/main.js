@@ -166,6 +166,7 @@ const
     version: "0.0.8",
     storage: null,
     globalBatchSize: 10,
+    loaded: false,
 
   // Navigation
     menuState: [],
@@ -309,6 +310,7 @@ $.targets({
   app: {
 
     async init () {
+      this.loaded = false;
       this.storage = new Persist(app.version);
       await this.storage.ready;
       this.canvas = $("#hex");
@@ -388,7 +390,9 @@ $.targets({
 
       $.all("input[size]").forEach(el => el.style.setProperty("--size", el.size));
 
-      $("#track-menuitem > select").selectedIndex = 0
+      $("#track-menuitem > select").selectedIndex = 0;
+
+      this.loaded = true
     },
 
     async "user-activate" () {
@@ -445,6 +449,7 @@ $.targets({
     },
 
     resize (reset) {
+      if (!this.loaded) return
       const
         { hexGrid } = this.keyboard, { canvas, octaveLow, octaveHigh } = this,
         octaves = octaveHigh - octaveLow, { unit, orientation: [g, h], theta } = hexGrid,

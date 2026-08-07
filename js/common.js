@@ -261,6 +261,14 @@ class Common {
 class Iter {
   // Generator convenience methods
 
+  static * take (gen, n) {
+    for (let i = 0; i < n; i++) {
+      const { value, done } = gen.next();
+      if (done) return;
+      else yield value
+    }
+  } 
+
   // All ways to partition a number into (up to k) smaller numbers
   static partitions = (v, max, cuml) => {
     const rec = (n, as) => n >= v ?
@@ -425,7 +433,7 @@ class MultiSet {
     yield * this.#subhelp(m.#keys.entries().toArray()).map(ar => new MultiSet().attach(ar))
   }
   static from (m) {
-    if (MultiSet.prototype.isPrototypeOf(m)) return new MultiSet().attach(structuredClone(m.#keys));
+    if (MultiSet.prototype.isPrototypeOf(m)) return new MultiSet().attach(new Map(m.#keys));
     if (!Map.prototype.isPrototypeOf(m)) return false;
     const ms = new MultiSet();
     ms.#keys = m;
