@@ -190,7 +190,7 @@ if (self instanceof (self.WorkerGlobalScope ?? class {}) ) {
 
     // Unordered!
     #started = false; #sent = false; #resolver; #promise = new Promise(r => this.#resolver = r)
-    start () {
+    async start () {
       const
         self = this, { workers, active, available, gen, options: { filter, extract } } = this,
         totIn = Array(available).fill(0), totOut = Array(available).fill(0);
@@ -199,7 +199,7 @@ if (self instanceof (self.WorkerGlobalScope ?? class {}) ) {
       for (let i = 0; i < available; i++) {
         const
           worker = new Worker(new URL("./scaleworker.js", import.meta.url), { name: this.name, type: "module" }),
-          batch = this.getBatch(gen).toArray();
+          batch = await Array.fromAsync(this.getBatch(gen));
         workers.push(worker);
         $.targets({ message ({ data: { batch, deltaIn, deltaOut, id } }) {
           if (batch) {
@@ -214,26 +214,24 @@ if (self instanceof (self.WorkerGlobalScope ?? class {}) ) {
         } }, worker);
         worker.postMessage({ initialise: { extract, filter, i }, batch, id: this.id++ });
         active.push([i]);
+        ScaleWorkerManager.available--;
+        this.available--;
         if (batch.length < ScaleWorkerManager.batchSize) {
           for (const w of workers) w.postMessage({ done: true });
           this.#started = this.#sent = true;
-          this.available -= i + 1;
-          ScaleWorkerManager.available -= i + 1;
           return this.#results()
         }
       }
-      ScaleWorkerManager.available -= available;
-      this.available = 0;
       this.#started = true;
-      for (let i = 0; i < available; i++) if (this.run(i)) break;
+      for (let i = 0; i < available; i++) if (await this.run(i)) break;
       return this.#results()
     }
-    getBatch (gen) {
-      return Iter.take(gen, ScaleWorkerManager.batchSize)
-        .map(item => Object.entries(item).reduce((o, [p, v]) => (o[p] = ScaleWorkerManager.from(p, v), o), {}))
+    async * getBatch (gen) {
+      for await (const item of Iter.takeAsync(Iter.yieldEach(gen), ScaleWorkerManager.batchSize))
+        yield Object.entries(item).reduce((o, [p, v]) => (o[p] = ScaleWorkerManager.from(p, v), o), {})
     }
-    run (i) {
-      const { workers, active, gen } = this, batch = this.getBatch(gen).toArray();
+    async run (i) {
+      const { workers, active, gen } = this, batch = await Array.fromAsync(this.getBatch(gen));
       if (batch.length !== 0) {
         workers[i].postMessage({ batch, id: this.id });
         active[i].push(this.id++)

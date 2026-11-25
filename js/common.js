@@ -2,15 +2,7 @@ class Common {
 
   static #allPrimes = [ 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 ]
   static #allPrimesBig = this.#allPrimes.map(BigInt)
-
-  static wait = ms => v => new Promise(r => setTimeout(() => r(v), ms))
-  // static debounce = (wm => key => {
-  //   const { b, p } = wm.get(key) ?? wm.set(key, { b: true, p: Promise.resolve() }).get(key);
-  //   if (b) {
-
-  //   }
-  // })(new WeapMap())
-  
+    
   static between = (min, max, val) => val <= max && val >= min
   static clamp = (min, max, val) => (max >= min && Number(val) === val) ? Math.max(min, Math.min(max, val)) : undefined
   static lerp = (a, b, t) => a * (1 - t) + b * t
@@ -35,11 +27,13 @@ class Common {
     if (ar0[i] !== ar1[i]) return Math.sign(ar0[i] - ar1[i]); return Math.sign(ar0.length - ar1.length) }
   static pairwiseCmp = (a1, a2, cmp = (a, b) => a === b) => a1.every(i1 => a2.every(i2 => cmp(i1, i2)))
   static zipCmp = (a1, a2, cmp = (a, b) => a === b) => a1.length === a2.length && a1.every((v, i) => cmp(v, a2[i]))
+  static zipWith = (a1, a2, fn = (a, b) => a + b) => a1.slice(Math.min(a1.length, a2.length)).map((x, i) => fn(x, a2[i]))
   static bagEq = (a1, a2, cmp = (a, b) => a === b) => a1.length === a2.length && a1.reduce(([ b, rem ], v) => {
     if (!b) return [ false ];
     const i = rem.findIndex(u => cmp(u, v));
     return ~i ? [ true, rem.toSpliced(i, 1) ] : [ false ]
   }, [ true, a2 ])[0]
+  static mapEq = (m1, m2, cmp = (a, b) => a === b) => m1.size === m2.size && m1.entries().every(([k, v]) => cmp(v, m2.get(k)))
   static groupBy = (ar, groupFn = x => x, mapFn = x => x) => ar.reduce((a, v) => {
     const k = groupFn(v);
     a[k] = (a[k] ?? []).concat([mapFn(v)]);
@@ -236,6 +230,28 @@ class Common {
     }
   })()
 
+  static wait = (ms = 1000) => v => new Promise(r => setTimeout(() => r(v), ms))
+  static debounce = (ms = 1000) => {
+    const
+      id = x => x,
+      reset = async v => {
+        const p0 = cb_(v);
+        cb_ = id;
+        return p0
+      },
+      bounce = v => new Promise(r => {
+        res = () => r(v);
+        tm = setTimeout(() => r(reset(v)), ms)
+      });
+    let p = Promise.resolve(), cb_ = id, res = id, tm;
+    return (cb = x => x) => {
+      p = p.then(reset);
+      clearTimeout(tm);
+      res();
+      cb_ = v => Promise.resolve(cb(v)).then(bounce)
+    }
+  }
+
   static cacheAside = ({ setup, cacheGen, fresh }) => {
     const ready = setup();
     let cacheDone = false, value;
@@ -267,7 +283,38 @@ class Iter {
       if (done) return;
       else yield value
     }
-  } 
+  }
+  static async * takeAsync (gen, n) {
+    for (let i = 0; i < n; i++) {
+      const { value, done } = await gen.next();
+      if (done) return;
+      else yield value
+    }
+  }
+  static * batch (gen, n) {
+    let i = 0, batch = [];
+    for (const value of gen)
+      if (++i % n === 0) {
+        yield batch.concat([value]);
+        batch = []
+      } else batch.push(value);
+    if (batch.length) yield batch
+  }
+  static async * batchAsync (gen, n) {
+    let i = 0, batch = [];
+    for await (const value of gen)
+      if (++i % n === 0) {
+        yield batch.concat([value]);
+        batch = []
+      } else batch.push(value);
+    if (batch.length) yield batch
+  }
+  static async * yieldEach (gen) {
+    for (const value of gen) {
+      yield value;
+      await scheduler.yield()
+    }
+  }
 
   // All ways to partition a number into (up to k) smaller numbers
   static partitions = (v, max, cuml) => {
@@ -316,7 +363,7 @@ class Iter {
   static * genGensByComp (comp, sv = comp.size, chars) {
     const
       cs = [...comp], bijs = Iter.bijections(cs, cs).toArray(),
-      index = new Index({ address: x => x, done: ($0, v, i) => i === v.length - 1, cmp: Common.zipCmp }),
+      index = new Index({ address: x => x, done: ($0, v, i) => i === v.length - 1, cmp: (a, b) => Common.zipCmp(a, b) }),
       combs = Iter.cartProd(cs.map(n => Array(n + 1).keys().toArray())).map((ar, i) => [i, ar]).toArray();
     function * rec (a, v, j) {
       if (Common.sum(a) === 0 && v >= 0) yield [];
@@ -662,10 +709,13 @@ class Setoid {
 
 // Not for storage of Map objects...
 class Index {
-  static quotient = (index, gen, equiv = x => [x]) => (gen.forEach(v0 =>
-    equiv(v0).some(v1 => index.has(v1)) || index.insert(v0)), [...index])
+  static from = index => new Index({ address: index.#addrFn, done: index.#doneFn, cmp: index.#cmpFn })
+  static quotient = (index, gen, equiv = x => [x]) => gen.flatMap(v0 =>
+    equiv(v0).some(v1 => index.has(v1)) ? [] : [ index.insert(v0) ])
   static group = (index, gen, equiv = x => [x], comb = (a, b) => b) => 
     (gen.forEach(v0 => comb(index.get(equiv(v0).find(v1 => index.has(v1))), v0)), [...index])
+
+  static #zipCmp = (a1, a2, cmp = (a, b) => a === b) => a1.length === a2.length && a1.every((v, i) => cmp(v, a2[i], i, a1))
 
   #rawMap = new Map(); #addrFn; #doneFn; #cmpFn
   constructor ({ address, done, cmp }) {
@@ -686,15 +736,31 @@ class Index {
     }
     return gen(this.#rawMap, 0, [])
   }
+  collect (fn) {
+    const self = this, gen = function * (m, i, path) {
+      if (Map.prototype.isPrototypeOf(m)) for (const [k, v] of m)
+        if (self.#doneFn(k, v, i, path)) yield v;
+        else if (fn(k, v, i, path)) yield [path.concat(k), gen(v, i + 1, path.concat(k))]
+        else yield * gen(v, i + 1, path.concat(k));
+      else yield m
+    }
+    return gen(this.#rawMap, 0, [])
+  }
+  quotient (gen = this, equiv = x => [x]) {
+    const index = Index.from(this);
+    for (const v0 of gen) if (!equiv(v0).some(v1 => index.has(v1))) index.insert(v0);
+    return index
+  }
 
   pathOf (item) { return this.#addrFn(item) }
-  #pathValueOf (v, m) { return this.#cmpFn ? m.keys().find(v0 => v0 === null ? false : this.#cmpFn(v, v0)) ?? v : v }
+  #pathValueOf (v, m, i, p) { return this.#cmpFn ? m.keys().find(v0 => (v0 === null || v === undefined) ?
+    false : this.#cmpFn(v, v0, i, p)) ?? v : v }
 
   insert (item) {
     const path = this.#addrFn(item);
     let focus = this.#rawMap;
     for (let i = 0; i < path.length; i++) {
-      const key = this.#pathValueOf(path[i], focus);
+      const key = this.#pathValueOf(path[i], focus, i, path);
       if (!focus.has(key)) {
         focus.set(key, item);
         return item
@@ -705,7 +771,7 @@ class Index {
         else focus = split;
       } else {
         const splitPath = this.#addrFn(split);
-        if (Common.zipCmp(path, splitPath, this.#cmpFn)) {
+        if (Index.#zipCmp(path, splitPath, this.#cmpFn)) {
           focus.set(key, item);
           return item
         } else focus.set(key, focus = new Map([[
@@ -730,11 +796,11 @@ class Index {
     let focus = this.#rawMap, i = 0;
     for (; i < path.length; i++) {
       spine.push(focus);
-      const key = this.#pathValueOf(path[i], focus);
+      const key = this.#pathValueOf(path[i], focus, i, path);
       if (!focus.has(key)) return false;
       const newFocus = focus.get(key);
       if (!Map.prototype.isPrototypeOf(newFocus)) {
-        if (Common.zipCmp(path, this.pathOf(newFocus), this.#cmpFn)) {
+        if (Index.#zipCmp(path, this.pathOf(newFocus), this.#cmpFn)) {
           focus.delete(key);
           break
         } else return false
@@ -753,11 +819,11 @@ class Index {
   getPath (...path) {
     let focus = this.#rawMap;
     for (let i = 0; i <= path.length; i++) {
-      const key = i === path.length ? null : this.#pathValueOf(path[i], focus);
+      const key = i === path.length ? null : this.#pathValueOf(path[i], focus, i, path);
       if (!focus.has?.(key)) return;
       focus = focus.get(key);
       if (!Map.prototype.isPrototypeOf(focus))
-        if (Common.zipCmp(path, this.pathOf(focus), this.#cmpFn) || i === path.length) return focus;
+        if (Index.#zipCmp(path, this.pathOf(focus), this.#cmpFn) || i === path.length) return focus;
         else return
     }
     return focus
@@ -765,11 +831,11 @@ class Index {
   hasPath (...path) {
     let focus = this.#rawMap;
     for (let i = 0; i <= path.length; i++) {
-      const key = i === path.length ? null : this.#pathValueOf(path[i], focus);
+      const key = i === path.length ? null : this.#pathValueOf(path[i], focus, i, path);
       if (!focus.has?.(key)) return false;
       focus = focus.get(key);
       if (!Map.prototype.isPrototypeOf(focus))
-        if (Common.zipCmp(path, this.pathOf(focus), this.#cmpFn) || i === path.length) return true;
+        if (Index.#zipCmp(path, this.pathOf(focus), this.#cmpFn) || i === path.length) return true;
         else return false
     }
     return true

@@ -220,7 +220,7 @@ $.targets({
   resize () {
     if (!Keyboard.ready) return;
     app.emit("resize", true);
-    app.keyboard.hexGrid.redraw(true)
+    app.keyboard.hexGrid.redraw(false)
   },
 
   keydown (e) { switch (e.key) {

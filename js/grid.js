@@ -82,6 +82,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.#hexes.insert(hex);
     return hex
   }
+  #removeHex (hex) { return this.#hexes.delete(hex) }
 
   getHex (g, h) { return this.#hexes.getPath(g, h) }
   hasHex (g, h) { return this.#hexes.hasPath(g, h) }
@@ -123,8 +124,55 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     return true
   }
 
+  resize () {
+    const
+      { tuning } = this.#keyboard, { r, w } = this, curr = [ ...this ],
+      cull = curr.filter(btn => !Common.between(-r, w + r, HexButton.centre(...btn.coord, this)[0]));
+    if (cull.length) {
+      for (const hex of cull) {
+        const
+          { octave, rank } = hex,
+          key = tuning.getKey(rank),
+          note = key.addNote(octave);
+        key.hexes.delete(hex);
+        if (note.buttons.length === 1) this.#keyboard.tuning.removeNote(hex);
+        this.#removeHex(hex)
+      }
+    } else {
+      this.#fillToSides();
+      for (const hex of new Set(this).difference(new Set(curr))) {
+        const
+          { octave, rank } = hex,
+          key = tuning.getKey(rank),
+          note = key.addNote(octave);
+        key.hexes.add(hex);
+        hex.note = note
+      }
+    }
+
+    // console.log(cull.map(btn => btn.coord))
+    // console.log(w - r * 3 - HexButton.centre(-2, 12, this)[0])
+  }
+  #fillToSides () {
+    const { orientation: [ g, h ] } = this,  home = [ ...this ];
+    this.fillGrid({
+      candidate: (g0, h0) => {
+        const homeEquiv = ~home.findIndex(hex => {
+                const [ baseG, baseH ] = hex.coord;
+                return (baseG - g0) * h === (baseH - h0) * g
+              });
+        return homeEquiv && HexButton.vertices(g0, h0, this).some(([ px, py ]) =>
+          px > 0 && px < this.w && py > 0 && py < this.h)
+      },
+      isGhost: (g0, h0) => home.find(hex => {
+        const [ baseG, baseH ] = hex.coord;
+        return (baseG - g0) * h === (baseH - h0) * g
+      }).isGhost
+    })
+  }
+
   updateGrid (force) {
-    if (this.#notes && !force) return;
+    if (this.#notes && !force) return this.resize();
     const
       { gstep, hstep, c, w, octLen, o, orientation: [ g, h ], r } = this,
       { edo } = this.#keyboard;
@@ -135,9 +183,11 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     this.#notes = new Set();
 
     const
+      { word, mode } = Scale.normaliseWord(Scale.genBilliards(new MultiSet([g, h]))[0]),
       sc = new Scale({
-        word: Scale.genBilliards(new MultiSet([g, h]))[0],
-        embedding: Scale.edoEmbedding(g > h ? [gstep, hstep] : [hstep, gstep]) }),
+        word, embedding: Scale.edoEmbedding(g > h ? [gstep, hstep] : [hstep, gstep]) });
+    sc.mode = -mode;
+    const
       ranks = sc.ranks.map(ms => ms.size),
       coords = ranks.slice(1).reduce((ar, r, i) => {
         const data = ar.at(-1).slice();
@@ -156,12 +206,15 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     const
       xMin = HexButton.centre(o * g, o * h, this)[0] - r / 2,
       xMax = HexButton.centre((o + 1) * g, (o + 1) * h, this)[0] + r / 2,
-      dev = coord => Math.abs(this.h / 2 - HexButton.centre(...coord, this)[1]);
+      dev = coord => {
+        const {x, y} = HexButton.centre(...coord, this)
+        return [ Math.abs(this.h / 2 - y), Math.abs((xMin + xMax) / 2 - x) ]
+      };
     this.fillGrid({
       candidate: (g0, h0) => !this.#notes.has(this.coordToRank(g0, h0)) &&
         Common.between(xMin, xMax, HexButton.centre(g0, h0, this)[0]),
       filter: coords => Common.group(coords, ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
-        .map(enhs => enhs.sort((a, b) => dev(a) - dev(b))[0]),
+        .map(enhs => enhs.sort((a, b) => Common.zipWith(dev(a), dev(b), (a, b) => a - b))[0]),
       isGhost: () => false
     });
 
@@ -174,26 +227,12 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       filter: coords => Common.group(coords.filter(([a, b]) => [-1, 0, 1]
         .every(k => hexes.every(([c, d]) => c !== a + k * g || d !== b + k * h))),
         ([a, b], [c, d]) => this.coordToRank(a - c, b - d) === 0)
-        .map(enhs => enhs.sort((a, b) => dev(a) - dev(b))[0]),
+        .map(enhs => enhs.sort((a, b) => Common.zipWith(dev(a), dev(b), (a, b) => a - b))[0]),
       isGhost: () => true
     });
 
     // Fill to sides
-    const home = [ ...this ];
-    this.fillGrid({
-      candidate: (g0, h0) => {
-        const homeEquiv = ~home.findIndex(hex => {
-                const [ baseG, baseH ] = hex.coord;
-                return (baseG - g0) * h === (baseH - h0) * g
-              });
-        return homeEquiv && HexButton.vertices(g0, h0, this).some(([ px, py ]) =>
-          px > 0 && px < this.w && py > 0 && py < this.h)
-      },
-      isGhost: (g0, h0) => home.find(hex => {
-        const [ baseG, baseH ] = hex.coord;
-        return (baseG - g0) * h === (baseH - h0) * g
-      }).isGhost
-    });
+    this.#fillToSides();
 
     // Notes
     for (const hex of this) if (!hex.isGhost) {
@@ -266,7 +305,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         .sort(([a], [b]) => a > b).map(([ , h ]) => intervalSet.getRatio(h, 1).withOctave(0));
     let i = edo - 1, full, prev, k = 0, result = Array(edo).fill(), prevResult,
         { properIntervals: ivset } = mapping, prevIvset;
-    result[0] = [[[], []]];
+    result[0] = [ [[], []] ];
     for (const basis of bases) {
       const [ pn, pd ] = basis.fraction.map(Number).map(Common.non2), pstep = mapping.steps(basis);
       prevIvset = new IntervalSet({ intervalSet: ivset });
@@ -275,6 +314,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
       while (i > 0 && (i !== prev || i === full) && rawHarmonicList.size) {
         full = null;
         prev = i;
+        // TODO replace structuredClone
         prevResult = structuredClone(result);
         for (const iv of prevIvset) {
           const [ n, d ] = iv.fraction.map(Number).map(Common.non2), step = mapping.steps(iv);
@@ -284,7 +324,7 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
             (result[s] ??= (i--, [])).push(newIv.splitDecomp);
             ivset.add(newIv)
           }
-          s = Common.mod(step - k * pstep, edo);
+          s = Common.mod(step - k * pstep, edo);true
           if (k > 0 && prevResult[s] === undefined && mapping.decomp(n * pd ** k, d * pn ** k)()) {
             const newIv = intervalSet.addRatio(n * pd ** k, d * pn ** k);
             (result[s] ??= (i--, [])).push(newIv.splitDecomp);
@@ -301,9 +341,9 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
     for (const hex of this) {
       const
         { octave, rank } = hex, labels = [],
-        tuningKey = tuning.getKey(rank),
-        note = tuningKey.addNote(octave);
-      tuningKey.hexes.add(hex);
+        key = tuning.getKey(rank),
+        note = key.addNote(octave);
+      key.hexes.add(hex);
       hex.note = note;
       if (result[rank]) for (let i = 0, ivs = result[rank]; i < ivs.length; i++) {
         const { accid, ...labelStrings } = Common.noteFromFactors(ivs[i]);
@@ -314,23 +354,26 @@ class HexGrid { // TODO: set w, h, theta within HexGrid
         if (ut) keyClass += ut[0] + "u";
         labels.push({ ...labelStrings, keyClass, interval: ivs[i] })
       }
-      if (!tuningKey.labels.length) tuningKey.labels = labels
+      if (!key.labels.length) key.labels = labels
     }
   }
 
-  redraw (force) {
-    if (!app.loaded) return;
-    const { gridctx, canvas } = app.state(), { width, height } = canvas;
-    this.updateGrid(force);
-    this.classifyKeys(force);
-    gridctx.fillStyle = "#000000";
-    gridctx.fillRect(0, 0, width, height);
-    for (const hex of this) hex.colour();  // Redraw by local hexes?
-    canvas.toBlob(blob => {
-      const url = URL.createObjectURL(new Blob([blob]));
-      canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache ?? url}')`;
-      this.#bgImgCache = url
-    })
+  #pl = Common.debounce(50)
+  async redraw (force) {
+    app.loaded && this.#pl(() => new Promise(r => {
+      const { gridctx, canvas } = app.state(), { width, height } = canvas;
+      this.updateGrid(force);
+      this.classifyKeys(force);
+      gridctx.fillStyle = "#000000";
+      gridctx.fillRect(0, 0, width, height);
+      for (const hex of this) hex.colour();  // Redraw by local hexes?
+      canvas.toBlob(blob => {
+        r();
+        const url = URL.createObjectURL(new Blob([blob]));
+        canvas.style.backgroundImage = `url('${url}'), url('${this.#bgImgCache ?? url}')`;
+        this.#bgImgCache = url;
+      });
+    }))
   }
 
   colour () {

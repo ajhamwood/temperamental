@@ -30,7 +30,7 @@ class Scale {
     else return i0 > i1 ? -1 : i0 < i1 ? 1 : 0
   }
 
-  static wordInMode (str, mode) { return str.slice(mode) + str.slice(0, mode) }
+  static wordInMode (str, mode = 0) { return str.slice(mode) + str.slice(0, mode) }
   // Find relative mode of two words, uncurried for partial application
   static findMode = word0 => {
     const sq = Array(word0.length).keys().map(i => Scale.wordInMode(word0, i)).toArray();
@@ -231,14 +231,17 @@ class Scale {
         .flatMap(m => Common.quotient(Iter.genAllNecklaces(m, Scale.wordChars).map(w => Scale.normaliseWord(w).word).toArray())
           .map(word => ({ word, mappings: Iter.genMaps(new MultiSet(word.split("")).repr, m).toArray() }))))
   }
-  static * genBilliardScalesByComposition (comp, sv = comp?.size) {
-    yield * Map.groupBy(Iter.genGensByComp(comp, sv, Scale.wordChars)
+  static * genBilliardScalesByCompositionRaw (comp, sv = comp?.size) {
+    yield * Iter.genGensByComp(comp, sv, Scale.wordChars)
       .flatMap(gens => Iter.genDecompositions(new MultiSet([...comp].flatMap((n, i) => Scale.wordChars[i].repeat(n).split(""))), gens)
         .flatMap(comp => Scale.genBilliards(new MultiSet(comp.values().toArray().sort((a, b) => b - a)))
-          .map(word => ({ word, mappings: Iter.genMaps(new MultiSet(word.split("")).repr, comp).toArray() }))).toArray()),
-      ({word}) => word
-    ).entries().map(([word, ar]) => ({ word, mappings: Common.quotient(
-      ar.reduce((a, { mappings }) => a.concat(mappings), []), Scale.equalMapping) }))
+          .map(word => ({ word, comp, mappings: Iter.genMaps(new MultiSet(word.split("")).repr, comp).toArray() }))))
+  }
+  static * genBilliardScalesByComposition (comp, sv = comp?.size) {
+    yield * Index.quotient(
+      new Index({ address: ({ word, mapping }) => [ word, mapping ], done: ($0, $1, i) => i === 1, cmp: (a, b, i) => i ? Common.mapEq(a, b) : a === b }),
+      Scale.genBilliardScalesByCompositionRaw(comp, sv).flatMap(({ word, comp, mappings }) => mappings.map(mapping => ({ word, comp, mapping }))),
+      ({ word, comp }) => Iter.genMaps(new MultiSet(word.split("")).repr, comp).map(mapping => ({ word, mapping })).toArray())
   }
 
 
@@ -250,9 +253,7 @@ class Scale {
     else if (pattern) this.#setPattern({ pattern, constraints });
     else if (word) this.#setWord({ word, constraints });
     else throw new Error("Scale error: must provide string as either word or pattern");
-    
-
-    if (parseInt(mode) === mode && Common.between(0, this.modeCount, mode)) this.mode = mode;
+    if (parseInt(mode) === mode) this.mode = mode;
 
     return this
   }

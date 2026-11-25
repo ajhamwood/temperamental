@@ -562,8 +562,9 @@ body {
       transform: scale(.5);
       transform-origin: 0 0;
       /* mix-blend-mode: lighten; */
-      background-size: cover;
-      background-position-y: center;
+      background-size: auto 100%;
+      background-repeat: no-repeat;
+      background-position: center;
       pointer-events: none }
   dialog { padding: 1em 0 }
     .dialog-prompt { padding: 0 1em }

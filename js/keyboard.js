@@ -282,6 +282,7 @@ class Tuning {
 
   getKey (rank) { return this.#keys.get(rank) }
   addNote ({ rank, octave }) { return this.#keys.get(rank).addNote(octave) }
+  removeNote ({ rank, octave }) { return this.#keys.get(rank).removeNote(octave) }
   getNote ({ rank, octave }) { return this.#keys.get(rank)?.getNote(octave) }
   play (note, id) {
     const active = this.#active, ids = active.get(note);
@@ -328,10 +329,16 @@ class Key {
     this.#tuning = tuning;
     this.rank = rank
   }
+  * [ Symbol.iterator ] () { for (const s of this.#notes.values()) yield s }
   addNote (octave) {
     const note = new Note({ keyboard: this.#keyboard, tuning: this.#tuning, rank: this.rank, octave });
     this.#notes.set(octave, note);
     return note
+  }
+  removeNote (octave) {
+    const note = this.#notes.get(octave);
+    if (note) this.#notes.delete(octave);
+    return note;
   }
   getNote (octave) { return this.#notes.get(octave) }
   get notes () { return [ ...this.#notes.values() ] }
@@ -350,7 +357,7 @@ class Key {
 
 class Note {
   #keyboard; #tuning; rank; octave
-  #maxVolume = .333; #attack = .2; #decay = .5
+  static #maxVolume = .333; static #attack = .2; static #decay = .5
   #note; #buttons = []
   constructor ({ keyboard, tuning, rank, octave }) {
     if (!Keyboard.prototype.isPrototypeOf(keyboard)) throw new Error("HexGrid error: must provide Keyboard object");
@@ -388,9 +395,9 @@ class Note {
     osc.connect(volume);
     volume.gain.value = .001;
     volume.gain.setValueAtTime(.001, now);
-    volume.gain.setTargetAtTime(this.#maxVolume, now, this.#attack / 5);
+    volume.gain.setTargetAtTime(Note.#maxVolume, now, Note.#attack / 5);
     volume.connect(masterVolume);
-    this.#note = { osc, volume, t0: now };
+    this.#note = { osc, volume };
     osc.start(now);
   }
   async stop () {
@@ -398,11 +405,11 @@ class Note {
     if (!this.#note) return;
     const
       { audioctx } = app, now = audioctx.currentTime,
-      { osc, volume, t0 } = this.#note, dt = now - t0, decay = this.#decay;
+      { osc, volume } = this.#note;
     this.#note = null;
     volume.gain.cancelScheduledValues(now);
-    volume.gain.setTargetAtTime(.001, now, decay / 5);
-    osc.stop(now + decay);
+    volume.gain.setTargetAtTime(.001, now, Note.#decay / 5);
+    osc.stop(now + Note.#decay);
   }
 
   turnOn (id) { this.#tuning.play(this, id) }
